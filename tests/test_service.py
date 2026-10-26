@@ -1,4 +1,4 @@
-"""The HTTP service against the simulated Work laptop."""
+"""The HTTP service against the simulated locked computer."""
 import base64
 import json
 import threading

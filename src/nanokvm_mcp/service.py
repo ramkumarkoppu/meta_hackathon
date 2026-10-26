@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -153,7 +154,7 @@ class Service:
             return g
         if f is not None:
             return f   # stale but better than nothing; meta reports its age
-        raise ServiceError("No video from the Work laptop yet - " + self._capture_problem(), 503)
+        raise ServiceError("No video from the locked computer yet - " + self._capture_problem(), 503)
 
     def _shot(self, frame: Frame) -> dict:
         region, sw, sh, source = self.coord_space(frame)
@@ -208,6 +209,55 @@ class Service:
             "jpeg_b64": base64.b64encode(G.encode_jpeg(img, max(self.cfg.jpeg_quality, 90))).decode("ascii"),
         }
 
+    def frame(self, rect: tuple[float, float, float, float] | None = None, fmt: str = "png",
+              max_tokens: int = G.VISION_MAX_TOKENS) -> dict:
+        """The screen at full capture resolution, for the LOCAL vision model (Muse Glimmer): the whole
+        calibrated region, or a screen-coordinate rectangle of it. Not reduced to Claude's screenshot
+        size; shrunk only if it would exceed max_tokens visual tokens. Nothing is written to disk, and
+        the cropped copy is zeroed once encoded."""
+        if fmt not in ("png", "jpeg"):
+            raise ServiceError("format must be 'png' or 'jpeg'")
+        max_tokens = max(64, min(int(max_tokens), G.VISION_MAX_TOKENS))
+        frame = self._require_frame()
+        region, sw, sh, _ = self.coord_space(frame)
+        if rect is None:
+            cx, cy, cw, ch = region.x, region.y, region.w, region.h
+        else:
+            x, y, w, h = rect
+            if w <= 0 or h <= 0:
+                raise ServiceError("frame width and height must be positive")
+            if x < 0 or y < 0 or x >= sw or y >= sh:
+                raise ServiceError(f"frame origin ({x}, {y}) is outside the screen (0..{sw - 1}, 0..{sh - 1})")
+            cx, cy, cw, ch = G.screen_rect_to_capture(rect, region, sw, sh)
+        crop = frame.image[cy:cy + ch, cx:cx + cw].copy()
+        out_w, out_h = G.fit_token_budget(cw, ch, max_tokens)
+        img = G.resize(crop, out_w, out_h)
+        data = G.encode_png(img) if fmt == "png" else G.encode_jpeg(img, 95)
+        blank, mean, _std = G.blank_stats(img)
+        img.fill(0)
+        crop.fill(0)
+        age_ms = int((time.monotonic() - frame.t) * 1000)
+        warnings = []
+        if blank:
+            warnings.append("the picture is uniform (%s) - no HDMI signal, display asleep, or a blank "
+                            "screen" % ("black" if mean < 20 else f"mean {mean:.0f}"))
+        if age_ms > 2000:
+            warnings.append(f"frame is {age_ms / 1000:.1f}s old - " + self._capture_problem())
+        sx0, sy0 = (cx - region.x) * sw / region.w, (cy - region.y) * sh / region.h
+        sx1, sy1 = (cx + cw - region.x) * sw / region.w, (cy + ch - region.y) * sh / region.h
+        return {
+            "seq": frame.seq, "captured_at": _clock(frame.wall), "age_ms": age_ms,
+            "frame_size": [int(frame.image.shape[1]), int(frame.image.shape[0])],
+            "capture_rect": [cx, cy, cw, ch],
+            "screen_rect": [round(sx0, 1), round(sy0, 1), round(sx1 - sx0, 1), round(sy1 - sy0, 1)],
+            "screen_size": [sw, sh],
+            "width": out_w, "height": out_h, "format": fmt,
+            "visual_tokens": G.vision_tokens(out_w, out_h),
+            "image_sha256": hashlib.sha256(data).hexdigest(),
+            "warnings": warnings,
+            "image_b64": base64.b64encode(data).decode("ascii"),
+        }
+
     def _wait_change(self, base: Frame, timeout_s: float, min_change_pct: float,
                      settle_ms: int) -> tuple[bool, Frame, float]:
         """Wait until the screen differs from ``base`` by >= min_change_pct %, then until it has
@@ -254,7 +304,7 @@ class Service:
         return out
 
     # ------------------------------------------------------------ screen sharing
-    SHARE_REFUSED = ("Screen sharing is off (or has expired), so the Work laptop's screen cannot be captured. "
+    SHARE_REFUSED = ("Screen sharing is off (or has expired), so the locked computer's screen cannot be captured. "
                      "Ask the user whether to share it, then call start_screen_sharing - the user approves once.")
     MAX_SHARE_MINUTES = 480
 
@@ -553,7 +603,7 @@ class Service:
         w = self.cfg.viewer_width
         img = np.full((w * 9 // 16, w, 3), 30, np.uint8)
         st = self.capture.status()
-        lines = ["Work laptop: no video", f"capture: {st.get('state')}"]
+        lines = ["locked computer: no video", f"capture: {st.get('state')}"]
         err = st.get("error") or ""
         while err:
             lines.append(err[:70])
@@ -566,7 +616,7 @@ class Service:
 # ====================================================================== HTTP layer
 VIEWER_HTML = """<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Work laptop - live</title>
+<title>Locked computer - live</title>
 <style>
 html,body{margin:0;height:100%;background:#111;color:#ccc;font:13px system-ui,sans-serif}
 body{display:flex;flex-direction:column}
@@ -574,8 +624,8 @@ body{display:flex;flex-direction:column}
 #wrap{flex:1;min-height:0}
 img{width:100%;height:100%;object-fit:contain;display:block}
 </style></head>
-<body><div id="bar">Work laptop &mdash; live view (read-only) &middot; <span id="st">connecting&hellip;</span></div>
-<div id="wrap"><img id="v" alt="Work laptop screen"></div>
+<body><div id="bar">Locked computer &mdash; live view (read-only) &middot; <span id="st">connecting&hellip;</span></div>
+<div id="wrap"><img id="v" alt="locked computer screen"></div>
 <script>
 const t = new URLSearchParams(location.search).get('t') || '';
 const q = 't=' + encodeURIComponent(t);
@@ -716,6 +766,20 @@ class Handler(BaseHTTPRequestHandler):
             return svc.zoom(float(body.get("x", 0)), float(body.get("y", 0)),
                             float(body.get("w", 0)), float(body.get("h", 0)))
 
+        def frame() -> dict:
+            # Full-resolution frames are only for a client that holds an active share (the local
+            # pipeline asks for one); unlike screenshot, a request without a client id is refused.
+            if client is None:
+                raise ServiceError("full-resolution frames need a client id (X-NanoKVM-Client) "
+                                   "and an active screen share", 403)
+            svc.require_share(client)
+            rect = None
+            if any(k in body for k in ("x", "y", "w", "h")):
+                rect = (float(body.get("x", 0)), float(body.get("y", 0)),
+                        float(body.get("w", 0)), float(body.get("h", 0)))
+            return svc.frame(rect, str(body.get("format", "png")),
+                             int(body.get("max_tokens", G.VISION_MAX_TOKENS)))
+
         def wait_change() -> dict:
             svc.require_share(client)
             r = svc.wait_change(float(body.get("timeout_s", 30)), float(body.get("min_change_percent", 0.5)),
@@ -727,6 +791,7 @@ class Handler(BaseHTTPRequestHandler):
 
         routes: dict[str, Callable[[], dict]] = {
             "/api/zoom": zoom,
+            "/api/frame": frame,
             "/api/wait_change": wait_change,
             "/api/act": lambda: svc.act(body, client),
             "/api/share": lambda: svc.share(client, int(body.get("minutes", svc.cfg.share_minutes))),

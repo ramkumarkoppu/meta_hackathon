@@ -3,7 +3,7 @@
 Renders a DUMMY C++ file as a 1920x1080 image (nothing from either laptop's screen), asks Glimmer to
 transcribe it, and reports accuracy against the source, speed and GPU memory.
 
-Usage:  E:\\work_laptop\\.venv\\Scripts\\python.exe E:\\work_laptop\\tools\\glimmer_smoke.py [--port 8001] [--label unsloth]
+Usage:  E:\\meta_hackathon\\.venv\\Scripts\\python.exe E:\\meta_hackathon\\tools\\glimmer_smoke.py [--port 8001] [--label unsloth]
 """
 from __future__ import annotations
 

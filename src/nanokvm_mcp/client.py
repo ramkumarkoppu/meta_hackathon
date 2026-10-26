@@ -190,6 +190,14 @@ class ServiceClient:
     def zoom(self, x: float, y: float, w: float, h: float) -> dict:
         return self.call("POST", "/api/zoom", {"x": x, "y": y, "w": w, "h": h}, timeout=25.0)
 
+    def frame(self, rect: tuple[float, float, float, float] | None = None, fmt: str = "png",
+              max_tokens: int = 4096) -> dict:
+        """Full-resolution frame for the local vision model; needs client_id and an active share."""
+        body: dict = {"format": fmt, "max_tokens": max_tokens}
+        if rect is not None:
+            body.update(zip("xywh", rect))
+        return self.call("POST", "/api/frame", body, timeout=25.0)
+
     def wait_change(self, timeout_s: float, min_change_percent: float, settle_ms: int,
                     include_shot_on_timeout: bool = False) -> dict:
         body = {"timeout_s": timeout_s, "min_change_percent": min_change_percent, "settle_ms": settle_ms,

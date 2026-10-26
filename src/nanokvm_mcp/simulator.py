@@ -1,4 +1,4 @@
-"""A simulated Work laptop: synthetic HDMI frames plus a fake serial link that reacts to the
+"""A simulated locked computer: synthetic HDMI frames plus a fake serial link that reacts to the
 same keyboard/mouse packets the real NanoKVM receives. Used by the tests and by
 ``NANOKVM_SIMULATE=1`` so the whole chain can be exercised without hardware. Keystrokes are
 decoded with the US layout, so with keyboard_layout = "uk" symbols such as " @ # £ come out wrong."""
@@ -85,7 +85,7 @@ class SimDesktop:
             desk[:] = (110, 80, 40)                                         # desktop blue
             cv2.rectangle(desk, (80, 80), (1400, 900), (245, 245, 245), -1)  # window
             cv2.rectangle(desk, (80, 80), (1400, 130), (60, 60, 60), -1)
-            cv2.putText(desk, "Simulated Work laptop - Notepad", (100, 115),
+            cv2.putText(desk, "Simulated locked computer - Notepad", (100, 115),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
             y = 180
             for line in (self.text.split("\n")[-20:] or [""]):

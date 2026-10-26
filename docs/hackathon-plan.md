@@ -1,4 +1,4 @@
-# Hackathon plan: Meta models for the Work laptop bridge
+# Hackathon plan: Meta models for the locked computer bridge
 
 This page plans how this project could use Meta's AI models and enter the **Meta Global AI Developer
 Hackathon** ([event page](https://cerebralvalley.ai/e/meta-ai-developer-hackathon)), run by Meta and
@@ -8,14 +8,26 @@ Cerebral Valley. **Our application was accepted on 20 Oct.** We decide go or no-
 **2026-10-22**; the local Glimmer setup and its measurements are as of **2026-10-24**. Rules, dates
 and prices can change.
 
-- **The idea.** Approved AI help for a computer where nothing can be installed. Meta's open-weights
-  **Muse Glimmer** reads the screen on the Personal laptop's own GPU, so in local-only mode no screen
-  image leaves the desk; only the text it returns goes on to the AI you chat with. **Muse Spark**, a
-  Meta cloud model, works the mouse and keyboard through Meta's computer-use tool on a stand-in PC
-  for the demo, and is sent that PC's screenshots. A person approves every action, and unplugging
-  the NanoKVM's keyboard/mouse cable (cable 4 in the [README wiring](../README.md#3-wiring-for-this-desk))
-  stops all control.
+- **The idea.** Approved AI help for a computer where nothing can be installed.
+  - Meta's open-weights **Muse Glimmer** reads the screen on the AI computer's own GPU, so no
+    screen image ever leaves the desk.
+  - **Muse Spark**, Meta's cloud model, gets only redacted text. It reasons, writes the code fix and
+    proposes edits.
+  - A person approves each edit, which is then typed in as keystrokes; Glimmer checks the result.
+  - In local-only mode nothing goes to the cloud at all.
+  - Unplugging the NanoKVM's keyboard/mouse cable (cable 4 in the
+    [README wiring](../README.md#3-wiring-for-this-desk)) stops all control.
+  - The demo runs on a stand-in PC with dummy code. It needs no software, only HDMI out and a USB-A
+    port, so it may run Windows, macOS or Linux; macOS and Linux are untested
+    ([README section 1a](../README.md#1a-operating-systems)).
+  - The AI computer is this Windows laptop with a 24 GB NVIDIA GPU. Running the bridge on a Mac or
+    Linux AI computer is future work ([section 8](#8-open-questions-and-risks)).
+  - (Meta's `computer` tool isn't used: it needs screenshots sent to Meta.)
 - **Theme:** "Build for Your World", a problem we face first-hand.
+- **Judging** (kickoff, 26 Oct):
+  1. Pass or fail: does the project fit a theme and use Meta AI products?
+  2. Each passing project is scored 0–10 on the rubric ([section 1](#1-the-event)).
+  3. The top 5 per track demo **live** to the judges on Mon 9 Nov, who rank them.
 - **How the bridge works today:** see the [README](../README.md).
 
 ---
@@ -44,32 +56,44 @@ event page, Meta's invitation email (13 Oct) and Cerebral Valley's acceptance em
 |------|--------|
 | Our entry | **Indie developer** track, solo. Judged on "creativity, technical ambition, and whether it works". **Application accepted on 20 Oct.** |
 | Theme | Two themes (kickoff, 26 Oct): **Build for Your World** ("Bring Meta's models into your domain. Solve a problem you know firsthand, free up time and mental space, and make something possible that wasn't before") and **Push the Frontier** (software, robotics, manufacturing, energy, materials). **We enter Build for Your World.** Machines that can't run AI could suit Push the Frontier, but only as read-only reading with a person deciding: Meta's Acceptable Use Policy bars operating critical infrastructure or heavy machinery. |
-| Indie prizes | $150k, $100k, $75k, $50k and $25k, plus up to $50k of bonus awards across the event |
+| Indie prizes | $150k, $100k, $75k, $50k and $25k (confirmed at kickoff), plus $50k of bonus prizes across the event |
+| Bonus prizes we aim for | **Best Build on Meta Open Weights, $10k**: "best project on Muse Glimmer or Muse Spark Open, on your own hardware or partner inference", and an infrastructure partner checks it runs an eligible open-weights model. We enter with Glimmer running locally, a fully local mode, and model provenance plus run commands in the README. **Best Agentic Use-Case, $5k**: judged on autonomy, effectiveness and practical usefulness; every edit needing approval costs us autonomy points. **Most Viral, $20k** (engagement on X by 8 Nov 23:59 ET) and **Community Vote, $10k** (public gallery): a short demo on the stand-in PC. Not Best Creative Build ($5k, Muse Image or Wonder). |
 | Credits | $150 of Meta Model API credits per accepted participant, for the 10 days (confirmed in Meta's own invitation email). Meta's terms say promotional credits can expire and aren't refundable, and its IP indemnity doesn't cover use paid for with them. |
-| Partner credits | For *select* participants only, so not guaranteed, and only for running Meta's open-weights models (such as Muse Spark Open) on their clouds: Baseten $100 plus a 2M tokens-per-minute rate limit, Modal $100 (its Endpoints, serverless GPUs and sandboxes), and Fireworks $25 plus a workshop. Use them only with the stand-in PC, never with Work-laptop content. |
-| Official Rules | Promised before 26 Oct; still not published on 22 Oct |
-| Still unknown | Whether existing code may be used, whether other AI providers (such as Claude) may appear in the project, and the submission format (the submission form has fields for a GitHub repo, a live project, a demo video and a description) |
+| Partner credits | From the kickoff slides (26 Oct): Baseten $100 plus a 2M tokens-per-minute rate limit (first 2,000 participants), Modal $100 for Meta's open-weights models (first 1,000 participants), and Fireworks $25 for select participants plus a workshop. Claim them through the request forms in Discord's #resources, early, since places are limited. Possible uses: fine-tuning Glimmer on synthetic captures with more GPU memory than 24 GB (Modal), or a hosted Glimmer or Muse Spark Open for the demo (Baseten). Use them only with dummy, synthetic or stand-in content, never locked-computer content: the employer approved Meta's API only. |
+| Official Rules | Promised before 26 Oct; still not published on 22 Oct. The kickoff slides (26 Oct) give the main ones: new work only (26 Oct – 4 Nov), a public GitHub repo, "demo only what you built", no banned projects |
+| Discord | Home base for the event: https://cv.inc/e/meta-ai-developer-hackathon/discord. Channels: #announcements; #questions (the CV team, ping @CV); #office-hours (the Meta team); #resources (docs, credit forms, recordings); #intros. Anything posted there is non-confidential under the waiver. |
+| Submission | From the kickoff slides (26 Oct). Submit four things by Wed 4 Nov, 9:00 PM ET (**Thu 5 Nov, 02:00 UK**):<br>1. The entry on the Cerebral Valley platform: cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit<br>2. A **3-minute demo video** showing only what was built during the event; judges score from it<br>3. A **public GitHub repo**, checked in a logged-out browser<br>4. All before the deadline: "don't wait for the last hour" |
+| Still unknown | Whether pre-event groundwork may sit in the repo if it is clearly marked (the slides say a startup "can bring a product, but only work from the event counts"), and whether a non-Meta assistant integration may appear. Both questions are drafted for Discord #questions. |
 
-**Key dates.** The acceptance email gives the build window as Mon 26 Oct 12:00 PM to Wed 4 Nov
-9:00 PM, **GMT-5**. In UK time (GMT from 25 Oct) that is 17:00 on 26 Oct to 02:00 on Thu 5 Nov.
+**Key dates.** From the kickoff timeline (26 Oct), in US Eastern Time (ET). US clocks change on
+Sun 1 Nov, so ET is UTC−4 until then and UTC−5 after. The UK has been on GMT since 25 Oct. The
+build window therefore opened at **16:00 UK** on 26 Oct, not 17:00: the acceptance email's "GMT-5"
+was wrong for that date. It closes at 02:00 UK on Thu 5 Nov.
 
-| UK time | Event time (GMT-5) | What |
-|---------|--------------------|------|
+| UK time | Event time (ET) | What |
+|---------|-----------------|------|
 | Tue 20 Oct | | **Our application accepted** |
-| Mon 26 Oct, 17:00 | Mon 26 Oct, 12:00 PM | Build starts; kickoff livestream with Meta Superintelligence Labs |
-| Tue 27 Oct – Wed 4 Nov | | Live workshops and office hours (on Discord) with the engineers who built the models |
-| **Thu 5 Nov, 02:00** | Wed 4 Nov, 9:00 PM | **Submissions due** |
-| Wed 4 – Sun 8 Nov | | Judging |
-| Mon 9 Nov | | Live finals and winners announced |
+| Mon 26 Oct, 16:00 | Mon 26 Oct, 12:00 PM (UTC−4) | Build starts; kickoff livestream with Meta Superintelligence Labs |
+| Tue 27 Oct – Tue 3 Nov | | Live sessions and office hours on Discord with the engineers who built the models (a 12:00 PM ET session is 16:00 UK until 30 Oct, 17:00 UK from 2 Nov) |
+| Tue 27 Oct | | Meta Engineering Workshop, part 1 (Suraj Subramanian, Meta); time to be announced on Discord |
+| Wed 28 Oct | | Meta Engineering Workshop, part 2 (Yash Khare, Meta) |
+| Fri 30 Oct | | Fireworks AI Workshop (Sinan Ozdemir, Fireworks AI): hosted inference for open-weights models, which we don't use |
+| **Thu 5 Nov, 02:00** | Wed 4 Nov, 9:00 PM (UTC−5) | **Submissions due** |
+| Thu 5 – Sun 8 Nov | | Judging; nothing to do |
+| Mon 9 Nov, 04:59 | Sun 8 Nov, 11:59 PM | Most Viral bonus: engagement on X counted until then |
+| Mon 9 Nov, 17:00 | Mon 9 Nov, 12:00 PM | Closing ceremony and live finals |
+| Mon 16 Nov | | Community vote winner announced on Discord |
 
-**Judging**, and how this plan aims to score:
+**Judging rubric** (kickoff slide, 26 Oct). The same rubric is used in stage 2 and the final, scored 0–10 per
+criterion. Under "demo only what you built", technical depth is likely judged on **event work**: the
+capture and keyboard/mouse bridge is pre-event groundwork (git tag `pre-event-baseline`).
 
-| Criterion | Weight | How this plan scores |
-|-----------|--------|----------------------|
-| Impact | 30% | AI help on a computer where nothing can be installed, with a local-only mode that keeps screen images on the desk |
-| Use of Meta AI tooling | 25% | Two Meta models in two roles: Glimmer reads the screen locally, with DFlash and a measured thinking cap (and a fine-tune if real screens need it); Spark reasons and codes from redacted text only, proposing edits through function calling and strict JSON. Every edit needs human approval. "Beyond a basic integration". (Spark's `computer` tool is not used: it needs screenshots sent to Meta.) |
-| Technical depth and execution | 20% | Real HDMI capture and USB keyboard/mouse, coordinate mapping, approvals owned by the service, local inference |
-| Demo | 25% | A live demo on a stand-in PC; the video shows the approvals, local reading, the agent at work and the cable kill switch |
+| Criterion | Weight | What the judges look for | How this plan scores |
+|-----------|--------|--------------------------|----------------------|
+| Impact | 30% | "Real-world potential, who benefits, and fit with a problem statement" | **Who benefits:** people whose work computers can't run AI tools, and their organisations, who get AI help without screens or raw text leaving the desk. **Fit:** Build for Your World, a problem faced first-hand. **Potential:** no software on the locked computer, so it should work with any HDMI and USB computer, whatever its OS (Windows, macOS or Linux; so far only the picture from a Windows 11 locked computer is tested); a local-only mode. |
+| Use of Meta AI tooling | 25% | "Creative use beyond a basic integration" | Two Meta models in two roles. **Glimmer**, local open weights, reads the screen, trims text to what the question needs (its privacy step) and checks every typed edit, with DFlash and a measured thinking cap (plus a fine-tune on synthetic captures if real screens need it). **Spark** reasons and codes from redacted text only, proposing edits through function calling and strict JSON. Spark's `computer` tool isn't used, because it needs screenshots sent to Meta. |
+| Technical depth | 20% | "Sound, refined engineering with real craft" | Built during the event: the outbound gate (redaction, Glimmer trimming, a second redaction, checks, local audit); the free-credit and Standard-model guards; frames never written to disk; the approve, type and verify edit loop; tests that prove no image or `data:` URL reaches Meta. Measured speed and accuracy, with numbers. |
+| Demo | 25% | "A working demo that holds up, and a demo video worth watching" | Live on a stand-in PC with dummy C++: a bug read locally, Spark's fix approved, typed and verified; then local-only mode; then the cable kill switch. A rehearsed run and a backup recording for the live final on 9 Nov. |
 
 ## 2. Which Meta model does what
 
@@ -79,7 +103,7 @@ input / cached input / output.
 
 | Model | Runs on | Role | Cost |
 |-------|---------|------|------|
-| **Muse Glimmer 30B** (open weights, Apache-2.0) | The Personal laptop's RTX 5090 (24 GB), through llama.cpp | Reads code and describes the screen ([change 3](#3-planned-code-changes)). The only Meta model that can read real work content without sending images off the laptop; its text still goes on to the AI you chat with ([section 5](#5-data-privacy-and-ip-rules)). | Free. About 19 GiB of GPU memory with the vision part at a 131,072-token context, or 20.5 GiB with the optional drafter (Meta's figures). |
+| **Muse Glimmer 30B** (open weights, Apache-2.0) | The AI computer's RTX 5090 (24 GB), through llama.cpp | Reads code and describes the screen ([change 3](#3-planned-code-changes)). The only Meta model that can read real work content without sending images off the laptop; its text still goes on to the AI you chat with ([section 5](#5-data-privacy-and-ip-rules)). | Free. About 19 GiB of GPU memory with the vision part at a 131,072-token context, or 20.5 GiB with the optional drafter (Meta's figures). |
 | **muse-spark-1.3** | Meta Model API | The computer-use agent ([section 4](#4-the-meta-agent-loop)) | $1.25 / $0.15 / $4.25 |
 | **muse-wonder-1.0** (preview) | Meta Model API | Stretch: hard multi-step tasks. As a preview, it may change during the event. | $4.00 / $0.20 / $20.00 |
 | **SAM 3.1** | Meta Model API, or local | Stretch: finding UI elements, only if an offline test shows it beats the models above | $2.50 per 1,000 images |
@@ -94,7 +118,7 @@ About Glimmer (figures reported by Meta, except the last point):
 - **Limits:** one tool call per turn, and it reasons before answering, which makes it slower. For
   reading, each request here caps its thinking ([section 8](#8-open-questions-and-risks)).
 - **Measured here (24 Oct):** on a dummy 1920x1080 code screen, every read got all 27 lines right, in
-  6.5–7.0 s with the Personal laptop in Turbo mode on its 240 W charger, and in about
+  6.5–7.0 s with the AI computer in Turbo mode on its 240 W charger, and in about
   48–65 s in Silent mode, in reads made without the thinking cap ([section 7](#7-schedule-and-status)).
   How well it reads a real captured screen is still untested; that is the next thing to measure.
 
@@ -123,7 +147,7 @@ hardware, GPU or API key.
 | 4 | **`local_only` setting**, enforced by the service. Image tools refuse and point to `read_screen_text`, actions return no screenshot, the `nanokvm` command stops saving screenshots, and the Meta agent won't start. | `config.py`, `service.py`, `mcp_server.py`, `cli.py` | Planned |
 | 5 | **Meta agent loop**, `nanokvm agent` ([section 4](#4-the-meta-agent-loop)). Needs change 1 first. | new `meta_agent.py`, `cli.py` | Planned |
 | 6 | Stretch: escalate hard steps to Muse Wonder; a SAM 3.1 `find_element` tool, only after an offline test | | Stretch |
-| 7 | **Demo** on a stand-in PC with a dummy C++ project, never the real Work laptop | | Planned |
+| 7 | **Demo** on a stand-in PC with a dummy C++ project, never the real locked computer | | Planned |
 
 **Why change 1 comes first.** Today the screen-share approval and the per-action approvals are both
 Claude Code prompts. Other AI tools, including the planned Meta agent, wouldn't get them, and the
@@ -177,18 +201,18 @@ Rules for the loop:
 
 | Rule | Why |
 |------|-----|
-| Work-laptop content goes to a cloud model (Anthropic's today, Meta's later) **only with the approval of whoever owns the laptop and its data**. Until Meta's models are approved too, the Meta agent works only on the stand-in PC. | Meta's Acceptable Use Policy forbids using its models to defeat security controls or to act on systems against their own terms, and requires human oversight of consequential actions. The same approval applies to Claude today ([README section 2](../README.md#2-secure-mode-how-its-configured)). |
+| Locked-computer content goes to a cloud model (Anthropic's today, Meta's later) **only with the approval of whoever owns the laptop and its data**. Until Meta's models are approved too, the Meta agent works only on the stand-in PC. | Meta's Acceptable Use Policy forbids using its models to defeat security controls or to act on systems against their own terms, and requires human oversight of consequential actions. The same approval applies to Claude today ([README section 2](../README.md#2-secure-mode-how-its-configured)). |
 | Use **Standard** model IDs only, never `-contributor` ones. | Meta trains on Contributor inputs, and its terms forbid confidential data there. Meta also warns that requests can be routed to a Contributor model, hence the model check in [section 4](#4-the-meta-agent-loop). |
-| While the account is paying with the **$150 of free credits**, send Meta **dummy or stand-in content only**: development, tests and the demo. Never send Work-laptop text, even redacted. For real work, first click *Stop using free credits* in Billing and pay as you go. | Meta's Billing page says: "While using free credits your content may be used for product improvement" (seen 26 Oct). The employer approved redacted text under Standard terms, which don't allow training on it (Terms of Service §5.1). Free-credit traffic isn't covered by that. |
+| While the account is paying with the **$150 of free credits**, send Meta **dummy or stand-in content only**: development, tests and the demo. Never send locked-computer text, even redacted. For real work, first click *Stop using free credits* in Billing and pay as you go. | Meta's Billing page says: "While using free credits your content may be used for product improvement" (seen 26 Oct). The employer approved redacted text under Standard terms, which don't allow training on it (Terms of Service §5.1). Free-credit traffic isn't covered by that. |
 | Send `store: false`. | The Responses API stores conversations by default. Even in Standard mode, Meta may keep content for safety and abuse review; zero retention is only for organisations Meta's sales team approves. |
-| Frames of the Work-laptop screen read by Glimmer are **never written to disk**. They stay in memory, are discarded as soon as Glimmer has read them (before anything is sent to Spark), and the model server's slot is cleared after each read. The audit log records only a hash of each frame. | Deleting a file on an SSD doesn't erase it, a crash between saving and deleting would leave the image behind, and any program or AI file tool on the laptop can read files in the project folder. Spark gets only text, so it never needs the frame. |
+| Frames of the locked-computer screen read by Glimmer are **never written to disk**. They stay in memory, are discarded as soon as Glimmer has read them (before anything is sent to Spark), and the model server's slot is cleared after each read. The audit log records only a hash of each frame. | Deleting a file on an SSD doesn't erase it, a crash between saving and deleting would leave the image behind, and any program or AI file tool on the laptop can read files in the project folder. Spark gets only text, so it never needs the frame. |
 | For real work, set `local_only = true` ([change 4](#3-planned-code-changes)). | Claude's tools and the Meta agent then get no screen images. **The text Glimmer returns still goes to Claude**, and so to Anthropic. |
 | Nothing from work in the application form, the repo, the demo video, workshops, office hours or Discord. | The event waiver makes everything shared non-confidential, gives the organisers a perpetual licence to use it, and allows recording and reuse of screen shares. |
 | Submit only work we have every right to submit. | The waiver requires the submission to be original and solely ours, and not to breach anyone's IP or contract rights. |
 
 ## 6. Install locations
 
-*Installed by 24 Oct, apart from the Meta API key.* Everything stays inside `E:\work_laptop`, like
+*Installed by 24 Oct, apart from the Meta API key.* Everything stays inside `E:\meta_hackathon`, like
 the rest of the project ([README section 5](../README.md#5-install-already-done)).
 [README section 5a](../README.md#5a-local-muse-glimmer-hackathon-tests) has the commands to start and
 check Glimmer.
@@ -252,14 +276,15 @@ Status as of 2026-10-24.
 | Before 26 Oct | Confirm the work is ours to submit (original, solely owned and free of contract limits), as the waiver requires | To do |
 | Before 26 Oct | Hardware bring-up with `nanokvm diag` ([README section 9](../README.md#9-first-run-with-the-hardware)) | To do |
 | Before 26 Oct | Build change 1 (approvals owned by the service), a fix to today's bridge | To do |
-| Before 26 Oct | Test Glimmer through the NanoKVM's capture, with dummy content only: reconnect the NanoKVM, loop the Personal laptop's HDMI into its TARGET end (leave the TARGET USB-C unplugged then), open the `.cpp` files in `tools\ab_screens\` in VS Code and `build_errors.txt` in a terminal, save the frames with `capture_frame.py --interactive` (after `nanokvm stop`) and score them with `glimmer_ab.py`. Compare Meta's and Unsloth's weights, and DFlash on and off. | To do; scripts ready |
-| Before 26 Oct | Test the Meta Model API: add a card, create a key and save it as the only line of `.run\meta_api_key` (never in a chat), run `tools\spark_smoke.py`, then send one `computer` request to each model and check the model reported back | To do; smoke test ready, no key yet |
+| Before 26 Oct | Test Glimmer through the NanoKVM's capture, with dummy content only: reconnect the NanoKVM, loop the AI computer's HDMI into its TARGET end (leave the TARGET USB-C unplugged then), open the `.cpp` files in `tools\ab_screens\` in VS Code and `build_errors.txt` in a terminal, save the frames with `capture_frame.py --interactive` (after `nanokvm stop`) and score them with `glimmer_ab.py`. Compare Meta's and Unsloth's weights, and DFlash on and off. | To do; scripts ready |
+| 26 Oct | Test the Meta Model API with `tools\spark_smoke.py`, dummy text only. Results: works from the UK, on free credits, with no card added; 9 models enabled; `muse-spark-1.3` answered in 1.6 s and the reply named exactly that model; strict JSON and streaming with usage worked; 136 of 149 output tokens were reasoning, even at low effort; cost $0.0035. The `computer` tool isn't tested because we don't use it. | **Done** |
 | Before 26 Oct | Claude Code deny rules for the secrets in `.run\` ([section 8](#8-open-questions-and-risks)) | Proposed; waiting for an OK |
-| Before 26 Oct | Set up a stand-in PC: anything with HDMI out and a USB-A port, running only dummy content | To do |
+| Before 26 Oct | Set up a stand-in PC: anything with HDMI out and a USB-A port, on Windows, macOS or Linux (set `locked_os` and `keyboard_layout` to match; macOS and Linux are untested), running only dummy content | To do |
 | Before the repo goes public | Add a `.gitignore` for `.run/`, `.venv/`, `.uv/`, `.cache/`, `models/`, `tools/llama.cpp/`, `tools/downloads/`, `.pytest_cache/`, `__pycache__/` and `.claude/settings.local.json`, then check that no screenshot, log, token or key would be published | To do |
 | Mon 26 Oct | Read the Official Rules; decide go or no-go | Waiting |
 | 26 Oct – 4 Nov | Build changes 2–5 (and change 1 if it isn't done yet); record the demo video | Planned |
-| Wed 4 Nov, evening | Submit (deadline Thu 5 Nov, 02:00) | Planned |
+| Tue 3 Nov | Record the 3-minute demo video (event work only; the pre-event bridge appears only as labelled context) and make the GitHub repo public; check it in a logged-out browser | Planned |
+| Wed 4 Nov, by 18:00 UK | Submit on the Cerebral Valley platform, well before the deadline of Thu 5 Nov, 02:00 UK | Planned |
 
 - **Go if** the Official Rules allow this entry and building on this bridge, the hardware works, and
   Glimmer reads code well enough.
@@ -278,7 +303,7 @@ Status as of 2026-10-24.
 **Measured on 24 Oct.** Glimmer read a dummy 1920x1080 code screen (rendered by `glimmer_smoke.py`,
 not captured) with Unsloth's weights. Every read got all 27 lines right; the smoke test compares lines
 with runs of spaces collapsed, so it doesn't check indentation (the A/B's `exact` score does). Speed
-depends mostly on the Personal laptop's power settings ([section 8](#8-open-questions-and-risks)):
+depends mostly on the AI computer's power settings ([section 8](#8-open-questions-and-risks)):
 
 | Setting | Full-screen read | GPU power |
 |---------|------------------|-----------|
@@ -325,7 +350,7 @@ llama.cpp stays at b10976 until a newer build is re-benchmarked
   full-resolution frames and doesn't delete them, so use it only with dummy content.
 - **Crash reports.** A crash dump of the model server or the bridge could contain screen text held in
   memory. Since 25 Oct, Windows Error Reporting is switched off for `llama-server.exe`, `python.exe`
-  and `pythonw.exe` on the Personal laptop: they are listed under
+  and `pythonw.exe` on the AI computer: they are listed under
   `HKCU\Software\Microsoft\Windows\Windows Error Reporting\ExcludedApplications`, for this user only.
   The Windows pagefile can still hold process memory.
 - **Glimmer on real screens.** On the rendered dummy screen every read was right, but captures
@@ -359,6 +384,19 @@ llama.cpp stays at b10976 until a newer build is re-benchmarked
   the event credits may expire after the 10 days.
 - **Novelty.** Similar projects exist ([section 9](#9-whats-new-compared-with-similar-projects)), so the
   pitch rests on the combination.
+- **An AI computer on macOS or Linux (future work).** The bridge runs only on Windows today; the
+  locked computer's OS is a separate matter ([README section 1a](../README.md#1a-operating-systems)).
+  Not needed for the hackathon, where the AI computer stays this Windows laptop. Porting needs:
+  - video capture through V4L2 (Linux) or AVFoundation (macOS) instead of DirectShow
+    (`src\nanokvm_mcp\capture.py`, which elsewhere stops with a clear message);
+  - a shell version of `tools\run-glimmer.ps1`, with a Linux CUDA or macOS Metal build of llama.cpp;
+  - the install and run steps: README sections 5–13 use PowerShell, the windows-x86_64 Python and
+    `.venv\Scripts\*.exe`, and `.mcp.json` starts `.venv\Scripts\python.exe`;
+  - enough GPU memory for Muse Glimmer (about 20 GB at Q4): an NVIDIA card with 24 GB, or Apple
+    Silicon with at least 32 GB of memory (48 GB or more is safer). Speed there is unmeasured.
+
+  The rest is plain Python, untested on those systems. Claude Code and the Meta Model API work the
+  same on all three.
 
 ## 9. What's new compared with similar projects
 

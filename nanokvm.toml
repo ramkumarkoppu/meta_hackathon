@@ -1,4 +1,4 @@
-# Settings for the Work-laptop NanoKVM bridge. Every line is optional; the values shown
+# Settings for the locked-computer NanoKVM bridge. Every line is optional; the values shown
 # (commented out) are the defaults, or examples where the comment names the default or says
 # when to use them. A misspelt name is ignored without warning, so check the spelling.
 # Environment variables NANOKVM_<NAME> override this file. Every setting: src\nanokvm_mcp\config.py.
@@ -6,13 +6,14 @@
 # and start a new Claude Code conversation (its MCP server reads this file only when it starts).
 
 # --- keyboard / mouse ---
-# SECURE MODE: Claude may type/click on the Work laptop, but
+# SECURE MODE: Claude may type/click on the locked computer, but
 #   * only while the NanoKVM's TARGET USB-C (cable 4) is plugged in - unplug it = physically view-only;
 #   * Claude Code asks you before EVERY keyboard/mouse action, even in auto mode (confirm_actions).
 # For strict view-only, set control = false, run `nanokvm stop` and start a new Claude conversation.
 control = true
 confirm_actions = true
-keyboard_layout = "uk"       # Windows keyboard layout of the Work laptop: "uk" or "us"
+keyboard_layout = "uk"       # layout set on the locked computer: "uk" or "us" (PC layouts; on a Mac use "us")
+# locked_os = "windows"      # the locked computer's OS: "windows", "macos" or "linux" (Claude uses its shortcuts)
 # serial_port = "COM5"       # default: auto-detect the NanoKVM's serial port by serial_ids (below)
 serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other NanoKVM-USB units) and CH343 (this unit; its edition is unconfirmed)
 
@@ -26,7 +27,7 @@ shot_width = 1456            # screenshot width Claude sees (= pointer coordinat
 # viewer_fps = 30            # live view frame rate (default 15)
 # viewer_width = 1920        # live view width (default 1920 = 1:1 with the capture)
 # viewer_quality = 90        # live view JPEG quality (default 90)
-# display_aspect = "16:10"   # only if the Work laptop desktop is 16:10 and the picture looks squashed
+# display_aspect = "16:10"   # only if the locked computer desktop is 16:10 and the picture looks squashed
 # region = "96,0,1728,1080"  # manual active area x,y,w,h in capture pixels (normally use `calibrate`)
 
 # --- screen sharing ---

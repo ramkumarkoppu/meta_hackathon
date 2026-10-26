@@ -6,7 +6,7 @@ when it starts, so the files go even when the service isn't running. Image files
 command writes to (.run and .run/watch) are also deleted by age if the list misses them.
 
 Only image files are ever deleted, whatever the list says. Deleting doesn't erase the data from an SSD;
-the point is that screenshots of the Work laptop don't pile up where other programs and AI file tools
+the point is that screenshots of the locked computer don't pile up where other programs and AI file tools
 can read them.
 """
 from __future__ import annotations

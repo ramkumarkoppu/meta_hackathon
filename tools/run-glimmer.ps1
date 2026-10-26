@@ -1,14 +1,14 @@
-# Start llama.cpp's llama-server with Muse Glimmer for the Work-laptop bridge.
+# Start llama.cpp's llama-server with Muse Glimmer for the locked-computer bridge.
 # Local only: listens on 127.0.0.1, needs the key in .run\llama_api_key, no web UI.
-# Everything stays inside E:\work_laptop (models\, tools\llama.cpp\, .run\, .cache\).
+# Everything stays inside E:\meta_hackathon (models\, tools\llama.cpp\, .run\, .cache\).
 #
 # Usage (PowerShell, from anywhere):
-#   E:\work_laptop\tools\run-glimmer.ps1                 # Unsloth UD-Q4_K_XL + BF16 projector + DFlash drafter
-#   E:\work_laptop\tools\run-glimmer.ps1 -Model meta     # Meta's own Q4KM files (for the A/B test)
-#   E:\work_laptop\tools\run-glimmer.ps1 -Projector q4km # Meta's smaller vision projector (same file as Unsloth's kquant)
-#   E:\work_laptop\tools\run-glimmer.ps1 -NoDFlash       # without the DFlash speculative drafter
-#   E:\work_laptop\tools\run-glimmer.ps1 -DraftMax 8     # draft up to 8 tokens per step (default 15)
-#   E:\work_laptop\tools\run-glimmer.ps1 -Ctx 65536      # larger context (default 32768)
+#   E:\meta_hackathon\tools\run-glimmer.ps1                 # Unsloth UD-Q4_K_XL + BF16 projector + DFlash drafter
+#   E:\meta_hackathon\tools\run-glimmer.ps1 -Model meta     # Meta's own Q4KM files (for the A/B test)
+#   E:\meta_hackathon\tools\run-glimmer.ps1 -Projector q4km # Meta's smaller vision projector (same file as Unsloth's kquant)
+#   E:\meta_hackathon\tools\run-glimmer.ps1 -NoDFlash       # without the DFlash speculative drafter
+#   E:\meta_hackathon\tools\run-glimmer.ps1 -DraftMax 8     # draft up to 8 tokens per step (default 15)
+#   E:\meta_hackathon\tools\run-glimmer.ps1 -Ctx 65536      # larger context (default 32768)
 # Stop it with Ctrl+C.
 param(
     [ValidateSet("unsloth", "meta")] [string]$Model = "unsloth",

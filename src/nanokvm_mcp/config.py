@@ -13,6 +13,10 @@ from pathlib import Path
 # src/nanokvm_mcp/config.py -> project root is two levels above the package directory.
 _DEFAULT_HOME = Path(__file__).resolve().parents[2]
 
+# accepted locked_os values (they pick Claude's shortcut hints); the locked side itself needs no
+# software, only HDMI out and USB HID
+LOCKED_OSES = ("windows", "macos", "linux")
+
 
 def _parse_ids(text: str) -> list[tuple[int, int]]:
     """'345F:2131,345F:2133' -> [(0x345F, 0x2131), (0x345F, 0x2133)]"""
@@ -42,19 +46,20 @@ class Config:
     idle_exit_min: float = 60.0          # service exits after this long without clients (0 = never)
 
     # --- HDMI capture (NanoKVM-USB host side, MacroSilicon MS2131 UVC device) ---
-    video_ids: str = "345F:2131,345F:2133"  # VID:PID list; the personal webcam is never matched
+    video_ids: str = "345F:2131,345F:2133"  # VID:PID list; the AI computer's own webcam is never matched
     video_index: int | None = None       # explicit DirectShow index override (use with care)
     capture_width: int = 1920
     capture_height: int = 1080
     capture_fps: int = 30
     capture_fourcc: str = "MJPG"
 
-    # --- keyboard/mouse (CH340 serial bridge -> CH9329-compatible HID chip) ---
+    # --- keyboard/mouse (WCH USB-serial bridge, CH340 or CH343 -> CH9329-compatible HID chip) ---
     control: bool = True                 # False = view-only (no keyboard/mouse tools)
     confirm_actions: bool = False        # True = Claude Code asks before EVERY keyboard/mouse action
     serial_port: str | None = None       # e.g. "COM5"; default = autodetect by VID:PID
     serial_ids: str = "1A86:7523"
-    keyboard_layout: str = "us"         # Windows keyboard layout of the Work laptop: "us" or "uk"
+    keyboard_layout: str = "us"         # layout set on the locked computer: "us" or "uk" (PC layouts)
+    locked_os: str = "windows"           # the locked computer's OS: "windows", "macos" or "linux"
     baud: int = 57600                    # official NanoKVM-USB apps use 57600
 
     # --- what Claude sees ---
@@ -80,6 +85,20 @@ class Config:
 
     # --- screenshots saved by the nanokvm command (screenshot, watch, diag) ---
     saved_image_minutes: float = 5.0     # deleted automatically after this long (minimum 1)
+
+    # --- local reading and the cloud coder (Muse Glimmer on this laptop, Muse Spark through Meta's API) ---
+    glimmer_port: int = 8001             # local llama-server started by tools\run-glimmer.ps1 (127.0.0.1 only)
+    glimmer_timeout_s: float = 600.0
+    read_reasoning: str = "low"          # screen reading: Meta's paper shows the same accuracy at low
+    minimise_reasoning: str = "high"     # trimming text before it leaves: least leakage at high
+    minimise_think_tokens: int = 1024    # cap on Glimmer's thinking while trimming
+    outbound: str = "auto"               # text for Muse Spark: auto (send after redaction), approve, local_only
+    meta_billing: str = "free_credits"   # free_credits: only stand-in content may go to Meta; paid: real content
+    spark_model: str = "muse-spark-1.3"  # a Standard model ID; -contributor IDs are refused
+    spark_reasoning: str = "medium"      # Muse Spark reasoning_effort: minimal, low, medium, high, xhigh, max
+    spark_max_tokens: int = 8000         # max_completion_tokens, which includes Spark's reasoning
+    outbound_max_chars: int = 20000      # refuse to send more text than this in one request
+    meta_budget_usd: float = 25.0        # stop sending once the local audit log adds up to this much
 
     # --- testing ---
     simulate: bool = False               # synthetic screen + fake keyboard/mouse (no hardware)
@@ -107,6 +126,22 @@ class Config:
         if len(parts) != 4 or parts[2] <= 0 or parts[3] <= 0:
             raise ValueError(f"region must be 'x,y,w,h' with positive w,h, got {self.region!r}")
         return parts[0], parts[1], parts[2], parts[3]
+
+    @property
+    def locked_os_name(self) -> str:
+        name = (self.locked_os or "").strip().lower()
+        if name not in LOCKED_OSES:
+            raise ValueError(f"locked_os must be one of {', '.join(LOCKED_OSES)}, got {self.locked_os!r}")
+        return name
+
+    @property
+    def layout_warning(self) -> str | None:
+        """A Mac's British layout isn't the PC "uk" table: a Mac should use its U.S. input source and "us"."""
+        if ((self.locked_os or "").strip().lower() == "macos"
+                and (self.keyboard_layout or "").strip().lower() == "uk"):
+            return ('keyboard_layout is "uk" (a PC layout) but locked_os is "macos": " @ # \\ | ~ may come '
+                    'out wrong. Use the Mac\'s U.S. input source and keyboard_layout = "us" (README section 1a).')
+        return None
 
     @property
     def aspect_value(self) -> float | None:

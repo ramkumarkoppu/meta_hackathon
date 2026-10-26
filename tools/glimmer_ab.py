@@ -11,7 +11,7 @@ Code is scored on the line numbers Glimmer reports (the part of the file visible
 By default only metrics are printed; --show-diffs prints mismatched lines (dummy content only).
 
 Usage (server started with tools\\run-glimmer.ps1):
-  E:\\work_laptop\\.venv\\Scripts\\python.exe E:\\work_laptop\\tools\\glimmer_ab.py --label unsloth-dflash ^
+  E:\\meta_hackathon\\.venv\\Scripts\\python.exe E:\\meta_hackathon\\tools\\glimmer_ab.py --label unsloth-dflash ^
       --runs 2 --out results.jsonl light.png=tools\\ab_screens\\ring_buffer.cpp errors.png=tools\\ab_screens\\build_errors.txt
 """
 from __future__ import annotations

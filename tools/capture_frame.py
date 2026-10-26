@@ -1,11 +1,11 @@
 """Save one full-resolution frame from the NanoKVM's HDMI capture as a lossless PNG, for the Glimmer A/B.
 
-Use DUMMY content only: loop the Personal laptop's HDMI into the NanoKVM TARGET end and open
+Use DUMMY content only: loop the AI computer's HDMI into the NanoKVM TARGET end and open
 tools\\ab_screens\\*.cpp in VS Code on that display. The frame stays on this laptop; this script prints
 only metadata. The background service holds the capture device, so stop it first (nanokvm stop).
 
-Usage:  E:\\work_laptop\\.venv\\Scripts\\python.exe E:\\work_laptop\\tools\\capture_frame.py OUT.png [--settle 2]
-        E:\\work_laptop\\.venv\\Scripts\\python.exe E:\\work_laptop\\tools\\capture_frame.py --interactive OUT_DIR
+Usage:  E:\\meta_hackathon\\.venv\\Scripts\\python.exe E:\\meta_hackathon\\tools\\capture_frame.py OUT.png [--settle 2]
+        E:\\meta_hackathon\\.venv\\Scripts\\python.exe E:\\meta_hackathon\\tools\\capture_frame.py --interactive OUT_DIR
         (asks for each A/B screen in turn and saves it when you press Enter)
 """
 from __future__ import annotations

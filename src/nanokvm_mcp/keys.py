@@ -93,7 +93,8 @@ CHARS["\t"] = (KEYS["tab"], False)
 KEYS["nonushash"] = 0x32      # UK: '#' and '~' (left of Enter)
 KEYS["intlbackslash"] = 0x64  # UK: '\' and '|' (left of Z)
 
-# Character -> (usage, modifiers) per Windows keyboard layout of the Work laptop.
+# Character -> (usage, modifiers) per keyboard layout set on the locked computer. These are PC layouts
+# (Linux's English (UK) matches "uk"); a Mac's British layout differs, so a Mac uses its U.S. layout and "us".
 LAYOUTS: dict[str, dict[str, tuple[int, int]]] = {
     "us": {ch: (usage, MOD_LSHIFT if shift else 0) for ch, (usage, shift) in CHARS.items()},
 }
@@ -134,9 +135,9 @@ class Combo:
 
 
 def _key_names_hint() -> str:
-    return ("Use names like: ctrl, shift, alt, win, enter, esc, tab, space, backspace, delete, "
-            "home, end, pageup, pagedown, up, down, left, right, f1-f24, a-z, 0-9, or a "
-            "single printable character such as '/' or '?'.")
+    return ("Use names like: ctrl, shift, alt (option), win (cmd, super), enter, esc, tab, space, "
+            "backspace, delete, home, end, pageup, pagedown, up, down, left, right, f1-f24, a-z, 0-9, "
+            "or a single printable character such as '/' or '?'.")
 
 
 def parse_combo(token: str, layout: str = "us") -> Combo:

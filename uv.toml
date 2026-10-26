@@ -1,4 +1,4 @@
-# Keep uv's download/build cache inside this project folder (E:\work_laptop).
+# Keep uv's download/build cache inside this project folder (E:\meta_hackathon).
 # The README's rebuild steps install the Python interpreter into .uv\python by setting
 # UV_PYTHON_INSTALL_DIR first (uv has no config key for that).
 cache-dir = ".uv/cache"

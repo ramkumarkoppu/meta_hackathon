@@ -2,7 +2,7 @@
 
 Spaces:
   * capture px   - pixels of the HDMI frame delivered by the NanoKVM (e.g. 1920x1080)
-  * region       - the part of the capture frame that shows the Work laptop desktop (normally the
+  * region       - the part of the capture frame that shows the locked computer desktop (normally the
                    whole frame; smaller if the GPU adds black bars)
   * screen coords- pixels of the screenshot Claude sees (region resized to ``shot_width``);
                    this is the ONLY space pointer tools accept
@@ -120,6 +120,35 @@ def encode_jpeg(img: np.ndarray, quality: int = 80, full_chroma: bool = True) ->
     if not ok:
         raise RuntimeError("JPEG encoding failed")
     return buf.tobytes()
+
+
+def encode_png(img: np.ndarray) -> bytes:
+    """Lossless PNG (fast compression): no second lossy pass on top of the capture's MJPEG."""
+    ok, buf = cv2.imencode(".png", img, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+    if not ok:
+        raise RuntimeError("PNG encoding failed")
+    return buf.tobytes()
+
+
+VISION_CELL = 28          # Muse Glimmer: one visual token per 28x28-pixel cell
+VISION_MAX_TOKENS = 4096  # its per-image limit; llama.cpp shrinks larger images
+
+
+def vision_tokens(w: int, h: int, cell: int = VISION_CELL) -> int:
+    return math.ceil(w / cell) * math.ceil(h / cell)
+
+
+def fit_token_budget(w: int, h: int, max_tokens: int = VISION_MAX_TOKENS, cell: int = VISION_CELL) -> tuple[int, int]:
+    """Largest size with the same aspect ratio that costs at most max_tokens visual tokens
+    (unchanged if it already fits), so the model sees exactly the pixels we send."""
+    if vision_tokens(w, h, cell) <= max_tokens:
+        return w, h
+    s = math.sqrt(max_tokens * cell * cell / (w * h))
+    while True:
+        w2, h2 = max(1, int(w * s)), max(1, int(h * s))
+        if vision_tokens(w2, h2, cell) <= max_tokens:
+            return w2, h2
+        s *= 0.99
 
 
 def blank_stats(frame: np.ndarray) -> tuple[bool, float, float]:

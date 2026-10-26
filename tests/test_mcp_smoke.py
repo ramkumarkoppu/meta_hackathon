@@ -5,6 +5,7 @@ import os
 import sys
 
 import anyio
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -107,6 +108,30 @@ def _list_tools(env):
                 return {t.name: t for t in (await session.list_tools()).tools}
 
     return asyncio.run(asyncio.wait_for(run(), 60))
+
+
+def _instructions(env):
+    params = StdioServerParameters(command=sys.executable, args=["-m", "nanokvm_mcp.mcp_server"], env=env)
+
+    async def run():
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                return (await session.initialize()).instructions
+
+    return asyncio.run(asyncio.wait_for(run(), 60))
+
+
+@pytest.mark.parametrize("value,expected", [
+    (None, ["a separate Windows PC", "win+r"]),
+    ("macos", ["a separate Mac (macOS)", 'press_keys "cmd+c"', "Go to Line stays ctrl+g"]),
+    ("linux", ["a separate Linux PC", "super is the Windows key"]),
+    ("mac", ["OS unknown", "WARNING: locked_os must be one of windows, macos, linux, got 'mac'"]),
+])
+def test_instructions_name_the_locked_os(tmp_path, value, expected):
+    # "" ignores a NANOKVM_LOCKED_OS the developer may have exported; an invalid value still starts
+    env = dict(os.environ, NANOKVM_HOME=str(tmp_path), NANOKVM_LOCKED_OS=value or "")
+    text = _instructions(env)
+    assert all(e in text for e in expected), text
 
 
 def test_confirm_actions_marks_control_tools(tmp_path):

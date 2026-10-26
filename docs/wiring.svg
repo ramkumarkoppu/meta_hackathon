@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="780" viewBox="0 0 1000 780"
      font-family="Segoe UI, Arial, sans-serif" font-size="13">
-  <title>Two-desk wiring: Work laptop, NanoKVM-USB, Personal laptop, two Dell monitors and five cables</title>
+  <title>Two-desk wiring: Locked computer, NanoKVM-USB, AI computer, two Dell monitors and five cables</title>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/>
@@ -10,16 +10,16 @@
 
   <rect x="0" y="0" width="1000" height="780" fill="#ffffff"/>
   <text x="500" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">
-    Work laptop  →  NanoKVM-USB  →  Personal laptop (Claude Code)
+    Locked computer  →  NanoKVM-USB  →  AI computer (Claude Code)
   </text>
-  <text x="140" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">WORK DESK</text>
-  <text x="870" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">WORK DESK</text>
-  <text x="870" y="290" text-anchor="middle" font-size="12" font-weight="600" fill="#15803d">PERSONAL DESK</text>
+  <text x="140" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">LOCKED COMPUTER DESK</text>
+  <text x="870" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">LOCKED COMPUTER DESK</text>
+  <text x="870" y="290" text-anchor="middle" font-size="12" font-weight="600" fill="#15803d">AI COMPUTER DESK</text>
 
   <!-- ===================== devices ===================== -->
-  <!-- Work laptop -->
+  <!-- Locked computer -->
   <rect x="40" y="226" width="200" height="140" rx="8" fill="#fef3c7" stroke="#92400e" stroke-width="2"/>
-  <text x="140" y="254" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Work laptop</text>
+  <text x="140" y="254" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Locked computer</text>
   <text x="140" y="276" text-anchor="middle" fill="#374151">offline · nothing installed</text>
   <text x="140" y="296" text-anchor="middle" fill="#374151">own charger · no dock</text>
   <text x="140" y="316" text-anchor="middle" fill="#374151">Monitor A = main display</text>
@@ -46,29 +46,29 @@
   <text x="530" y="322" text-anchor="middle" font-size="11" fill="#d1d5db">picture flows TARGET → HOST</text>
   <text x="530" y="418" text-anchor="middle" font-size="11" fill="#9ca3af">side: USB-A port + [T|H] switch, not used; leave at H</text>
 
-  <!-- Dell Monitor A (Work laptop's screen) -->
+  <!-- Dell Monitor A (locked computer's screen) -->
   <rect x="760" y="64" width="220" height="132" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
   <text x="870" y="92" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Dell Monitor A</text>
   <text x="870" y="114" text-anchor="middle" fill="#374151">input source: DVI</text>
-  <text x="870" y="134" text-anchor="middle" fill="#374151">Work laptop's main display</text>
+  <text x="870" y="134" text-anchor="middle" fill="#374151">Locked computer's main display</text>
   <text x="870" y="154" text-anchor="middle" fill="#1d4ed8" font-weight="600">the screen Claude sees</text>
   <text x="870" y="180" text-anchor="middle" font-size="11" fill="#6b7280">fed through the NanoKVM</text>
   <rect x="754" y="132" width="12" height="18" rx="2" fill="#f9fafb" stroke="#111827"/>
 
-  <!-- Personal laptop -->
+  <!-- AI computer -->
   <rect x="760" y="300" width="220" height="140" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
-  <text x="870" y="328" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Personal laptop</text>
+  <text x="870" y="328" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">AI computer</text>
   <text x="870" y="350" text-anchor="middle" fill="#374151">VS Code + Claude Code</text>
   <text x="870" y="370" text-anchor="middle" fill="#374151">nanokvm service · MCP server</text>
   <text x="870" y="390" text-anchor="middle" fill="#374151">online · own charger</text>
   <text x="870" y="424" text-anchor="middle" font-size="11" fill="#6b7280">USB-C · HDMI</text>
   <rect x="754" y="362" width="12" height="16" rx="4" fill="#111827"/>
 
-  <!-- Dell Monitor B (Personal laptop's screen) -->
+  <!-- Dell Monitor B (AI computer's screen) -->
   <rect x="760" y="510" width="220" height="96" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
   <text x="870" y="538" text-anchor="middle" font-weight="700" fill="#111827">Dell Monitor B</text>
   <text x="870" y="560" text-anchor="middle" fill="#374151">input source: DVI</text>
-  <text x="870" y="582" text-anchor="middle" fill="#b91c1c" font-weight="600">Personal laptop only</text>
+  <text x="870" y="582" text-anchor="middle" fill="#b91c1c" font-weight="600">AI computer only</text>
 
   <!-- Logitech keyboard + mouse -->
   <rect x="380" y="500" width="300" height="70" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="4 3"/>
@@ -81,13 +81,13 @@
   <polyline points="680,535 730,535 730,430 760,430" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="2 5"/>
   <text x="150" y="526" font-size="11" fill="#6d28d9">Bluetooth</text>
 
-  <!-- cable 1: Work laptop HDMI -> TARGET HDMI -->
+  <!-- cable 1: Locked computer HDMI -> TARGET HDMI -->
   <line x1="246" y1="290" x2="370" y2="290" stroke="#2563eb" stroke-width="5"/>
   <circle cx="308" cy="290" r="12" fill="#2563eb"/>
   <text x="308" y="295" text-anchor="middle" font-weight="700" fill="#ffffff">1</text>
   <text x="308" y="270" text-anchor="middle" font-size="11" fill="#1d4ed8">HDMI</text>
 
-  <!-- cable 4: Work laptop USB-A -> TARGET USB-C (dashed = only when Claude may act) -->
+  <!-- cable 4: Locked computer USB-A -> TARGET USB-C (dashed = only when Claude may act) -->
   <polyline points="246,331 300,331 300,368 372,368" fill="none" stroke="#ea580c" stroke-width="5" stroke-dasharray="10 6"/>
   <circle cx="336" cy="368" r="12" fill="#ea580c"/>
   <text x="336" y="373" text-anchor="middle" font-weight="700" fill="#ffffff">4</text>
@@ -100,13 +100,13 @@
   <text x="722" y="219" text-anchor="middle" font-weight="700" fill="#ffffff">2</text>
   <text x="706" y="196" text-anchor="end" font-size="11" fill="#1d4ed8">HDMI → DVI-D</text>
 
-  <!-- cable 3: HOST USB-C -> Personal laptop -->
+  <!-- cable 3: HOST USB-C -> AI computer -->
   <line x1="688" y1="370" x2="754" y2="370" stroke="#16a34a" stroke-width="5"/>
   <circle cx="722" cy="370" r="12" fill="#16a34a"/>
   <text x="722" y="375" text-anchor="middle" font-weight="700" fill="#ffffff">3</text>
   <text x="722" y="398" text-anchor="middle" font-size="11" fill="#15803d">USB-C</text>
 
-  <!-- cable 5: Personal laptop HDMI -> Monitor B DVI -->
+  <!-- cable 5: AI computer HDMI -> Monitor B DVI -->
   <line x1="910" y1="440" x2="910" y2="510" stroke="#0891b2" stroke-width="5"/>
   <circle cx="910" cy="475" r="12" fill="#0891b2"/>
   <text x="910" y="480" text-anchor="middle" font-weight="700" fill="#ffffff">5</text>
@@ -117,16 +117,16 @@
   <text x="40" y="654" font-weight="700" fill="#111827">Cables (Amazon UK orders) · no docking station</text>
 
   <circle cx="52" cy="680" r="10" fill="#2563eb"/><text x="52" y="684" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">1</text>
-  <text x="70" y="684" font-size="12" fill="#111827">Ubluker HDMI 1 m: Work laptop HDMI → NanoKVM TARGET HDMI</text>
+  <text x="70" y="684" font-size="12" fill="#111827">Ubluker HDMI 1 m: Locked computer HDMI → NanoKVM TARGET HDMI</text>
   <circle cx="52" cy="706" r="10" fill="#2563eb"/><text x="52" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">2</text>
   <text x="70" y="710" font-size="12" fill="#111827">C2G HDMI → DVI-D 1 m: NanoKVM HOST HDMI → Monitor A</text>
   <circle cx="52" cy="732" r="10" fill="#0891b2"/><text x="52" y="736" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">5</text>
-  <text x="70" y="736" font-size="12" fill="#111827">C2G HDMI → DVI-D 2 m: Personal laptop HDMI → Monitor B</text>
+  <text x="70" y="736" font-size="12" fill="#111827">C2G HDMI → DVI-D 2 m: AI computer HDMI → Monitor B</text>
 
   <circle cx="522" cy="680" r="10" fill="#16a34a"/><text x="522" y="684" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">3</text>
-  <text x="540" y="684" font-size="12" fill="#111827">Cable Matters USB-C 1 m: NanoKVM HOST USB-C → Personal laptop</text>
+  <text x="540" y="684" font-size="12" fill="#111827">Cable Matters USB-C 1 m: NanoKVM HOST USB-C → AI computer</text>
   <circle cx="522" cy="706" r="10" fill="#ea580c"/><text x="522" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
-  <text x="540" y="710" font-size="12" fill="#111827">UGREEN USB-A ↔ USB-C 1 m: Work laptop USB-A → NanoKVM TARGET</text>
+  <text x="540" y="710" font-size="12" fill="#111827">UGREEN USB-A ↔ USB-C 1 m: Locked computer USB-A → NanoKVM TARGET</text>
 
   <text x="40" y="764" font-size="11" fill="#6b7280">Dashed orange = plug in only when Claude may type/click. Dotted purple = Bluetooth. The NanoKVM (and so Monitor A) is powered by cable 3.</text>
 </svg>

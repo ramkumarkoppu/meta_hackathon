@@ -1,6 +1,6 @@
 """Smoke test for Meta's Model API (Muse Spark) before the pipeline uses it. Sends only dummy text.
 
-Reads the key from E:\\work_laptop\\.run\\meta_api_key (one line; never printed or logged) and checks:
+Reads the key from E:\\meta_hackathon\\.run\\meta_api_key (one line; never printed or logged) and checks:
   1. GET /v1/status (no key) and GET /v1/models: the key works and muse-spark-1.3 is enabled.
   2. A plain chat completion with store=false: status 200, the reply names exactly the Standard model we asked for
      (Meta's terms say requests "may" be routed to a Contributor model, whose content can be used for training).
@@ -8,7 +8,7 @@ Reads the key from E:\\work_laptop\\.run\\meta_api_key (one line; never printed 
 Any failed check stops the run with exit code 1. It prints token use and the cost at muse-spark-1.3 Standard
 prices; a full run costs well under one cent.
 
-Usage:  E:\\work_laptop\\.venv\\Scripts\\python.exe E:\\work_laptop\\tools\\spark_smoke.py
+Usage:  E:\\meta_hackathon\\.venv\\Scripts\\python.exe E:\\meta_hackathon\\tools\\spark_smoke.py
 """
 from __future__ import annotations
 

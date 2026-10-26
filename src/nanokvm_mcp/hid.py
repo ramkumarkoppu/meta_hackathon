@@ -1,4 +1,4 @@
-"""Keyboard/mouse output to the Work laptop through the NanoKVM-USB serial port.
+"""Keyboard/mouse output to the locked computer through the NanoKVM-USB serial port.
 
 Safety rules:
   * every public operation ends with all keys up and all buttons up (also on errors); buttons
@@ -66,11 +66,13 @@ def find_serial_port(ids: list[tuple[int, int]]) -> str:
         want = ", ".join(f"{v:04X}:{p:04X}" for v, p in ids)
         raise HidError(
             f"NanoKVM keyboard/mouse COM port not found (looking for USB VID:PID {want}; ports present: "
-            f"{seen}). Check the HOST-end USB-C cable. If the video works but no CH340 COM port "
-            "appears, Windows has not installed the WCH CH340 driver yet: open Device Manager, find the "
-            "unknown 'USB Serial' device and choose Update driver > Search automatically (Windows Update).")
+            f"{seen}). Check that serial_ids in nanokvm.toml lists the NanoKVM's serial chip (CH343 "
+            "1A86:55D3, CH340 1A86:7523), then the HOST-end USB-C cable: video and the serial chip use "
+            "different wires. A CH343 works with Windows' built-in driver; a CH340 needs WCH's: open "
+            "Device Manager, find the unknown 'USB Serial' device and choose Update driver > Search "
+            "automatically (then Windows Update).")
     if len(hits) > 1:
-        raise HidError("several CH340 COM ports found (" + ", ".join(p["device"] for p in hits)
+        raise HidError("several COM ports match serial_ids (" + ", ".join(p["device"] for p in hits)
                        + "); set serial_port in nanokvm.toml (e.g. serial_port = \"COM5\").")
     return hits[0]["device"]
 

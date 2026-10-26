@@ -2,7 +2,7 @@
 
 Rules (from OpenCV's cap_dshow.cpp):
   * Only open a device whose DirectShow path carries an allowed VID:PID. Never fall back to
-    "index 0": on the Personal laptop that is the personal webcam. Setting ``video_index``
+    "index 0": on the AI computer that is its own webcam. Setting ``video_index``
     skips this check, so use it with care.
   * One thread owns cv2.VideoCapture for its whole life (DirectShow COM apartment).
   * grab() + retrieve(), never read(): read() reports success even when retrieve() timed out.
@@ -12,6 +12,7 @@ Rules (from OpenCV's cap_dshow.cpp):
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -83,8 +84,17 @@ def fourcc_to_str(value: float) -> str:
     return "".join(chr((v >> (8 * i)) & 0xFF) for i in range(4))
 
 
+def require_windows() -> None:
+    """Capture uses DirectShow, so the AI computer must run Windows for now (the locked computer may
+    run Windows, macOS or Linux). Without this, macOS and Linux fail with an obscure backend error."""
+    if sys.platform != "win32":
+        raise RuntimeError(f"video capture needs Windows on the AI computer for now (it uses DirectShow; "
+                           f"this is {sys.platform}). See README section 1a.")
+
+
 def list_video_devices() -> list[dict]:
     """DirectShow capture devices (enumeration only; nothing is opened)."""
+    require_windows()
     import cv2
     from cv2_enumerate_cameras import enumerate_cameras
     out = []
@@ -154,6 +164,7 @@ class HdmiCapture:
             self._state, self._error = state, error
 
     def _open(self):
+        require_windows()
         import cv2
         if self.index is not None:
             idx, name = self.index, f"DirectShow index {self.index} (configured)"
@@ -187,7 +198,7 @@ class HdmiCapture:
             cap.release()
             raise RuntimeError(
                 "the capture device opened but sent no video. Another program may be using it "
-                "(NanoKVM-USB app, usbkvm.sipeed.com tab, Camera app, OBS, Teams), or the Work laptop "
+                "(NanoKVM-USB app, usbkvm.sipeed.com tab, Camera app, OBS, Teams), or the locked computer "
                 "has its HDMI output off.")
         with self._lock:
             self._device = name
@@ -222,7 +233,7 @@ class HdmiCapture:
                     no_frame_since = no_frame_since or now
                     if now - no_frame_since > self.no_frame_timeout_s:
                         self._set("no_frames", f"no video for {now - no_frame_since:.0f}s "
-                                  "(Work laptop asleep, HDMI unplugged, or HDMI in the wrong port?)")
+                                  "(locked computer asleep, HDMI unplugged, or HDMI in the wrong port?)")
                     if now - no_frame_since > self.reopen_after_s:
                         log.info("no frames for %.0fs, reopening the capture device", now - no_frame_since)
                         cap.release()
