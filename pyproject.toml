@@ -1,0 +1,27 @@
+[project]
+name = "nanokvm-mcp"
+version = "0.1.0"
+description = "Let Claude Code see (and optionally control) the Work laptop through a Sipeed NanoKVM-USB"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.3,<3",
+    "opencv-python-headless>=4.14,<5",
+    "cv2-enumerate-cameras>=1.4,<2",
+    "pyserial>=3.5,<4",
+    "numpy>=2.0",
+]
+
+[project.scripts]
+nanokvm = "nanokvm_mcp.cli:main"
+nanokvm-mcp = "nanokvm_mcp.mcp_server:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

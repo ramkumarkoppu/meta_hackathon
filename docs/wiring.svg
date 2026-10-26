@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="780" viewBox="0 0 1000 780"
+     font-family="Segoe UI, Arial, sans-serif" font-size="13">
+  <title>Two-desk wiring: Work laptop, NanoKVM-USB, Personal laptop, two Dell monitors and five cables</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="780" fill="#ffffff"/>
+  <text x="500" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">
+    Work laptop  →  NanoKVM-USB  →  Personal laptop (Claude Code)
+  </text>
+  <text x="140" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">WORK DESK</text>
+  <text x="870" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">WORK DESK</text>
+  <text x="870" y="290" text-anchor="middle" font-size="12" font-weight="600" fill="#15803d">PERSONAL DESK</text>
+
+  <!-- ===================== devices ===================== -->
+  <!-- Work laptop -->
+  <rect x="40" y="226" width="200" height="140" rx="8" fill="#fef3c7" stroke="#92400e" stroke-width="2"/>
+  <text x="140" y="254" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Work laptop</text>
+  <text x="140" y="276" text-anchor="middle" fill="#374151">offline · nothing installed</text>
+  <text x="140" y="296" text-anchor="middle" fill="#374151">own charger · no dock</text>
+  <text x="140" y="316" text-anchor="middle" fill="#374151">Monitor A = main display</text>
+  <rect x="226" y="282" width="20" height="16" rx="2" fill="#111827"/>
+  <text x="222" y="350" text-anchor="end" font-size="11" fill="#6b7280">HDMI · USB-A</text>
+  <rect x="230" y="326" width="16" height="10" rx="1" fill="#111827"/>
+
+  <!-- NanoKVM-USB -->
+  <rect x="380" y="214" width="300" height="230" rx="12" fill="#1f2937" stroke="#000000" stroke-width="2"/>
+  <rect x="392" y="226" width="78" height="24" rx="5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <text x="431" y="243" text-anchor="middle" font-weight="700" fill="#ffffff">TARGET</text>
+  <rect x="582" y="226" width="86" height="24" rx="5" fill="#ffffff"/>
+  <text x="625" y="243" text-anchor="middle" font-weight="700" fill="#111827">▭ HOST</text>
+  <text x="530" y="274" text-anchor="middle" font-weight="700" font-size="15" fill="#ffffff">NanoKVM-USB</text>
+  <rect x="370" y="282" width="22" height="16" rx="2" fill="#e5e7eb" stroke="#ffffff"/>
+  <text x="400" y="295" fill="#ffffff" font-size="12">HDMI in</text>
+  <rect x="372" y="362" width="18" height="12" rx="5" fill="#e5e7eb" stroke="#ffffff"/>
+  <text x="400" y="373" fill="#ffffff" font-size="12">USB-C · kbd+mouse</text>
+  <rect x="668" y="282" width="22" height="16" rx="2" fill="#e5e7eb" stroke="#ffffff"/>
+  <text x="660" y="295" text-anchor="end" fill="#ffffff" font-size="12">HDMI out (loop-out)</text>
+  <rect x="670" y="362" width="18" height="12" rx="5" fill="#e5e7eb" stroke="#ffffff"/>
+  <text x="660" y="373" text-anchor="end" fill="#ffffff" font-size="12">USB-C (to host)</text>
+  <line x1="470" y1="330" x2="590" y2="330" stroke="#9ca3af" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="530" y="322" text-anchor="middle" font-size="11" fill="#d1d5db">picture flows TARGET → HOST</text>
+  <text x="530" y="418" text-anchor="middle" font-size="11" fill="#9ca3af">side: USB-A port + [T|H] switch, not used; leave at H</text>
+
+  <!-- Dell Monitor A (Work laptop's screen) -->
+  <rect x="760" y="64" width="220" height="132" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="870" y="92" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Dell Monitor A</text>
+  <text x="870" y="114" text-anchor="middle" fill="#374151">input source: DVI</text>
+  <text x="870" y="134" text-anchor="middle" fill="#374151">Work laptop's main display</text>
+  <text x="870" y="154" text-anchor="middle" fill="#1d4ed8" font-weight="600">the screen Claude sees</text>
+  <text x="870" y="180" text-anchor="middle" font-size="11" fill="#6b7280">fed through the NanoKVM</text>
+  <rect x="754" y="132" width="12" height="18" rx="2" fill="#f9fafb" stroke="#111827"/>
+
+  <!-- Personal laptop -->
+  <rect x="760" y="300" width="220" height="140" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
+  <text x="870" y="328" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Personal laptop</text>
+  <text x="870" y="350" text-anchor="middle" fill="#374151">VS Code + Claude Code</text>
+  <text x="870" y="370" text-anchor="middle" fill="#374151">nanokvm service · MCP server</text>
+  <text x="870" y="390" text-anchor="middle" fill="#374151">online · own charger</text>
+  <text x="870" y="424" text-anchor="middle" font-size="11" fill="#6b7280">USB-C · HDMI</text>
+  <rect x="754" y="362" width="12" height="16" rx="4" fill="#111827"/>
+
+  <!-- Dell Monitor B (Personal laptop's screen) -->
+  <rect x="760" y="510" width="220" height="96" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="870" y="538" text-anchor="middle" font-weight="700" fill="#111827">Dell Monitor B</text>
+  <text x="870" y="560" text-anchor="middle" fill="#374151">input source: DVI</text>
+  <text x="870" y="582" text-anchor="middle" fill="#b91c1c" font-weight="600">Personal laptop only</text>
+
+  <!-- Logitech keyboard + mouse -->
+  <rect x="380" y="500" width="300" height="70" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="530" y="526" text-anchor="middle" font-weight="700" fill="#111827">Logitech keyboard + mouse</text>
+  <text x="530" y="548" text-anchor="middle" font-size="12" fill="#374151">Bluetooth to both laptops · Easy-Switch</text>
+
+  <!-- ===================== cables ===================== -->
+  <!-- Bluetooth (no cable) -->
+  <polyline points="380,535 140,535 140,366" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="2 5"/>
+  <polyline points="680,535 730,535 730,430 760,430" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="2 5"/>
+  <text x="150" y="526" font-size="11" fill="#6d28d9">Bluetooth</text>
+
+  <!-- cable 1: Work laptop HDMI -> TARGET HDMI -->
+  <line x1="246" y1="290" x2="370" y2="290" stroke="#2563eb" stroke-width="5"/>
+  <circle cx="308" cy="290" r="12" fill="#2563eb"/>
+  <text x="308" y="295" text-anchor="middle" font-weight="700" fill="#ffffff">1</text>
+  <text x="308" y="270" text-anchor="middle" font-size="11" fill="#1d4ed8">HDMI</text>
+
+  <!-- cable 4: Work laptop USB-A -> TARGET USB-C (dashed = only when Claude may act) -->
+  <polyline points="246,331 300,331 300,368 372,368" fill="none" stroke="#ea580c" stroke-width="5" stroke-dasharray="10 6"/>
+  <circle cx="336" cy="368" r="12" fill="#ea580c"/>
+  <text x="336" y="373" text-anchor="middle" font-weight="700" fill="#ffffff">4</text>
+  <text x="252" y="398" font-size="11" fill="#c2410c">keyboard/mouse, only</text>
+  <text x="252" y="412" font-size="11" fill="#c2410c">when Claude may act</text>
+
+  <!-- cable 2: HOST HDMI -> Monitor A DVI -->
+  <polyline points="690,290 722,290 722,141 754,141" fill="none" stroke="#2563eb" stroke-width="5"/>
+  <circle cx="722" cy="214" r="12" fill="#2563eb"/>
+  <text x="722" y="219" text-anchor="middle" font-weight="700" fill="#ffffff">2</text>
+  <text x="706" y="196" text-anchor="end" font-size="11" fill="#1d4ed8">HDMI → DVI-D</text>
+
+  <!-- cable 3: HOST USB-C -> Personal laptop -->
+  <line x1="688" y1="370" x2="754" y2="370" stroke="#16a34a" stroke-width="5"/>
+  <circle cx="722" cy="370" r="12" fill="#16a34a"/>
+  <text x="722" y="375" text-anchor="middle" font-weight="700" fill="#ffffff">3</text>
+  <text x="722" y="398" text-anchor="middle" font-size="11" fill="#15803d">USB-C</text>
+
+  <!-- cable 5: Personal laptop HDMI -> Monitor B DVI -->
+  <line x1="910" y1="440" x2="910" y2="510" stroke="#0891b2" stroke-width="5"/>
+  <circle cx="910" cy="475" r="12" fill="#0891b2"/>
+  <text x="910" y="480" text-anchor="middle" font-weight="700" fill="#ffffff">5</text>
+  <text x="894" y="480" text-anchor="end" font-size="11" fill="#0e7490">HDMI → DVI-D</text>
+
+  <!-- ===================== legend ===================== -->
+  <line x1="40" y1="630" x2="960" y2="630" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="40" y="654" font-weight="700" fill="#111827">Cables (Amazon UK orders) · no docking station</text>
+
+  <circle cx="52" cy="680" r="10" fill="#2563eb"/><text x="52" y="684" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">1</text>
+  <text x="70" y="684" font-size="12" fill="#111827">Ubluker HDMI 1 m: Work laptop HDMI → NanoKVM TARGET HDMI</text>
+  <circle cx="52" cy="706" r="10" fill="#2563eb"/><text x="52" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">2</text>
+  <text x="70" y="710" font-size="12" fill="#111827">C2G HDMI → DVI-D 1 m: NanoKVM HOST HDMI → Monitor A</text>
+  <circle cx="52" cy="732" r="10" fill="#0891b2"/><text x="52" y="736" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">5</text>
+  <text x="70" y="736" font-size="12" fill="#111827">C2G HDMI → DVI-D 2 m: Personal laptop HDMI → Monitor B</text>
+
+  <circle cx="522" cy="680" r="10" fill="#16a34a"/><text x="522" y="684" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">3</text>
+  <text x="540" y="684" font-size="12" fill="#111827">Cable Matters USB-C 1 m: NanoKVM HOST USB-C → Personal laptop</text>
+  <circle cx="522" cy="706" r="10" fill="#ea580c"/><text x="522" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
+  <text x="540" y="710" font-size="12" fill="#111827">UGREEN USB-A ↔ USB-C 1 m: Work laptop USB-A → NanoKVM TARGET</text>
+
+  <text x="40" y="764" font-size="11" fill="#6b7280">Dashed orange = plug in only when Claude may type/click. Dotted purple = Bluetooth. The NanoKVM (and so Monitor A) is powered by cable 3.</text>
+</svg>

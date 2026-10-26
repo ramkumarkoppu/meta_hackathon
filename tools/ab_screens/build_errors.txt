@@ -1,0 +1,5 @@
+C:\dev\demo\ring_buffer.cpp(17,20): error C2065: 'cpacity': undeclared identifier
+C:\dev\demo\ring_buffer.cpp(33,45): warning C4018: '<': signed/unsigned mismatch
+C:\dev\demo\config_parser.cpp(41,14): error C2440: 'initializing': cannot convert from 'std::string_view' to 'std::string &'
+C:\dev\demo\config_parser.cpp(52,9): error C2672: 'std::map<std::string,cfg::Entry>::try_emplace': no matching overloaded function found
+C:\dev\demo\long_lines.cpp(11,5): warning C4244: 'argument': conversion from 'double' to 'int', possible loss of data

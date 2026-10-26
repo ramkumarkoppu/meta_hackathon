@@ -1,0 +1,18 @@
+# Secrets, logs and screenshots: service token, model-server and Meta API keys, outbound log, redaction terms
+.run/
+
+# Local environments and caches
+.venv/
+.uv/
+.cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Large downloads: model weights and the llama.cpp binaries (see docs/hackathon-plan.md section 6)
+models/
+tools/llama.cpp/
+tools/downloads/
+
+# Personal Claude Code settings
+.claude/settings.local.json

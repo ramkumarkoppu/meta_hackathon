@@ -1,0 +1,237 @@
+"""Coordinate spaces, screen-change metrics and cursor calibration.
+
+Spaces:
+  * capture px   - pixels of the HDMI frame delivered by the NanoKVM (e.g. 1920x1080)
+  * region       - the part of the capture frame that shows the Work laptop desktop (normally the
+                   whole frame; smaller if the GPU adds black bars)
+  * screen coords- pixels of the screenshot Claude sees (region resized to ``shot_width``);
+                   this is the ONLY space pointer tools accept
+  * abs          - the NanoKVM absolute-mouse grid, 0..4095 on each axis, spanning the target's
+                   primary display (= the region)
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import asdict, dataclass
+
+import cv2
+import numpy as np
+
+from .protocol import ABS_MAX, ABS_RANGE
+
+
+@dataclass(frozen=True)
+class Region:
+    x: int
+    y: int
+    w: int
+    h: int
+
+    @classmethod
+    def full(cls, width: int, height: int) -> "Region":
+        return cls(0, 0, width, height)
+
+    def clamp_to(self, width: int, height: int) -> "Region":
+        x = max(0, min(self.x, width - 1))
+        y = max(0, min(self.y, height - 1))
+        w = max(1, min(self.w, width - x))
+        h = max(1, min(self.h, height - y))
+        return Region(x, y, w, h)
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+# Claude's standard vision tier: images up to 1568 px on the long edge and about 1568 visual tokens
+# (ceil(w/28) * ceil(h/28)) are seen as-is; bigger ones are downscaled, which would silently break
+# the pixel coordinates Claude reads off the image. Newer models (Opus 4.7+, Sonnet 5+) accept
+# up to 2576 px, so for them this cap is simply conservative.
+VISION_MAX_SIDE = 1568
+VISION_MAX_TOKENS = 1568
+
+
+def vision_tokens(w: int, h: int) -> int:
+    return math.ceil(w / 28) * math.ceil(h / 28)
+
+
+def fit_vision_budget(w: int, h: int, max_side: int = VISION_MAX_SIDE,
+                      max_tokens: int = VISION_MAX_TOKENS) -> tuple[int, int]:
+    """Shrink (w, h), keeping the aspect ratio, until no downscaling by the model is needed."""
+    scale = min(1.0, max_side / max(w, h))
+    w2, h2 = max(1, int(w * scale)), max(1, int(h * scale))
+    while vision_tokens(w2, h2) > max_tokens and w2 > 28 and h2 > 28:
+        scale *= 0.98
+        w2, h2 = max(1, int(w * scale)), max(1, int(h * scale))
+    return w2, h2
+
+
+def shot_size(region: Region, shot_width: int, aspect: float | None = None) -> tuple[int, int]:
+    """Size of the screenshot (and of the pointer coordinate space) for a region."""
+    ratio = aspect if aspect else region.w / region.h
+    w = int(shot_width)
+    h = max(1, int(round(w / ratio)))
+    return fit_vision_budget(w, h)
+
+
+def screen_to_abs(x: float, y: float, shot_w: int, shot_h: int) -> tuple[int, int]:
+    """Screen coords (pixel centres) -> absolute 0..4095 grid."""
+    ax = math.floor((x + 0.5) / shot_w * ABS_RANGE)
+    ay = math.floor((y + 0.5) / shot_h * ABS_RANGE)
+    return max(0, min(ABS_MAX, ax)), max(0, min(ABS_MAX, ay))
+
+
+def abs_to_screen(ax: int, ay: int, shot_w: int, shot_h: int) -> tuple[float, float]:
+    return (ax + 0.5) / ABS_RANGE * shot_w - 0.5, (ay + 0.5) / ABS_RANGE * shot_h - 0.5
+
+
+def screen_rect_to_capture(rect: tuple[float, float, float, float], region: Region,
+                           shot_w: int, shot_h: int) -> tuple[int, int, int, int]:
+    """Screen-coordinate rectangle -> capture-pixel rectangle (clamped to the region)."""
+    x, y, w, h = rect
+    sx, sy = region.w / shot_w, region.h / shot_h
+    x0 = region.x + max(0.0, x) * sx
+    y0 = region.y + max(0.0, y) * sy
+    x1 = region.x + min(float(shot_w), x + w) * sx
+    y1 = region.y + min(float(shot_h), y + h) * sy
+    cx0, cy0 = int(math.floor(x0)), int(math.floor(y0))
+    cx1, cy1 = int(math.ceil(x1)), int(math.ceil(y1))
+    return cx0, cy0, max(1, cx1 - cx0), max(1, cy1 - cy0)
+
+
+# ---------------------------------------------------------------- frames
+def crop(frame: np.ndarray, region: Region) -> np.ndarray:
+    return frame[region.y:region.y + region.h, region.x:region.x + region.w]
+
+
+def resize(img: np.ndarray, w: int, h: int) -> np.ndarray:
+    if img.shape[1] == w and img.shape[0] == h:
+        return img
+    interp = cv2.INTER_AREA if (w < img.shape[1] or h < img.shape[0]) else cv2.INTER_CUBIC
+    return cv2.resize(img, (w, h), interpolation=interp)
+
+
+def encode_jpeg(img: np.ndarray, quality: int = 80, full_chroma: bool = True) -> bytes:
+    """JPEG-encode. full_chroma keeps colour at full resolution (4:4:4) so thin coloured text
+    (syntax-highlighted code) stays sharp; the default 4:2:0 halves colour resolution."""
+    params = [cv2.IMWRITE_JPEG_QUALITY, int(quality)]
+    if full_chroma and hasattr(cv2, "IMWRITE_JPEG_SAMPLING_FACTOR"):
+        params += [cv2.IMWRITE_JPEG_SAMPLING_FACTOR, cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444]
+    ok, buf = cv2.imencode(".jpg", img, params)
+    if not ok:
+        raise RuntimeError("JPEG encoding failed")
+    return buf.tobytes()
+
+
+def blank_stats(frame: np.ndarray) -> tuple[bool, float, float]:
+    """(looks_blank, mean, std): a frame whose 160x90 grey thumbnail is nearly flat (tiny spread
+    and tiny range) means no signal, a sleeping display, or a solid-colour screen."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+    small = cv2.resize(gray, THUMB_SIZE, interpolation=cv2.INTER_AREA)
+    mean, std = float(small.mean()), float(small.std())
+    spread = int(small.max()) - int(small.min())
+    return (std < 2.0 and spread < 12), mean, std
+
+
+THUMB_SIZE = (160, 90)
+
+
+def thumbnail(frame: np.ndarray) -> np.ndarray:
+    """Small colour thumbnail used for change detection."""
+    return cv2.resize(frame, THUMB_SIZE, interpolation=cv2.INTER_AREA)
+
+
+def change_fraction(a: np.ndarray, b: np.ndarray, pixel_threshold: int = 20) -> float:
+    """Fraction (0..1) of thumbnail pixels where any colour channel changed by more than the
+    threshold (colour, not brightness: red->green highlights can keep the same brightness).
+    MJPEG noise stays below the threshold; a moved mouse cursor is ~0.1%."""
+    if a.shape != b.shape:
+        return 1.0
+    diff = cv2.absdiff(a, b)
+    if diff.ndim == 3:
+        diff = diff.max(axis=2)
+    return float(np.count_nonzero(diff > pixel_threshold)) / diff.size
+
+
+# ---------------------------------------------------------------- black bars
+def detect_black_bars(frame: np.ndarray, black_level: int = 16, min_bar: int = 8,
+                      symmetry_tol: int = 3) -> Region | None:
+    """Detect symmetric GPU letterbox/pillarbox bars (rows/columns that are entirely near-black).
+    Returns the active Region, or None when no bars are found. Only used by calibration."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+    h, w = gray.shape
+    col_dark = gray.max(axis=0) <= black_level
+    row_dark = gray.max(axis=1) <= black_level
+
+    def run(mask: np.ndarray) -> int:
+        n = 0
+        for v in mask:
+            if not v:
+                break
+            n += 1
+        return n
+
+    left, right = run(col_dark), run(col_dark[::-1])
+    top, bottom = run(row_dark), run(row_dark[::-1])
+    x0, x1, y0, y1 = 0, w, 0, h
+    if left >= min_bar and right >= min_bar and abs(left - right) <= symmetry_tol and left + right < w // 2:
+        x0, x1 = left, w - right
+    if top >= min_bar and bottom >= min_bar and abs(top - bottom) <= symmetry_tol and top + bottom < h // 2:
+        y0, y1 = top, h - bottom
+    if (x0, x1, y0, y1) == (0, w, 0, h):
+        return None
+    return Region(x0, y0, x1 - x0, y1 - y0)
+
+
+# ---------------------------------------------------------------- cursor calibration
+def locate_cursor(with_cursor: np.ndarray, without_cursor: np.ndarray,
+                  expect: tuple[float, float], search_radius: float) -> tuple[float, float] | None:
+    """Find the mouse pointer's hotspot (top-left of the arrow) in ``with_cursor`` by differencing
+    against a frame where the pointer is elsewhere. Returns capture px, or None."""
+    a = cv2.cvtColor(with_cursor, cv2.COLOR_BGR2GRAY) if with_cursor.ndim == 3 else with_cursor
+    b = cv2.cvtColor(without_cursor, cv2.COLOR_BGR2GRAY) if without_cursor.ndim == 3 else without_cursor
+    mask = (cv2.absdiff(a, b) > 40).astype(np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    n, _labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    best = None
+    best_d = None
+    for i in range(1, n):
+        x, y, w, h, area = (int(v) for v in stats[i])
+        if not (6 <= w <= 80 and 10 <= h <= 80 and area >= 15):
+            continue  # not pointer-sized (noise, hover highlight, window repaint)
+        d = math.hypot(x - expect[0], y - expect[1])
+        if d <= search_radius and (best_d is None or d < best_d):
+            best, best_d = (float(x), float(y)), d
+    return best
+
+
+@dataclass
+class AxisFit:
+    slope: float
+    offset: float
+    max_residual: float
+
+
+def fit_axis(abs_vals: list[float], px_vals: list[float]) -> AxisFit:
+    """Least-squares px = slope * abs + offset."""
+    a = np.asarray(abs_vals, dtype=float)
+    p = np.asarray(px_vals, dtype=float)
+    slope, offset = np.polyfit(a, p, 1)
+    resid = np.abs(p - (slope * a + offset))
+    return AxisFit(float(slope), float(offset), float(resid.max()))
+
+
+def region_from_fit(fx: AxisFit, fy: AxisFit, frame_w: int, frame_h: int,
+                    snap_px: int = 6) -> Region:
+    """Turn per-axis fits (capture px vs abs) into the active Region the abs grid spans."""
+    # The target puts the pointer hotspot for abs value a at region.x + a * region.w / 4096.
+    x0 = fx.offset
+    y0 = fy.offset
+    w = fx.slope * ABS_RANGE
+    h = fy.slope * ABS_RANGE
+    xi, yi, wi, hi = int(round(x0)), int(round(y0)), int(round(w)), int(round(h))
+    # Snap to the full frame when we are within a few pixels of it (measurement noise).
+    if abs(xi) <= snap_px and abs(wi - frame_w) <= 2 * snap_px:
+        xi, wi = 0, frame_w
+    if abs(yi) <= snap_px and abs(hi - frame_h) <= 2 * snap_px:
+        yi, hi = 0, frame_h
+    return Region(xi, yi, wi, hi).clamp_to(frame_w, frame_h)

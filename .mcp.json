@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "work-laptop": {
+      "type": "stdio",
+      "command": "E:\\work_laptop\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "nanokvm_mcp.mcp_server"],
+      "env": {}
+    }
+  }
+}
