@@ -450,6 +450,7 @@ def test_viewer_command_modes(sim, monkeypatch, capsys):
     assert cli.cmd_status(sim.client, argparse.Namespace(json=False)) == 0
     status = capsys.readouterr().out
     assert "?t=<token>" in status and sim.token not in status     # status doesn't show the token
+    assert "Sharing:   0 Claude conversation(s), 0 local reader(s)" in status
     assert cli.cmd_viewer(sim.client, args(browser=True)) == 0
     assert len(opened) == 1 and ran == []
     assert cli.cmd_viewer(sim.client, args(fps=12, close_after=3.0)) == 0
@@ -457,3 +458,18 @@ def test_viewer_command_modes(sim, monkeypatch, capsys):
     for bad in (["--fps", "0"], ["--close-after", "-1"], ["--browser", "--no-open"]):
         with pytest.raises(SystemExit):
             cli.main(["viewer", *bad])
+
+
+def test_stop_says_whether_the_service_stopped(capsys):
+    class Client:
+        def __init__(self, running, stops):
+            self.running, self.stops = running, stops
+
+        def is_running(self):
+            return self.running
+
+        def stop(self):
+            return self.stops
+    assert cli.cmd_stop(Client(False, False), None) == 0 and "was not running" in capsys.readouterr().out
+    assert cli.cmd_stop(Client(True, True), None) == 0 and "service stopped" in capsys.readouterr().out
+    assert cli.cmd_stop(Client(True, False), None) == 1 and "did not stop within 20 s" in capsys.readouterr().out

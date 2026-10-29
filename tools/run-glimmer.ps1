@@ -27,6 +27,15 @@ $ErrorActionPreference = "Stop"
 if ($NoDFlash -and $DFlash) { throw "-NoDFlash and -DFlash contradict each other" }
 $useDFlash = -not $NoDFlash
 
+# llama.cpp binds its port with SO_REUSEADDR, so on Windows a second server can listen on the same port and
+# requests go to either one. Start only when no llama-server is running and nothing listens on the port.
+$running = @(Get-Process llama-server -ErrorAction SilentlyContinue | ForEach-Object Id)
+$listening = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | ForEach-Object OwningProcess)
+if ($running.Count -or $listening.Count) {
+    $ids = ($running + $listening | Sort-Object -Unique) -join ", "
+    throw "refusing to start: a llama-server is already running or port $Port is in use (process $ids); stop it first"
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $root "tools\llama.cpp\llama-server.exe"
 $run = Join-Path $root ".run"

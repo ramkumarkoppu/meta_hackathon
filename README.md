@@ -444,7 +444,9 @@ Standard model IDs.
 ## 6. Using it: read, ask and edit
 
 Start Muse Glimmer first, in its own terminal: `E:\meta_hackathon\tools\run-glimmer.ps1`
-([section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)). Then, in another terminal
+([section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)). It refuses to start while another
+llama-server runs or port 8001 is taken: two servers could share the port, and requests would go to
+either. Then, in another terminal
 (prefix each command with `E:\meta_hackathon\.venv\Scripts\`):
 
 ```powershell
@@ -482,8 +484,9 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
 match the file exactly, so first switch off the typing helpers (the settings for typed edits in
 [section 4](#4-locked-computer-settings)). Then open a new empty window (Ctrl+Shift+N) so no work is on
 the screen, press Ctrl+N, set the language to C++ (Ctrl+K M) so it is coloured like real code, and type
-it, making the spaces with the space bar and pressing no Enter after the last `}`. Home on each line should
-show *Col 5* on lines 5, 6, 8 and 9 and *Col 9* on line 7 in the status bar. Then run
+it, making the spaces with the space bar and pressing no Enter after the last `}`. Press End, then Home,
+on each line: the status bar should show *Col 5* on lines 5, 6, 8 and 9, *Col 9* on line 7 and *Col 1*
+on the others (Home alone jumps to column 1 when the cursor is already at the indent). Then run
 `nanokvm read --check tools\ab_screens\live_check.cpp` (it finds the file from any folder). It lists by
 line number which lines Glimmer read exactly, which differ only in spaces, indentation or text, and
 which it missed. It never repeats the text read, so those lines can be shared; the transcription
@@ -596,7 +599,7 @@ work, check without a picture instead: `nanokvm start`, then `nanokvm status --j
 Other commands (prefix with `E:\meta_hackathon\.venv\Scripts\`):
 
 ```powershell
-nanokvm status          # service, video and keyboard/mouse state (--json for the raw data)
+nanokvm status          # service, video, keyboard/mouse and screen shares (--json for the raw data)
 nanokvm screenshot      # saves .run\screenshot.jpg, or the file you name
 nanokvm viewer          # live view in a window (--browser: in your browser; --no-open: only prints the URL)
 nanokvm watch           # prints a line per screen change and saves .run\watch\latest.jpg
@@ -749,7 +752,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        297 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        298 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

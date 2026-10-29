@@ -59,6 +59,8 @@ def cmd_status(cl: ServiceClient, args) -> int:
          + (f"\n           {ctl['device_info']}" if ctl.get("device_info") else ""))
     _out(f"Screen:    {scr['width']}x{scr['height']} coordinate space, region {scr['region']} ({scr['region_source']})")
     _out(f"Viewers:   {st['viewers']}")
+    _out(f"Sharing:   {st.get('shares_active', '?')} Claude conversation(s), "
+         f"{st.get('local_shares_active', '?')} local reader(s) (nanokvm read, ask or edit)")
     _out(f"Live view: {cl.cfg.base_url}/?t=<token>  (the token is hidden here: 'nanokvm viewer' opens the "
          "window, and 'nanokvm viewer --no-open' prints the full URL)")
     return 0
@@ -70,8 +72,14 @@ def cmd_start(cl: ServiceClient, args) -> int:
 
 
 def cmd_stop(cl: ServiceClient, args) -> int:
-    _out("NanoKVM service stopped." if cl.stop() else "NanoKVM service was not running.")
-    return 0
+    if not cl.is_running():
+        _out("NanoKVM service was not running.")
+        return 0
+    if cl.stop():
+        _out("NanoKVM service stopped.")
+        return 0
+    _out("NanoKVM service did not stop within 20 s: end its pythonw.exe process, then check with 'nanokvm status'.")
+    return 1
 
 
 def cmd_viewer(cl: ServiceClient, args) -> int:
