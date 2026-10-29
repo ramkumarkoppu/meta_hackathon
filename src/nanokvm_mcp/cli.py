@@ -8,6 +8,7 @@
     nanokvm serve           run the service in the foreground (debugging)
     nanokvm read            read the screen with Muse Glimmer on this laptop (nothing leaves)
     nanokvm ask "QUESTION"  read locally, send only redacted text to Muse Spark, print its answer
+    nanokvm edit "REQUEST"  as ask, then type each edit Spark proposes into VS Code once you approve it
 """
 from __future__ import annotations
 
@@ -297,6 +298,67 @@ def cmd_ask(cl: ServiceClient, args) -> int:
     return 0
 
 
+def _approve_edit(plan) -> bool:
+    _out(f"\n--- Muse Spark's edit to line(s) {plan.span()}: {plan.note or '(no note)'} ---")
+    _out(plan.diff() or "(no visible change)")
+    _out("--- keys sent to the locked computer ---")
+    for i, step in enumerate(plan.steps(), 1):
+        _out(f"  {i}. {step}")
+    _out("VS Code on the locked computer must have the file focused, with its status bar showing.")
+    return _console_yes("Type this edit?")
+
+
+def cmd_edit(cl: ServiceClient, args) -> int:
+    from .glimmer import GlimmerError
+    from .outbound import OutboundBlocked
+    from .pipeline import EditError, Pipeline
+    from .spark import SparkError
+    cfg = cl.cfg
+    if args.approve:
+        cfg.outbound = "approve"
+
+    def approve_send(text: str) -> bool:
+        _out("\n--- exactly this text would go to Muse Spark (Meta) ---\n" + text + "\n--- end ---")
+        return _console_yes("Send it?")
+
+    try:
+        with Pipeline(cfg, approve_share=_share_prompt, approve_send=approve_send, stand_in=args.stand_in) as pipe:
+            pipe.open(args.minutes)
+            res = pipe.edit(args.request, _region(args.region), approve_edit=_approve_edit,
+                            on_event=lambda m: _out(f"... {m}"))
+    except PermissionError:
+        _out("Not shared: nothing was read, sent or typed.")
+        return 1
+    except EditError as e:
+        _out(f"Nothing was sent or typed: {e}")
+        return 3
+    except OutboundBlocked as e:
+        _out(f"Stopped, nothing more was sent: {e}")
+        return 3
+    except (GlimmerError, SparkError) as e:
+        _out(f"error: {e}")
+        return 2
+    except KeyboardInterrupt:
+        _out("\nStopped (Ctrl+C): every key was released. Check the file on the locked computer.")
+        return 130
+    for rec in res.edits:
+        if rec.plan is None:
+            _out(f"- not shown: {rec.told_spark}")
+        elif not rec.approved:
+            _out(f"- line(s) {rec.plan.span()}: declined")
+        else:
+            _out(f"- line(s) {rec.plan.span()}: {rec.outcome.status} ({rec.outcome.detail})")
+    if res.summary:
+        _out("\n" + res.summary)
+    if res.stopped:
+        _out(f"\nStopped early: {res.stopped}")
+    typed = sum(1 for r in res.edits if r.outcome is not None)
+    _out(f"\n({typed} edit(s) typed, {sum(1 for r in res.edits if r.outcome and r.outcome.status == 'verified')} "
+         f"checked on the screen; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
+         f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
+    return 0 if not res.stopped else 4
+
+
 def cmd_serve(cl: ServiceClient, args) -> int:
     from .service import serve
     return serve(cl.cfg, foreground=True)
@@ -352,6 +414,14 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--approve", action="store_true", help="show the exact text and ask before sending")
     mode.add_argument("--local-only", action="store_true", help="answer with Glimmer on this laptop; send nothing")
     p.set_defaults(fn=cmd_ask)
+    p = sub.add_parser("edit", help="ask Muse Spark for code edits and type each one you approve into VS Code")
+    p.add_argument("request", help='what to change, for example "fix the off-by-one in sum_first"')
+    p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
+    p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")
+    p.add_argument("--stand-in", action="store_true",
+                   help="the screen shows stand-in or dummy content (required while Meta billing is on free credits)")
+    p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
+    p.set_defaults(fn=cmd_edit)
     args = ap.parse_args(argv)
     cl = ServiceClient(Config.load())
     try:   # delete expired screenshots even when the service (which normally does it) isn't running

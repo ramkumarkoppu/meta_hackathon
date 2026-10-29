@@ -235,11 +235,14 @@ def _status(**over):
 def test_status_lines_report_the_setup():
     stats = V.ViewStats()
     for i in range(3):
-        stats.record(V.Picture(b"", 1, 1, (1920, 1080), i + 1, time.time() - 0.05))
+        stats.record(V.Picture(b"", 1920, 1080, (1920, 1080), i + 1, time.time() - 0.05))
     feed = SimpleNamespace(state="streaming", error=None, unreachable=False)
     text, colour = V.video_line(_status(), None, feed, stats)
     assert text.startswith("Video: 1920x1080 MJPG") and "capture 30 fps" in text and "delay" in text
-    assert colour == V.OK_FG
+    assert colour == V.OK_FG and "shown at" not in text
+    scaled = V.ViewStats()
+    scaled.record(V.Picture(b"", 1440, 810, (1920, 1080), 1, time.time()))
+    assert "shown at 75% (press 1 for actual pixels)" in V.video_line(_status(), None, feed, scaled)[0]
     blank = _status(capture={**_status()["capture"], "blank": True})
     text, colour = V.video_line(blank, None, feed, stats)
     assert "uniform" in text and colour == V.WARN_FG

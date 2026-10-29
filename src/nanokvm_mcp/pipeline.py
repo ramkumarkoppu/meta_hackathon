@@ -1,5 +1,6 @@
 """Local reading and the cloud coder: the locked computer's screen is read by Muse Glimmer on this laptop,
-and only redacted text goes to Muse Spark, through the outbound gate.
+and only redacted text goes to Muse Spark, through the outbound gate. Spark's code edits are typed back
+into VS Code only after the person at the keyboard approves each one (editing.py).
 
 The pipeline uses its own client id and screen share, approved by the person at the keyboard, and closes
 the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
@@ -12,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+from . import editing as E
 from .client import ServiceClient
 from .config import Config
 from .glimmer import SYSTEM, GlimmerClient
@@ -39,6 +41,29 @@ class AskResult:
     local_only: bool
     prepared: Prepared | None = None
     sent: Answer | None = None
+
+
+class EditError(RuntimeError):
+    """nanokvm edit can't start; nothing was sent or typed."""
+
+
+@dataclass
+class EditRecord:
+    plan: E.EditPlan | None           # None when Spark's call was rejected before it could be shown
+    approved: bool
+    outcome: E.EditOutcome | None     # None when nothing was typed
+    told_spark: str
+
+
+@dataclass
+class EditResult:
+    reading: Reading
+    prepared: Prepared
+    summary: str                      # Spark's closing message, placeholders restored
+    edits: list[EditRecord] = field(default_factory=list)
+    turns: int = 0
+    stopped: str | None = None        # why the session ended early, or None
+    cost_usd: float = 0.0
 
 
 class Pipeline:
@@ -113,3 +138,95 @@ class Pipeline:
         prepared = gate.prepare(reading.text, question, reading.frame.get("image_sha256"))
         sent = gate.ask(prepared, ASK_SYSTEM)
         return AskResult(reading, sent.content, False, prepared, sent)
+
+    # ---- editing (milestone 2)
+    def read_lines(self, rect: tuple[float, float, float, float] | None = None) -> dict[int, str]:
+        return E.numbered_lines(self.read("code", rect).text)
+
+    def read_status(self) -> str:
+        """VS Code's status-bar text ("Ln 23, Col 1"), read by Glimmer from the bottom tenth of the screen."""
+        screen = self.svc.status()["screen"]
+        w, h = screen["width"], screen["height"]
+        frame = self.svc.frame((0, h * 0.9, w, h * 0.1))
+        try:
+            return self.glimmer.cursor_status(frame["image_b64"], frame["format"]).content
+        finally:
+            frame["image_b64"] = None
+            del frame
+
+    def edit(self, request: str, rect: tuple[float, float, float, float] | None = None, *,
+             approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
+             on_event: Callable[[str], None] | None = None) -> EditResult:
+        """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
+        the person approves into VS Code, checking the screen before and after. Stops at the first edit
+        that can't be checked."""
+        say = on_event or (lambda _m: None)
+        if self.cfg.outbound == "local_only":
+            raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
+        if not self.cfg.control:
+            raise EditError("keyboard/mouse control is off (control = false in nanokvm.toml)")
+        reading = self.read("code", rect)
+        screen = E.numbered_lines(reading.text)
+        if not screen:
+            raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
+        mac = (self.cfg.locked_os or "").strip().lower() == "macos"
+        typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status,
+                                     select_line_key="cmd+l" if mac else "ctrl+l")
+        gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
+        prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"))
+        result = EditResult(reading, prepared, "")
+        history: list[dict] = []
+        typed = 0
+        while True:
+            if result.turns >= E.MAX_TURNS:
+                result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
+                break
+            say("asking Muse Spark" if not result.turns else "telling Muse Spark the result")
+            answer = gate.ask(prepared, E.EDIT_SYSTEM, tools=[E.APPLY_EDIT], parallel_tool_calls=False,
+                              history=history)
+            result.turns += 1
+            result.cost_usd += answer.reply.cost_usd
+            if not answer.tool_calls:
+                result.summary = answer.content
+                break
+            raw = answer.reply.tool_calls             # replayed as Spark sent them: redacted
+            history.append({"role": "assistant", "content": answer.reply.content or None,
+                            "tool_calls": [{"id": c["id"], "type": "function",
+                                            "function": {"name": c["name"], "arguments": c["arguments"]}} for c in raw]})
+            stop = False
+            for call in answer.tool_calls:
+                record = self._one_edit(call, screen, approve_edit, typer, stop or typed >= E.MAX_EDITS, say)
+                history.append({"role": "tool", "tool_call_id": call["id"], "content": record.told_spark})
+                result.edits.append(record)
+                if record.outcome is not None:
+                    typed += 1
+                    if record.outcome.status == "verified":
+                        screen = record.outcome.screen or screen
+                    else:
+                        stop = True
+                        result.stopped = record.outcome.detail
+            if stop:
+                break
+        return result
+
+    def _one_edit(self, call: dict, screen: dict[int, str], approve_edit: Callable[[E.EditPlan], bool],
+                  typer: E.EditTyper, skip: bool, say: Callable[[str], None]) -> EditRecord:
+        if call["name"] != "apply_edit":
+            return EditRecord(None, False, None, f"Unknown tool {call['name']!r}; only apply_edit exists.")
+        if skip:
+            return EditRecord(None, False, None, "Not applied: no more edits in this session. Stop editing.")
+        try:
+            plan = E.plan_edit(call["arguments"], screen, self.cfg.keyboard_layout)
+        except E.EditRejected as e:
+            say(f"Spark's edit can't be typed: {e}")
+            return EditRecord(None, False, None, f"Not applied: {e}.")
+        plan.select_key = typer.select_line_key
+        if not approve_edit(plan):
+            return EditRecord(plan, False, None, "Not applied: the user declined this edit.")
+        say(f"typing the edit to line(s) {plan.span()}")
+        try:
+            outcome = typer.apply(plan)
+        except Exception as e:  # noqa: BLE001  (service or HID error part-way: the file state is unknown)
+            outcome = E.EditOutcome("unverified", f"typing failed part-way ({type(e).__name__}: {e}); check the "
+                                                  "file on the locked computer")
+        return EditRecord(plan, True, outcome, outcome.for_spark(plan))

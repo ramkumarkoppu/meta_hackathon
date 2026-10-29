@@ -72,6 +72,18 @@ def _restore_json(value, mapping: dict[str, str]):
     return value
 
 
+def history_text(history: list[dict] | None) -> str:
+    """The text of the messages after the first user message (Spark's own replayed tool calls and the results
+    sent back), so the gate's checks cover them too."""
+    out = []
+    for m in history or []:
+        if isinstance(m.get("content"), str):
+            out.append(m["content"])
+        for c in m.get("tool_calls") or []:
+            out.append((c.get("function") or {}).get("arguments") or "")
+    return "\n".join(out)
+
+
 def excerpt(source: str, picked: str) -> str:
     """The lines of ``source`` that also appear in ``picked`` (Glimmer's selection), in source order.
     Anything Glimmer wrote that wasn't on the screen is dropped."""
@@ -134,7 +146,8 @@ class OutboundGate:
         return Prepared(r2.text, q.text, r2.mapping, findings, _sha(screen_text), frame_sha256, trimmed)
 
     # ---- checks and sending
-    def check(self, p: Prepared) -> None:
+    def check(self, p: Prepared, history: list[dict] | None = None) -> None:
+        text = p.text + ("\n" + history_text(history) if history else "")
         if self.cfg.outbound == "local_only":
             raise OutboundBlocked("outbound = local_only: nothing is sent to Meta")
         if self.cfg.meta_billing == "free_credits" and not self.stand_in:
@@ -144,32 +157,37 @@ class OutboundGate:
         if self.halt_path.exists():
             raise OutboundBlocked(f"{self.halt_path} exists (a reply came from an unexpected model); "
                                   "delete it after checking .run/outbound.log")
-        if R.leaked_values(p.text, p.mapping):
+        if R.leaked_values(text, p.mapping):
             raise OutboundBlocked("a redacted value is still in the outgoing text")
-        if "data:image" in p.text:
+        if "data:image" in text:
             raise OutboundBlocked("the outgoing text contains an inline image")
-        if len(p.text) > self.cfg.outbound_max_chars:
-            raise OutboundBlocked(f"the outgoing text is {len(p.text)} characters, over outbound_max_chars "
+        if len(text) > self.cfg.outbound_max_chars:
+            raise OutboundBlocked(f"the outgoing text is {len(text)} characters, over outbound_max_chars "
                                   f"({self.cfg.outbound_max_chars})")
         if self.spent_usd() >= self.cfg.meta_budget_usd:
             raise OutboundBlocked(f"the audit log shows ${self.spent_usd():.2f} spent, at meta_budget_usd")
 
     def ask(self, p: Prepared, system: str, *, tools: list[dict] | None = None,
-            parallel_tool_calls: bool | None = None) -> Answer:
+            parallel_tool_calls: bool | None = None, history: list[dict] | None = None) -> Answer:
+        """One request to Spark. ``history`` continues a conversation after the user message: Spark's earlier
+        tool calls replayed as it sent them (redacted), and the results sent back; it is checked and logged too."""
         rid = uuid.uuid4().hex[:12]
         base = {"id": rid, "outbound": self.cfg.outbound, "billing": self.cfg.meta_billing,
                 "stand_in": self.stand_in, "findings": p.findings, "raw_sha256": p.raw_sha256,
-                "frame_sha256": p.frame_sha256, "trimmed": p.trimmed, "model": self.spark.model}
+                "frame_sha256": p.frame_sha256, "trimmed": p.trimmed, "model": self.spark.model,
+                "turn": 1 + sum(1 for m in history or [] if m.get("role") == "assistant")}
+        extra = history_text(history)
         try:
-            self.check(p)
-            if self.cfg.outbound == "approve" and not (self.approve and self.approve(p.text)):
+            self.check(p, history)
+            if self.cfg.outbound == "approve" and not (
+                    self.approve and self.approve(p.text + (f"\n\n--- then ---\n{extra}" if extra else ""))):
                 raise OutboundBlocked("not approved: nothing was sent")
         except OutboundBlocked as e:
             self._audit({**base, "event": "blocked", "reason": str(e), "sent_sha256": _sha(p.text)})
             raise
         self._audit({**base, "event": "request", "sent_sha256": _sha(p.text), "sent_text": p.text,
-                     "system": system, "tools": [t["function"]["name"] for t in tools or []]})
-        messages = [{"role": "developer", "content": system}, {"role": "user", "content": p.text}]
+                     "history": history or [], "system": system, "tools": [t["function"]["name"] for t in tools or []]})
+        messages = [{"role": "developer", "content": system}, {"role": "user", "content": p.text}, *(history or [])]
         try:
             reply = self.spark.chat(messages, tools=tools, parallel_tool_calls=parallel_tool_calls)
         except SparkModelMismatch as e:

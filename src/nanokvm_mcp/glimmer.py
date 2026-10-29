@@ -28,6 +28,9 @@ DESCRIBE_PROMPT = ("Describe what is on this screen: the application, the file o
                    "or errors. Quote short on-screen text exactly. Be concise.")
 ERRORS_PROMPT = ("List every compiler error and warning line in this screenshot exactly as shown, one per line, "
                  "with nothing else. If there are none, output NONE.")
+STATUS_PROMPT = ("This is the bottom edge of a screen with a VS Code window. Copy the cursor position from VS Code's "
+                 "status bar exactly as shown, for example 'Ln 23, Col 1' or 'Ln 25, Col 1 (61 selected)'. Output "
+                 "only that text, or NONE if no status bar with a cursor position is visible.")
 MINIMISE_PROMPT = ("Below are lines of text read from a screen, then a question about them. Copy out only the "
                    "lines needed to answer the question, unchanged and in their original order, each with its "
                    "line number if it has one. For code, copy the whole function or block that contains them, "
@@ -161,6 +164,10 @@ class GlimmerClient:
 
     def extract_errors(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         return self.read_image(image_b64, fmt, ERRORS_PROMPT)
+
+    def cursor_status(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
+        """VS Code's 'Ln N, Col M (k selected)' from a crop of the screen's bottom edge."""
+        return self.read_image(image_b64, fmt, STATUS_PROMPT, max_tokens=64)
 
     def minimise(self, text: str, question: str) -> GlimmerReply:
         """Trim already-redacted screen text to the lines the question needs (high reasoning, capped

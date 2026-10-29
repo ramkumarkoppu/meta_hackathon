@@ -409,7 +409,7 @@ class Service:
             "idle_exit_min": self.cfg.idle_exit_min,
             "sharing": self.share_info(client),
             "shares_active": claude_shares,          # Claude conversations
-            "local_shares_active": local_shares,     # nanokvm read/ask (Muse Glimmer on this laptop)
+            "local_shares_active": local_shares,     # nanokvm read/ask/edit (Muse Glimmer on this laptop)
             **({"sim": {"text": self.sim_desktop.text, "button_presses": self.sim_desktop.button_presses}}
                if self.sim_desktop is not None else {}),
         }
@@ -772,9 +772,20 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(404, {"error": "not found"})
 
+    def _drain(self) -> None:
+        """Read and drop a refused request's body: closing with it unread makes Windows reset the
+        connection, and the client may then never see the refusal."""
+        try:
+            n = min(int(self.headers.get("Content-Length") or 0), 1_000_000)
+            if n > 0:
+                self.rfile.read(n)
+        except (ValueError, OSError):
+            pass
+
     def do_POST(self) -> None:  # noqa: N802
         url = urlparse(self.path)
         if not self._authorised(parse_qs(url.query)):
+            self._drain()
             return
         svc = self.server.service
         try:

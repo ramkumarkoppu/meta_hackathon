@@ -12,7 +12,7 @@ import numpy as np
 
 from . import protocol as P
 from .capture import Frame, FrameStore
-from .keys import CHARS
+from .keys import CHARS, KEYS
 
 # HID usage (+shift) -> character, inverted from the US typing table.
 _REVERSE: dict[tuple[int, bool], str] = {}
@@ -20,10 +20,137 @@ for _ch, (_usage, _shift) in CHARS.items():
     _REVERSE.setdefault((_usage, _shift), _ch)
 
 BUTTON_RECT = (1500, 160, 300, 90)  # x, y, w, h in desktop pixels
+_CTRL = P.MOD_LCTRL | P.MOD_RCTRL
+_SHIFT = P.MOD_LSHIFT | P.MOD_RSHIFT
+
+
+class SimEditor:
+    """A tiny stand-in for VS Code, for the edit tests: numbered lines, a cursor, Ctrl+G (Go to Line, cursor at
+    column 1), Ctrl+L (expand line selection), Backspace, Escape, Enter and typing (US layout), and a status
+    bar like VS Code's ("Ln 25, Col 1 (61 selected)"). Typing replaces a selection; auto-indent and
+    auto-closing are off, as README section 7 asks."""
+
+    VISIBLE = 30                                   # rows on the screen
+
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = list(lines) or [""]
+        self.row, self.col = 0, 0                  # cursor, 0-based
+        self.anchor: tuple[int, int] | None = None # selection start
+        self.goto: str | None = None               # digits in the Go to Line box while it is open
+        self.top = 0                               # first row on the screen
+
+    # ---- what the screen shows
+    def selection(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        if self.anchor is None or self.anchor == (self.row, self.col):
+            return None
+        a, b = sorted([self.anchor, (self.row, self.col)])
+        return a, b
+
+    def selected_chars(self) -> int:
+        s = self.selection()
+        if s is None:
+            return 0
+        (r1, c1), (r2, c2) = s
+        if r1 == r2:
+            return c2 - c1
+        return len(self.lines[r1]) - c1 + 1 + sum(len(self.lines[r]) + 1 for r in range(r1 + 1, r2)) + c2
+
+    def status(self) -> str:
+        n = self.selected_chars()
+        return f"Ln {self.row + 1}, Col {self.col + 1}" + (f" ({n} selected)" if n else "")
+
+    def visible(self) -> list[tuple[int, str]]:
+        return [(r + 1, self.lines[r]) for r in range(self.top, min(len(self.lines), self.top + self.VISIBLE))]
+
+    def transcription(self) -> str:
+        return "\n".join(f"{n} {line}" for n, line in self.visible())
+
+    # ---- input
+    def key(self, mods: int, usage: int) -> None:
+        ctrl, shift = bool(mods & _CTRL), bool(mods & _SHIFT)
+        ch = _REVERSE.get((usage, shift))
+        if self.goto is not None:                  # the Go to Line box has the keyboard
+            if usage == KEYS["enter"]:
+                if self.goto:
+                    self.row, self.col = min(int(self.goto), len(self.lines)) - 1, 0
+                    self.anchor = None
+                    self._reveal(centre=True)
+                self.goto = None
+            elif usage == KEYS["esc"]:
+                self.goto = None
+            elif usage == KEYS["backspace"]:
+                self.goto = self.goto[:-1]
+            elif not ctrl and ch is not None and ch.isdigit():
+                self.goto += ch
+            return
+        if ctrl:
+            if usage == KEYS["g"]:
+                self.goto = ""
+            elif usage == KEYS["l"]:
+                self._expand_line()
+            return
+        if usage == KEYS["esc"]:
+            self.anchor = None
+        elif usage == KEYS["backspace"]:
+            self._backspace()
+        elif usage == KEYS["enter"]:
+            self._insert("\n")
+        elif ch is not None and ch not in "\n\t":
+            self._insert(ch)
+
+    def _reveal(self, centre: bool = False) -> None:
+        if not self.top <= self.row < self.top + self.VISIBLE:
+            self.top = max(0, self.row - (self.VISIBLE // 2 if centre else self.VISIBLE - 1))
+
+    def _expand_line(self) -> None:
+        if self.selection() is None:
+            self.anchor = (self.row, 0)
+        if self.row + 1 < len(self.lines):
+            self.row, self.col = self.row + 1, 0
+        else:
+            self.col = len(self.lines[self.row])
+        self._reveal()
+
+    def _delete_selection(self) -> bool:
+        s = self.selection()
+        self.anchor = None
+        if s is None:
+            return False
+        (r1, c1), (r2, c2) = s
+        self.lines[r1:r2 + 1] = [self.lines[r1][:c1] + self.lines[r2][c2:]]
+        self.row, self.col = r1, c1
+        return True
+
+    def _insert(self, text: str) -> None:
+        self._delete_selection()
+        line = self.lines[self.row]
+        parts = text.split("\n")
+        if len(parts) == 1:
+            self.lines[self.row] = line[:self.col] + text + line[self.col:]
+            self.col += len(text)
+        else:
+            new = [line[:self.col] + parts[0], *parts[1:-1], parts[-1] + line[self.col:]]
+            self.lines[self.row:self.row + 1] = new
+            self.row, self.col = self.row + len(parts) - 1, len(parts[-1])
+        self._reveal()
+
+    def _backspace(self) -> None:
+        if self._delete_selection():
+            return
+        if self.col:
+            line = self.lines[self.row]
+            self.lines[self.row] = line[:self.col - 1] + line[self.col:]
+            self.col -= 1
+        elif self.row:
+            prev = self.lines[self.row - 1]
+            self.lines[self.row - 1:self.row + 1] = [prev + self.lines[self.row]]
+            self.row, self.col = self.row - 1, len(prev)
+        self._reveal()
 
 
 class SimDesktop:
-    def __init__(self, width: int = 1920, height: int = 1080, bars: tuple[int, int] = (0, 0)) -> None:
+    def __init__(self, width: int = 1920, height: int = 1080, bars: tuple[int, int] = (0, 0),
+                 editor_lines: list[str] | None = None) -> None:
         self.frame_w, self.frame_h = width, height
         self.bar_x, self.bar_y = bars               # simulated GPU pillarbox/letterbox
         self.desk_w = width - 2 * self.bar_x
@@ -38,6 +165,7 @@ class SimDesktop:
         self.keys_down: tuple[int, ...] = ()
         self.combos: list[tuple[int, tuple[int, ...]]] = []
         self.version = 0
+        self.editor = SimEditor(editor_lines) if editor_lines is not None else None   # VS Code instead of Notepad
 
     def cursor_px(self) -> tuple[int, int]:
         ax, ay = self.abs_pos
@@ -55,7 +183,9 @@ class SimDesktop:
                 shift = bool(mods & (P.MOD_LSHIFT | P.MOD_RSHIFT))
                 plain = not (mods & ~(P.MOD_LSHIFT | P.MOD_RSHIFT))
                 for k in new:
-                    if k == 0x2A and plain:
+                    if self.editor is not None:
+                        self.editor.key(mods, k)
+                    elif k == 0x2A and plain:
                         self.text = self.text[:-1]
                     elif plain and (k, shift) in _REVERSE:
                         self.text += _REVERSE[(k, shift)]
@@ -85,12 +215,23 @@ class SimDesktop:
             desk[:] = (110, 80, 40)                                         # desktop blue
             cv2.rectangle(desk, (80, 80), (1400, 900), (245, 245, 245), -1)  # window
             cv2.rectangle(desk, (80, 80), (1400, 130), (60, 60, 60), -1)
-            cv2.putText(desk, "Simulated locked computer - Notepad", (100, 115),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-            y = 180
-            for line in (self.text.split("\n")[-20:] or [""]):
-                cv2.putText(desk, line, (100, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2, cv2.LINE_AA)
-                y += 36
+            title = "Simulated locked computer - " + ("VS Code" if self.editor else "Notepad")
+            cv2.putText(desk, title, (100, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+            if self.editor is None:
+                y = 180
+                for line in (self.text.split("\n")[-20:] or [""]):
+                    cv2.putText(desk, line, (100, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2, cv2.LINE_AA)
+                    y += 36
+            else:
+                ed = self.editor
+                y = 160
+                for n, line in ed.visible():
+                    cv2.putText(desk, f"{n:>4}", (90, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (140, 140, 140), 1, cv2.LINE_AA)
+                    cv2.putText(desk, line, (160, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (20, 20, 20), 1, cv2.LINE_AA)
+                    y += 24
+                cv2.rectangle(desk, (80, 870), (1400, 900), (200, 120, 0), -1)        # status bar
+                cv2.putText(desk, ed.status() + ("   Go to line: " + ed.goto if ed.goto is not None else ""),
+                            (1000, 892), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
             bx, by, bw, bh = BUTTON_RECT
             colour = (60, 160, 60) if self.button_presses % 2 else (60, 60, 200)
             cv2.rectangle(desk, (bx, by), (bx + bw, by + bh), colour, -1)

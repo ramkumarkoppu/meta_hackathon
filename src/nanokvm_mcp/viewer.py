@@ -252,11 +252,13 @@ class ViewStats:
         self.delays_ms: collections.deque[float] = collections.deque(maxlen=20_000)
         self._recent: collections.deque[float] = collections.deque(maxlen=120)   # monotonic show times
         self._last_new: float | None = None
+        self.scale = 1.0                 # shown size / streamed size of the last picture
 
     def record(self, pic: Picture) -> None:
         now = time.monotonic()
         self.shown += 1
         self._recent.append(now)
+        self.scale = pic.width / max(1, pic.frame_size[0])
         if pic.placeholder:
             self.placeholders += 1
             return
@@ -322,6 +324,8 @@ def video_line(status: dict | None, status_error: str | None, feed, stats: ViewS
     delay = stats.recent_delay()
     if delay is not None:
         parts.append(f"delay {delay:.0f} ms")
+    if stats.scale < 0.98:                         # fitted into a smaller window: small text gets softer
+        parts.append(f"shown at {stats.scale:.0%} (press 1 for actual pixels)")
     colour = OK_FG
     if cap.get("blank"):
         parts.append("the picture is uniform: no HDMI signal, display asleep, or a blank screen?")
@@ -373,7 +377,7 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
         share = ("Claude screen sharing: ?" if n is None else "Claude screen sharing: off" if n == 0
                  else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
         if status.get("local_shares_active"):
-            share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask)"
+            share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask/edit)"
     keys = "read-only · F11 full screen, 1 actual pixels, Q quit"
     return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
 
