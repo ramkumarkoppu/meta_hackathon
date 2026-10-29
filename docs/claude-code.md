@@ -5,7 +5,9 @@ VS Code on the AI computer** see the locked computer's screen and, when allowed,
 mouse, through an MCP server called `locked-computer`. It is in the `pre-event-baseline` commit, it
 still works, and it shares the NanoKVM service with the Meta-model pipeline. It is **not part of the
 hackathon entry**: see the [README](../README.md) for the entry and [HACKATHON.md](../HACKATHON.md) for
-what was built when.
+what was built when. During the event it changed only for the renames (*Work laptop* became the
+locked computer, and the MCP server `work-laptop` became `locked-computer`) and for the `locked_os`
+setting, which tells Claude the locked computer's OS and shortcuts.
 
 ## 1. Connect to Claude Code in VS Code
 
@@ -30,15 +32,18 @@ gets as close as Claude Code allows:
 | Protection | How |
 |------------|-----|
 | Claude acts only when you allow it | There are **two gates**. **Physical:** the keyboard/mouse only work while cable 4 is plugged in; unplug it and the setup is view-only. **Per action:** Claude Code asks you before **every** click or keypress, even in auto mode (`confirm_actions = true`). |
-| One approval to share the screen | Claude's screen tools work only after Claude calls `start_screen_sharing`, which **always** asks you, even in auto mode. Once you approve, that conversation can take screenshots, zoom and wait for changes without further prompts. Sharing lasts as long as Claude asks for in that call: **60 minutes** by default (`share_minutes`), at most 480, so check the number in the prompt. It ends sooner if you say stop and Claude calls `stop_screen_sharing`, or when the service stops. When sharing is off, the service refuses captures requested by Claude's tools. The `nanokvm` command and the live view aren't gated ([section 5](#5-tools-claude-gets)). |
+| One approval to share the screen | Claude's screen tools work only after Claude calls `start_screen_sharing`, which **always** asks you, even in auto mode. Once you approve, that conversation can take screenshots, zoom and wait for changes without further prompts. Sharing lasts as long as Claude asks for in that call: **60 minutes** by default (`share_minutes`), at most 480, so check the number in the prompt. It ends sooner if you say stop and Claude calls `stop_screen_sharing`, or when the service stops. When sharing is off, the service refuses captures requested by Claude's tools. The `nanokvm` command's `screenshot`, `watch` and `diag` and the live views aren't gated by this ([section 5](#5-tools-claude-gets)); `nanokvm read`, `ask` and `edit` ask at the console to share the screen with Muse Glimmer. |
 | Claude sees only one screen | Only Monitor A (the screen wired through the NanoKVM) is captured. The locked computer's built-in screen and everything on the AI computer's desk are never seen. |
 
 **What leaves for Anthropic:** every image Claude gets is sent to Anthropic as part of the
 conversation. While sharing is on, that means screenshots, zooms, `wait_for_change` results and the
 screenshot after each action. Claude can also open the screenshots that the `nanokvm` command saves
-in `.run\` at any time, so delete them when you're done. Keep anything you may not share off
-Monitor A while sharing is on. Use this bridge only with the approval of whoever owns the locked
-computer and its data.
+in `.run\` at any time, so delete them when you're done. It can read the other files in `.run\` too,
+and whatever it reads goes to Anthropic: the audit log of what was sent to Muse Spark
+(`outbound.log`, with redacted screen text and Spark's replies), your redaction terms
+(`redact_terms.txt`) and the API keys (`meta_api_key`, `llama_api_key`). `.claude\settings.local.json`
+has no rules that deny reading them yet. Keep anything you may not share off Monitor A while sharing
+is on. Use this bridge only with the approval of whoever owns the locked computer and its data.
 
 ## 4. Asking Claude
 
@@ -125,6 +130,7 @@ These go in `nanokvm.toml` like the others ([README section 9](../README.md#9-se
 | Claude says the `locked-computer` tools don't exist | Open `E:\meta_hackathon` in VS Code and start a new conversation. Check `/mcp`. If it shows the server failed, run `.venv\Scripts\python.exe -m nanokvm_mcp.mcp_server` in a terminal to see the error (Ctrl+C quits); a bad value in `nanokvm.toml` is the usual cause. |
 | `coordinate space changed … take a new screenshot` | Expected after `calibrate` or a resolution change. |
 | `keyboard/mouse busy` | Another conversation, `nanokvm edit`, or a long `type_text` is using it. Wait, or call `release_all`. |
+| Letters come out in the wrong case | Caps Lock is shared with the locked computer's own keyboard. Typing allows for it only when the NanoKVM reports it, so switch Caps Lock off. |
 | Clicks land on the wrong screen | Make Monitor A the **main display** ([README section 4](../README.md#4-locked-computer-settings)). If clicks are offset on the right screen, ask Claude to run `calibrate`. |
 | Screenshot text is blurry | Run Monitor A at 1920x1080. Ask Claude to use `zoom`. |
 | The token went out in a `screen_status` result | It never changes by itself. To replace it, run `nanokvm stop` and delete `.run\token`; the next start makes a new one. |

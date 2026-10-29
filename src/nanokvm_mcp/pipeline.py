@@ -16,9 +16,9 @@ from typing import Callable
 from . import editing as E
 from .client import ServiceClient
 from .config import Config
-from .glimmer import SYSTEM, GlimmerClient
-from .outbound import Answer, OutboundGate, Prepared
-from .spark import SparkClient
+from .glimmer import SYSTEM, GlimmerClient, GlimmerError
+from .outbound import Answer, OutboundBlocked, OutboundGate, Prepared
+from .spark import SparkClient, SparkError
 
 ASK_SYSTEM = ("You help a developer with what is on their screen. The user's message has their question, then "
               "<screen_text>: lines read from the screen, with line numbers where the editor shows them. "
@@ -141,7 +141,8 @@ class Pipeline:
 
     # ---- editing (milestone 2)
     def read_lines(self, rect: tuple[float, float, float, float] | None = None) -> dict[int, str]:
-        return E.numbered_lines(self.read("code", rect).text)
+        """The numbered lines on the screen, leaving out any whose reading is ambiguous (strict)."""
+        return E.numbered_lines(self.read("code", rect).text, strict=True)
 
     def _read_crop(self, fx: float, fy: float, fw: float, fh: float, reader) -> str:
         """Glimmer's reading of a part of the screen given in fractions of its width and height."""
@@ -167,19 +168,21 @@ class Pipeline:
              on_event: Callable[[str], None] | None = None) -> EditResult:
         """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
         the person approves into VS Code, checking the screen before and after. Stops at the first edit
-        that can't be checked."""
+        whose checks fail. If a later request fails after an edit was typed, the session report is still
+        returned, with ``stopped`` saying why."""
         say = on_event or (lambda _m: None)
         if self.cfg.outbound == "local_only":
             raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
         if not self.cfg.control:
             raise EditError("keyboard/mouse control is off (control = false in nanokvm.toml)")
         reading = self.read("code", rect)
-        screen = E.numbered_lines(reading.text)
+        screen = E.numbered_lines(reading.text, strict=True)
         if not screen:
             raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
-                                     select_line_key="cmd+l" if mac else "ctrl+l")
+                                     select_line_key="cmd+l" if mac else "ctrl+l",
+                                     chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len))
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"))
         result = EditResult(reading, prepared, "")
@@ -190,8 +193,14 @@ class Pipeline:
                 result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
                 break
             say("asking Muse Spark" if not result.turns else "telling Muse Spark the result")
-            answer = gate.ask(prepared, E.EDIT_SYSTEM, tools=[E.APPLY_EDIT], parallel_tool_calls=False,
-                              history=history)
+            try:
+                answer = gate.ask(prepared, E.EDIT_SYSTEM, tools=[E.APPLY_EDIT], parallel_tool_calls=False,
+                                  history=history)
+            except (OutboundBlocked, SparkError, GlimmerError) as e:
+                if not typed:
+                    raise                               # nothing was typed: the caller reports it
+                result.stopped = f"{type(e).__name__}: {e}"
+                break
             result.turns += 1
             result.cost_usd += answer.reply.cost_usd
             if not answer.tool_calls:
@@ -202,12 +211,19 @@ class Pipeline:
                             "tool_calls": [{"id": c["id"], "type": "function",
                                             "function": {"name": c["name"], "arguments": c["arguments"]}} for c in raw]})
             stop = False
-            for call in answer.tool_calls:
-                record = self._one_edit(call, screen, approve_edit, typer, stop or typed >= E.MAX_EDITS, say)
+            for i, call in enumerate(answer.tool_calls):
+                if i:                                   # its line numbers may be stale after the first edit
+                    history.append({"role": "tool", "tool_call_id": call["id"], "content": (
+                        "Not applied: one edit per reply. Send it again, with the line numbers after the edit "
+                        "above, once you have its result.")})
+                    continue
+                record = self._one_edit(call, screen, prepared.mapping, approve_edit, typer,
+                                        stop or typed >= E.MAX_EDITS, say)
                 history.append({"role": "tool", "tool_call_id": call["id"], "content": record.told_spark})
                 result.edits.append(record)
                 if record.outcome is not None:
-                    typed += 1
+                    if record.outcome.status != "not_applied":
+                        typed += 1
                     if record.outcome.status == "verified":
                         screen = record.outcome.screen or screen
                     else:
@@ -217,21 +233,22 @@ class Pipeline:
                 break
         return result
 
-    def _one_edit(self, call: dict, screen: dict[int, str], approve_edit: Callable[[E.EditPlan], bool],
-                  typer: E.EditTyper, skip: bool, say: Callable[[str], None]) -> EditRecord:
+    def _one_edit(self, call: dict, screen: dict[int, str], mapping: dict[str, str] | None,
+                  approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper, skip: bool,
+                  say: Callable[[str], None]) -> EditRecord:
         if call["name"] != "apply_edit":
             return EditRecord(None, False, None, f"Unknown tool {call['name']!r}; only apply_edit exists.")
         if skip:
             return EditRecord(None, False, None, "Not applied: no more edits in this session. Stop editing.")
         try:
-            plan = E.plan_edit(call["arguments"], screen, self.cfg.keyboard_layout)
+            plan = E.plan_edit(call["arguments"], screen, self.cfg.keyboard_layout, mapping)
         except E.EditRejected as e:
             say(f"Spark's edit can't be typed: {e}")
             return EditRecord(None, False, None, f"Not applied: {e}.")
         plan.select_key = typer.select_line_key
         if not approve_edit(plan):
             return EditRecord(plan, False, None, "Not applied: the user declined this edit.")
-        say(f"typing the edit to line(s) {plan.span()}")
+        say(f"typing the edit ({plan.span()})")
         try:
             outcome = typer.apply(plan)
         except Exception as e:  # noqa: BLE001  (service or HID error part-way: the file state is unknown)

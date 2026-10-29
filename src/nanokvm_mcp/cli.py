@@ -213,16 +213,43 @@ def cmd_diag(cl: ServiceClient, args) -> int:
     return 0 if ok else 1
 
 
+def _drain_typeahead() -> None:
+    """Throw away keys typed before a prompt appeared, so an earlier 'y' or Enter can't answer it."""
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+            while msvcrt.kbhit():
+                msvcrt.getwch()
+        else:
+            import termios
+            termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except Exception:  # noqa: BLE001  (best effort: not a console)
+        pass
+
+
 def _console_yes(prompt: str) -> bool:
-    """Approval from the person at the keyboard. There is deliberately no --yes: a script, or an AI
-    running commands without a terminal, can't approve."""
+    """Approval from the person at the keyboard. There is deliberately no --yes, and nothing is approved
+    without a terminal, so a script or a tool running commands can't approve by accident. This guards against
+    mistakes; it isn't a security boundary (a program that drives a terminal can type 'y')."""
     if not sys.stdin.isatty():
         _out("This needs your approval at the keyboard: run it in a terminal.")
         return False
+    _drain_typeahead()
     try:
         return input(prompt + " [y/N] ").strip().lower() in ("y", "yes")
     except EOFError:
         return False
+
+
+def _shown(text: str) -> str:
+    """Model or screen text for the terminal, with control characters shown as escapes."""
+    from .editing import safe_text
+    return safe_text(text, multiline=True)
+
+
+def _approve_send(text: str) -> bool:
+    _out("\n--- exactly this text would go to Muse Spark (Meta) ---\n" + _shown(text) + "\n--- end ---")
+    return _console_yes("Send it?")
 
 
 def _region(text: str | None) -> tuple[float, float, float, float] | None:
@@ -280,7 +307,7 @@ def cmd_read(cl: ServiceClient, args) -> int:
     except GlimmerError as e:
         _out(f"error: {e}")
         return 2
-    _out(r.text)
+    _out(_shown(r.text))
     f = r.frame
     _out(f"\n(read by Muse Glimmer on this laptop in {r.seconds:.1f} s from a {f['width']}x{f['height']} frame, "
          f"{f['visual_tokens']} image tokens; nothing left this laptop and the frame wasn't saved)")
@@ -299,15 +326,10 @@ def cmd_ask(cl: ServiceClient, args) -> int:
     cfg = cl.cfg
     if args.local_only:
         cfg.outbound = "local_only"
-    elif args.approve:
+    elif args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
-
-    def approve_send(text: str) -> bool:
-        _out("\n--- exactly this text would go to Muse Spark (Meta) ---\n" + text + "\n--- end ---")
-        return _console_yes("Send it?")
-
     try:
-        with Pipeline(cfg, approve_share=_share_prompt, approve_send=approve_send, stand_in=args.stand_in) as pipe:
+        with Pipeline(cfg, approve_share=_share_prompt, approve_send=_approve_send, stand_in=args.stand_in) as pipe:
             pipe.open(args.minutes)
             res = pipe.ask(args.question, _region(args.region))
     except PermissionError:
@@ -319,7 +341,7 @@ def cmd_ask(cl: ServiceClient, args) -> int:
     except (GlimmerError, SparkError) as e:
         _out(f"error: {e}")
         return 2
-    _out(res.answer)
+    _out(_shown(res.answer))
     if res.local_only:
         _out("\n(answered by Muse Glimmer on this laptop; nothing was sent)")
     else:
@@ -332,12 +354,14 @@ def cmd_ask(cl: ServiceClient, args) -> int:
 
 
 def _approve_edit(plan) -> bool:
-    _out(f"\n--- Muse Spark's edit to line(s) {plan.span()}: {plan.note or '(no note)'} ---")
-    _out(plan.diff() or "(no visible change)")
+    _out(f"\n--- Muse Spark's edit: {plan.span()} ('-' lines go, '+' lines come in their place) ---")
+    _out(plan.diff())
     _out("--- keys sent to the locked computer ---")
     for i, step in enumerate(plan.steps(), 1):
         _out(f"  {i}. {step}")
-    _out("VS Code on the locked computer must have the file focused, with its status bar showing.")
+    _out(f"Spark's note: {plan.note or '(none)'}")
+    _out("VS Code on the locked computer must have the file focused, with its status bar showing. Don't use its "
+         "keyboard or mouse while the edit is typed; Ctrl+C here stops it.")
     return _console_yes("Type this edit?")
 
 
@@ -347,15 +371,10 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     from .pipeline import EditError, Pipeline
     from .spark import SparkError
     cfg = cl.cfg
-    if args.approve:
+    if args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
-
-    def approve_send(text: str) -> bool:
-        _out("\n--- exactly this text would go to Muse Spark (Meta) ---\n" + text + "\n--- end ---")
-        return _console_yes("Send it?")
-
     try:
-        with Pipeline(cfg, approve_share=_share_prompt, approve_send=approve_send, stand_in=args.stand_in) as pipe:
+        with Pipeline(cfg, approve_share=_share_prompt, approve_send=_approve_send, stand_in=args.stand_in) as pipe:
             pipe.open(args.minutes)
             res = pipe.edit(args.request, _region(args.region), approve_edit=_approve_edit,
                             on_event=lambda m: _out(f"... {m}"))
@@ -378,14 +397,14 @@ def cmd_edit(cl: ServiceClient, args) -> int:
         if rec.plan is None:
             _out(f"- not shown: {rec.told_spark}")
         elif not rec.approved:
-            _out(f"- line(s) {rec.plan.span()}: declined")
+            _out(f"- {rec.plan.span()}: declined")
         else:
-            _out(f"- line(s) {rec.plan.span()}: {rec.outcome.status} ({rec.outcome.detail})")
+            _out(f"- {rec.plan.span()}: {rec.outcome.status} ({rec.outcome.detail})")
     if res.summary:
-        _out("\n" + res.summary)
+        _out("\n" + _shown(res.summary))
     if res.stopped:
-        _out(f"\nStopped early: {res.stopped}")
-    typed = sum(1 for r in res.edits if r.outcome is not None)
+        _out(f"\nStopped early: {_shown(res.stopped)}")
+    typed = sum(1 for r in res.edits if r.outcome is not None and r.outcome.status != "not_applied")
     _out(f"\n({typed} edit(s) typed, {sum(1 for r in res.edits if r.outcome and r.outcome.status == 'verified')} "
          f"checked on the screen; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
          f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")

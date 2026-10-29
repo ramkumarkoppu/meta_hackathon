@@ -28,13 +28,16 @@ DESCRIBE_PROMPT = ("Describe what is on this screen: the application, the file o
                    "or errors. Quote short on-screen text exactly. Be concise.")
 ERRORS_PROMPT = ("List every compiler error and warning line in this screenshot exactly as shown, one per line, "
                  "with nothing else. If there are none, output NONE.")
+# No example readings in these two: a model that can't read the screen may copy an example, and these readings
+# decide whether keys are typed.
 STATUS_PROMPT = ("This is the bottom edge of a screen with a VS Code window. Copy the cursor position from VS Code's "
-                 "status bar exactly as shown, for example 'Ln 23, Col 1' or 'Ln 25, Col 1 (61 selected)'. Output "
-                 "only that text, or NONE if no status bar with a cursor position is visible.")
-BOX_PROMPT = ("This is the top of a screen with a VS Code window. If a VS Code quick-input box is open there, output "
-              "on the first line exactly the text typed in its input field (for example ':' for Go to Line, or "
-              "nothing if it is empty), and on the second line its hint or first item. Output only those two "
-              "lines, or NONE if no quick-input box is open.")
+                 "status bar exactly as shown: the text that starts with 'Ln', with its line and column numbers and "
+                 "any selection count in brackets after them. Output only that text, or NONE if no status bar with "
+                 "a cursor position is visible.")
+BOX_PROMPT = ("This is the top of a screen with a VS Code window. If a VS Code quick-input box (an input field that "
+              "drops down near the top centre of the window) is open, output on the first line exactly the "
+              "characters typed in its input field, or EMPTY if it is empty, and on the second line its hint or "
+              "first item. Output only those two lines, or NONE if no quick-input box is open.")
 MINIMISE_PROMPT = ("Below are lines of text read from a screen, then a question about them. Copy out only the "
                    "lines needed to answer the question, unchanged and in their original order, each with its "
                    "line number if it has one. For code, copy the whole function or block that contains them, "

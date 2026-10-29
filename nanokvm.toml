@@ -1,21 +1,33 @@
-# Settings for the locked-computer NanoKVM bridge. Every line is optional; the values shown
-# (commented out) are the defaults, or examples where the comment names the default or says
-# when to use them. A misspelt name is ignored without warning, so check the spelling.
+# Settings for `nanokvm read`, `ask` and `edit` and the NanoKVM service they use (README section 9),
+# and for the Claude Code bridge built before the event (docs\claude-code.md). Every line is optional;
+# the values shown (commented out) are the defaults, or examples where the comment names the default
+# or says when to use them. A misspelt name is ignored without warning, so check the spelling.
 # Environment variables NANOKVM_<NAME> override this file. Every setting: src\nanokvm_mcp\config.py.
-# After editing: run `.venv\Scripts\nanokvm.exe stop` (the service restarts on the next tool call)
-# and start a new Claude Code conversation (its MCP server reads this file only when it starts).
+# After editing: run `.venv\Scripts\nanokvm.exe stop` (the service restarts when it's next needed).
+# For the Claude Code bridge, also start a new Claude Code conversation (its MCP server reads this
+# file only when it starts).
+
+# --- Muse Glimmer and Muse Spark (README sections 2 and 9) ---
+# outbound = "auto"              # text for Muse Spark: "auto" (send after redaction), "approve" (show it and
+                                 # ask first) or "local_only" (send nothing)
+# meta_billing = "free_credits"  # only stand-in content (--stand-in) may go to Meta; "paid" once Billing is
+                                 # pay as you go
+# spark_model = "muse-spark-1.3" # a Standard model ID; -contributor IDs are refused
+# meta_budget_usd = 25.0         # stop sending once the audit log (.run\outbound.log) adds up to this much
+# glimmer_port = 8001            # the local llama-server (always 127.0.0.1), started by tools\run-glimmer.ps1
 
 # --- keyboard / mouse ---
-# SECURE MODE: Claude may type/click on the locked computer, but
-#   * only while the NanoKVM's TARGET USB-C (cable 4) is plugged in - unplug it = physically view-only;
-#   * Claude Code asks you before EVERY keyboard/mouse action, even in auto mode (confirm_actions).
-# For strict view-only, set control = false, run `nanokvm stop` and start a new Claude conversation.
+# control = false makes the setup view-only: `nanokvm edit` refuses, and the service refuses
+# keyboard/mouse requests from any program. With control = true, keys reach the locked computer only
+# while the NanoKVM's TARGET USB-C (cable 4) is plugged in (unplug it and the setup is physically
+# view-only). `nanokvm edit` types only edits you approve at its prompt, and the Claude Code bridge
+# asks you in Claude Code before every keyboard/mouse action, even in auto mode (confirm_actions).
 control = true
 confirm_actions = true
 keyboard_layout = "uk"       # layout set on the locked computer: "uk" or "us" (PC layouts; on a Mac use "us")
-# locked_os = "windows"      # the locked computer's OS: "windows", "macos" or "linux" (Claude uses its shortcuts)
+# locked_os = "windows"      # the locked computer's OS: "windows", "macos" or "linux" (edit and Claude use its shortcuts)
 # serial_port = "COM5"       # default: auto-detect the NanoKVM's serial port by serial_ids (below)
-serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other NanoKVM-USB units) and CH343 (this unit; its edition is unconfirmed)
+serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other NanoKVM-USB units) and CH343 (this unit, a Standard edition)
 
 # --- video ---
 # capture_width = 1920

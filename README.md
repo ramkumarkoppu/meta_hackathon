@@ -1,16 +1,18 @@
 # AI help for a locked computer: Muse Glimmer and Muse Spark through a NanoKVM-USB
 
-Some computers can't run AI software at all: a locked-down work laptop, a lab PC, a machine on a
-separate network. This project gives such a computer AI help without installing anything on it. A
-Sipeed **NanoKVM-USB** sits between it, the **locked computer**, and a second computer, the
-**AI computer**:
+Some computers may not run AI software: a locked-down work laptop, a lab PC, a machine on a separate
+network. With the approval of whoever owns such a computer and its data, this project gives it AI help
+without installing anything on it and without getting around any of its controls. To that computer,
+the Sipeed **NanoKVM-USB** is just a monitor and a USB keyboard and mouse; if a policy blocks new USB
+keyboards, typing simply isn't available. The NanoKVM-USB sits between it, the **locked computer**, and a second
+computer, the **AI computer**:
 
 1. **Capture.** The NanoKVM-USB passes the locked computer's HDMI picture to the AI computer as a USB
    video device. Nothing is installed on the locked computer.
 2. **Read locally.** Meta's open-weights **Muse Glimmer** runs on the AI computer's GPU (llama.cpp)
-   and reads the screen: code with its line numbers, a description, or the error messages. Screen
-   images never leave the AI computer.
-3. **Redact.** Keys, tokens, passwords, email addresses, hostnames and your own sensitive terms are
+   and reads the screen: code with its line numbers, a description, or the error messages. In this
+   pipeline, screen images never leave the AI computer.
+3. **Redact.** Keys, tokens, passwords, email addresses, common hostnames and the terms you list are
    replaced with placeholders, Glimmer trims the text to what the question needs, and it is redacted
    again.
 4. **Ask the cloud.** Only that redacted text goes to **Muse Spark** through Meta's Model API
@@ -18,9 +20,24 @@ Sipeed **NanoKVM-USB** sits between it, the **locked computer**, and a second co
 5. **Act, with your approval.** You approve each edit at the keyboard. It is typed into VS Code on the
    locked computer through the NanoKVM-USB's keyboard, and Glimmer reads the screen again to check it.
 
+**Status (29 Oct).** All five steps are built and pass their tests on a simulated locked computer, with
+a fake Glimmer and a fake Meta API. With the real Glimmer and Spark, `read` and `ask` have run on
+simulated screens. On the real hardware, capture and the live view work; Glimmer reading a real
+capture and typing over cable 4 are the next tests ([section 12](#12-files-and-testing-without-hardware)).
+
 **Hackathon entry.** This repo is my solo entry in the Meta Global AI Developer Hackathon (Indie
-Developer track). The NanoKVM bridge existed before the event; the Meta-model pipeline above was
-built during it. [HACKATHON.md](HACKATHON.md) says exactly what was built before and during the event.
+Developer track).
+
+- **Built before the event** (7–25 Oct, git tag `pre-event-baseline`): the NanoKVM service (capture,
+  keyboard and mouse), the `nanokvm` command's `diag`, `status`, `screenshot` and `watch`, the browser
+  live view, the local Glimmer server setup (llama.cpp, the weights, `tools\run-glimmer.ps1` and the
+  smoke tests), a smoke test for the Meta Model API, and a Claude Code bridge that isn't part of the
+  entry.
+- **Built during the event:** Glimmer reading and checking the screen (`glimmer.py`), redaction and
+  the outbound gate, the Spark client, `nanokvm read`, `ask` and `edit`, and the viewer window.
+
+[HACKATHON.md](HACKATHON.md) has the details. Demos use a stand-in PC showing dummy code, never a real
+work computer.
 
 ---
 
@@ -44,7 +61,7 @@ built during it. [HACKATHON.md](HACKATHON.md) says exactly what was built before
 12. [Files and testing without hardware](#12-files-and-testing-without-hardware)
 
 **Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
-[Hackathon plan](docs/hackathon-plan.md) ·
+[Hackathon plan (written before the event; statuses as of 24 Oct)](docs/hackathon-plan.md) ·
 [Claude Code bridge (built before the event)](docs/claude-code.md)
 
 ---
@@ -111,24 +128,27 @@ for the Windows CUDA build of llama.cpp. Running it elsewhere is future work
 
 | What | Where it goes |
 |------|---------------|
-| The screen picture | **Nowhere.** Muse Glimmer reads it on the AI computer's GPU. The pipeline never writes a frame to disk: each frame is dropped as soon as Glimmer has read it, the service zeroes its pixel copies, Glimmer's thinking text is discarded, and its server is flushed after every image. |
+| The screen picture | **Nowhere**, with `read`, `ask` and `edit`: Muse Glimmer reads it on the AI computer's GPU. The pipeline never writes a frame to disk: each frame is dropped as soon as Glimmer has read it, the service zeroes its pixel copies, Glimmer's thinking text is discarded, and its server is flushed after every image. |
 | Redacted text | To Muse Spark through Meta's Model API, only through the outbound gate below. |
 | Spark's answer and edits | Back to the AI computer, where placeholders are restored. Edits are typed only after you approve each one ([section 6](#6-using-it-read-ask-and-edit)). |
 | A record of both | `.run\outbound.log` on the AI computer: exactly what was sent and received. It holds redacted screen text, so treat it as sensitive. |
+| Screenshots, with the Claude Code bridge | To Anthropic, but only once you approve sharing in a Claude Code conversation. The bridge was built before the event and isn't part of the entry ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)). Don't share a real locked computer with it unless its owner has approved Anthropic too. |
 
 **The outbound gate** (`src\nanokvm_mcp\outbound.py`) is the only path from screen text to Meta:
 
 1. **Redaction** replaces private keys, API keys (AWS, GitHub, Slack, Google, Meta, `sk-…`), JWTs,
    passwords and secrets in `key = value` form, URLs, email addresses, network (UNC) paths, user names
-   in `C:\Users\…` and `/home/…` paths, IP and MAC addresses, card numbers (Luhn-checked), hostnames
-   and long random tokens with placeholders such as `[[EMAIL_1]]`, plus any terms you list in
-   `.run\redact_terms.txt`. The patterns are narrow, so ordinary code survives (`std::vector<int>`,
-   `a->b`, `0x2A`).
+   in `C:\Users\…` and `/home/…` paths, IP and MAC addresses, card numbers (Luhn-checked), long random
+   tokens, and lower-case hostnames ending in `.com`, `.org`, `.gov`, `.edu`, `.mil`, `.local`,
+   `.corp`, `.internal`, `.intranet`, `.lan` or a `.uk` domain, with placeholders such as
+   `[[EMAIL_1]]`, plus any terms you list in `.run\redact_terms.txt`. The patterns are narrow, so
+   ordinary code survives (`std::vector<int>`, `a->b`, `0x2A`). Names, project code words and other
+   hostnames or machine names look like ordinary text: list them in `.run\redact_terms.txt`.
 2. **Trimming.** Glimmer copies out only the lines the question needs. The excerpt is rebuilt from the
    redacted lines themselves, so it can only contain text that was on the screen.
 3. **A second redaction pass**, with the same placeholders.
 4. **Checks**, any of which stops the send: `outbound = "local_only"`; free credits (below); a redacted
-   value still present; an image or `data:` URL; more than `outbound_max_chars`; the logged spend
+   value still present; an inline image (`data:image`); more than `outbound_max_chars`; the logged spend
    reaching `meta_budget_usd`; `.run\outbound.halt` (written when a reply came from an unexpected
    model); and, with `outbound = "approve"`, you declining after seeing the exact text.
 5. **Sending.** The exact text is logged, then sent with `store: false` to a Standard model
@@ -147,7 +167,10 @@ improvement". While `meta_billing = "free_credits"`, only stand-in or dummy cont
 
 **What goes into the locked computer:** no network, no software, no drivers. HDMI carries the picture
 *out*; the only thing that goes back is the monitor identification (EDID) every monitor sends.
-Cable 4 carries only keyboard and mouse input, and keystrokes are sent only for an edit you approved.
+Cable 4 carries only keyboard and mouse input; the NanoKVM can send keystrokes but never read them.
+`nanokvm edit` types only edits you approve at its prompt. The service itself accepts keystrokes from
+any program that can read `.run\token` ([section 10](#10-safety-details)), including the Claude Code
+bridge, which asks you in Claude Code before each action.
 **Physical switches:** unplug cable 4 and nothing can be typed; unplug cable 3 and the AI computer can
 neither see nor type (Monitor A goes dark too). Only Monitor A, the screen wired through the NanoKVM,
 is ever captured.
@@ -249,7 +272,8 @@ The NanoKVM-USB came with **no cables**. Ordered on Amazon UK on 2026-10-07:
 
 - Use **Extend** mode: the laptop's own screen + Monitor A.
 - **Monitor A must be the main display.** Select Monitor A and tick *Make this my main display*.
-  Work you want help with goes on Monitor A, the only screen that is captured.
+  Work you want help with goes on Monitor A, the only screen that is captured, and the NanoKVM's
+  mouse always targets the main display.
 - Set Monitor A to its **native resolution at 60 Hz**. The NanoKVM accepts up to 4K at 30 Hz and
   delivers 1920x1080 to the AI computer, so a 1920x1080 monitor gives Glimmer the sharpest picture.
 - If Monitor A is **1920x1200** (16:10), the picture is squashed. Add `display_aspect = "16:10"` to
@@ -282,8 +306,9 @@ Open User Settings (JSON)* and add:
   themes work, but thin coloured text is slightly softer.
 
 **VS Code for typed edits (cable 4).** VS Code's typing helpers would garble code typed key by key:
-they close brackets, quotes and `/*` comments, add indentation, wrap a selection instead of replacing
-it, generate Doxygen comments, and let Enter, Tab or punctuation accept a suggestion. Before you run
+they close brackets, quotes, `/*` comments and HTML or JSX tags, add indentation, wrap a selection
+instead of replacing it, generate Doxygen comments, and let Enter, Tab or punctuation accept a
+suggestion. Before you run
 `nanokvm edit`, switch them off in the same settings file. The C/C++ extension's own `[cpp]` defaults
 win over global settings, so the main ones are repeated in a `[cpp]` block. (These were checked
 against VS Code 1.144's source on 29 Oct.)
@@ -304,6 +329,9 @@ against VS Code 1.144's source on 29 Oct.)
 "editor.wordBasedSuggestions": "off",
 "editor.unusualLineTerminators": "off",
 "editor.folding": false,
+"html.autoClosingTags": false,
+"javascript.autoClosingTags": false,
+"typescript.autoClosingTags": false,
 "C_Cpp.doxygen.generateOnType": false,
 "[cpp]": {
   "editor.autoClosingBrackets": "never",
@@ -325,8 +353,12 @@ catches any difference.
 
 ## 5. Install (already done)
 
-Everything lives in `E:\meta_hackathon`. Nothing was installed globally, the registry was not
-touched, and the existing conda environments were not used.
+Everything lives in `E:\meta_hackathon`. Nothing was installed globally, and the existing conda
+environments were not used. One change outside this folder: on 25 Oct, `llama-server.exe`,
+`python.exe` and `pythonw.exe` were excluded from Windows Error Reporting (each a DWORD set to 1
+under `HKCU\Software\Microsoft\Windows\Windows Error Reporting\ExcludedApplications`, for this user
+only), so Windows doesn't collect a crash report that could hold screen text from their memory.
+Delete those three values to undo it.
 
 | What | Location |
 |------|----------|
@@ -360,18 +392,21 @@ version link directory"* is harmless.
 
 ### 5a. Muse Glimmer on the AI computer's GPU (open weights)
 
-Meta's open-weights **Muse Glimmer** (30B) runs on the AI computer's own GPU, an RTX 5090 Laptop GPU
-with 24 GB, through llama.cpp. Nothing about the screen goes to a hosted model: the server listens only
-on `127.0.0.1` and needs the key in `.run\llama_api_key`.
+Meta's open-weights **Muse Glimmer** (30B, Apache-2.0) runs on the AI computer's own GPU, an RTX 5090
+Laptop GPU with 24 GB, through llama.cpp. Glimmer isn't a hosted model, and no screen image goes
+anywhere else: the server listens only on `127.0.0.1` and needs the key in `.run\llama_api_key`. This
+server setup was done before the event (24 Oct); the code that uses it (`glimmer.py` and the pipeline)
+was written during it. The weights and llama.cpp aren't in the repo (they're git-ignored); these are
+their sources:
 
-| What | Details |
-|------|---------|
-| llama.cpp | build 10976 (commit `987498f45`), Windows CUDA 13.3 build, in `tools\llama.cpp\` |
-| Weights | `models\unsloth\Muse-Glimmer-30B-UD-Q4_K_XL.gguf`, 15,878,222,368 bytes, SHA-256 `82bece304887a313ece08400bc030f6066c7bff5b906b0cd40308ec8a409fd38` |
-| Vision projector | `models\unsloth\mmproj-Muse-Glimmer-30B-BF16.gguf`, 3,849,173,728 bytes, SHA-256 `d08cdcfa0b41d8e20554b52df404ba4f7b440d0bc502a90038508b6407df8ee1` |
-| DFlash drafter (speeds up generation) | `models\dflash-Muse-Glimmer-30B-Q4_K_M.gguf`, 1,631,208,128 bytes, SHA-256 `b2e808bf656086fe86bd0d0bd990f01d33e377537a07c02d45371517c8b264ef` |
-| Launcher | `tools\run-glimmer.ps1`: one slot, 32K context, all layers on the GPU, images up to 4,096 tokens, DFlash at draft length 15, no web UI, no prompt logging |
-| NVIDIA's compiled-kernel cache | `.cache\nv\` |
+| What | Source | Details |
+|------|--------|---------|
+| llama.cpp | [release b10976](https://github.com/ggml-org/llama.cpp/releases/tag/b10976): `llama-b10976-bin-win-cuda-13.3-x64.zip` and `cudart-llama-bin-win-cuda-13.3-x64.zip`, kept in `tools\downloads\` | build 10976 (commit `987498f45`), Windows CUDA 13.3 build, unzipped into `tools\llama.cpp\` |
+| Weights | Unsloth's [unsloth/Muse-Glimmer-30B-GGUF](https://huggingface.co/unsloth/Muse-Glimmer-30B-GGUF) | `models\unsloth\Muse-Glimmer-30B-UD-Q4_K_XL.gguf`, 15,878,222,368 bytes, SHA-256 `82bece304887a313ece08400bc030f6066c7bff5b906b0cd40308ec8a409fd38` |
+| Vision projector | the same Unsloth repo | `models\unsloth\mmproj-Muse-Glimmer-30B-BF16.gguf`, 3,849,173,728 bytes, SHA-256 `d08cdcfa0b41d8e20554b52df404ba4f7b440d0bc502a90038508b6407df8ee1` |
+| DFlash drafter (speeds up generation) | Meta's [meta-models/Muse-Glimmer-30B-GGUF](https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF) | `models\dflash-Muse-Glimmer-30B-Q4_K_M.gguf`, 1,631,208,128 bytes, SHA-256 `b2e808bf656086fe86bd0d0bd990f01d33e377537a07c02d45371517c8b264ef` |
+| Launcher | this repo | `tools\run-glimmer.ps1`: one slot, 32K context, all layers on the GPU, images up to 4,096 tokens, DFlash at draft length 15, no web UI, no prompt logging |
+| NVIDIA's compiled-kernel cache | made on first run | `.cache\nv\` |
 
 Start the server, then check it from a second terminal:
 
@@ -382,8 +417,9 @@ E:\meta_hackathon\tools\run-glimmer.ps1
 E:\meta_hackathon\.venv\Scripts\python.exe E:\meta_hackathon\tools\glimmer_smoke.py
 ```
 
-**Measured on this laptop (24 Oct, dummy C++ at 1920x1080):** all 27 of 27 lines transcribed exactly,
-and a full-screen read in 6.7–7.0 s (image prompt about 5 s, generation 131–141 tokens/s), using
+**Measured on this laptop (24 Oct, before the event, with `tools\glimmer_smoke.py` on dummy C++
+rendered at 1920x1080):** all 27 of 27 lines right (compared with runs of spaces collapsed, so
+indentation wasn't checked), and a full-screen read in 6.7–7.0 s (image prompt about 5 s, generation 131–141 tokens/s), using
 about 23 GB of the GPU's 24 GB with the drafter on. To check the files yourself, run `Get-FileHash` on them and compare the SHA-256
 values above. Glimmer is fast only in Turbo mode on the 240 W barrel charger; see *Glimmer is slow*
 in [section 11](#11-troubleshooting). More measurements are in
@@ -398,9 +434,11 @@ Muse Spark runs in Meta's cloud. Save your Model API key as the only line of `.r
 E:\meta_hackathon\.venv\Scripts\python.exe E:\meta_hackathon\tools\spark_smoke.py
 ```
 
-It lists the models the key can use, sends one dummy request with `store: false`, and checks that the
-reply came from exactly `muse-spark-1.3`. The client (`src\nanokvm_mcp\spark.py`) uses Chat
-Completions with streaming, refuses redirects, sends text only, and accepts only Standard model IDs.
+It lists the models the key can use, sends three dummy chat requests with `store: false` (plain,
+strict JSON and streaming), and checks that each reply came from exactly `muse-spark-1.3`. This smoke
+test was written before the event. The client the pipeline uses (`src\nanokvm_mcp\spark.py`, written
+during it) uses Chat Completions with streaming, refuses redirects, sends text only, and accepts only
+Standard model IDs.
 
 ## 6. Using it: read, ask and edit
 
@@ -417,8 +455,12 @@ nanokvm edit "fix the off-by-one in sum_first" # Spark proposes edits; each one 
 ```
 
 Each command first asks you, at the keyboard, to share the screen with Muse Glimmer for a few minutes
-(`--minutes`: 5 by default, 10 for `edit`). There is deliberately no `--yes`: a script, or an AI
-running commands, can't approve. `--region x,y,w,h` reads only part of the screen (in the pixels of a
+(`--minutes`: 5 by default, 10 for `edit`). There is deliberately no `--yes`, and nothing is approved
+without a terminal, so a script, or an AI running commands without one (such as Claude Code's shell
+tool), can't approve. This guards against mistakes, not against programs on this computer: anything
+that can type into the terminal running `nanokvm` can answer its prompts, and a program that can read
+`.run\token` can use the service without the command ([section 10](#10-safety-details)). So don't let
+an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in the pixels of a
 `nanokvm screenshot`).
 
 - **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took; for
@@ -426,8 +468,8 @@ running commands, can't approve. `--region x,y,w,h` reads only part of the scree
 - **`ask`** reads, sends only the redacted, trimmed text to Spark, and prints its answer with the
   placeholders restored. It also says what was redacted, whether Glimmer trimmed the text, what the
   request cost and where it is logged. `--stand-in` marks the screen as dummy content (required while
-  Meta billing is on free credits), `--approve` shows the exact text before sending, and
-  `--local-only` has Glimmer answer instead, sending nothing.
+  Meta billing is on free credits), `--approve` shows the exact text before sending (it can only make
+  `outbound` stricter, never looser), and `--local-only` has Glimmer answer instead, sending nothing.
 - **`edit`** works like `ask`, but Spark answers with `apply_edit` calls: replace lines S to E with new
   lines. `--stand-in` and `--approve` work as for `ask`.
 
@@ -439,28 +481,38 @@ exactly, and lists any that differ.
 **How `nanokvm edit` types an edit.** For each `apply_edit` call:
 
 1. **Checks on the AI computer.** Placeholders are restored; no placeholder or tab may be left; every
-   character must be typeable on the keyboard layout; the lines must be on the screen; at most 40 lines
-   and 2,000 characters per edit.
-2. **Your approval.** It shows the change as a diff with the exact keys it will press, then asks
-   *Type this edit? [y/N]*.
+   character must be typeable on the keyboard layout; at most 40 lines and 2,000 characters per edit;
+   and the lines must be on the screen and read unambiguously. Lines whose numbering looks wrong (a
+   wrapped row read as a new line, a sticky-scroll header, a number read twice) are left out, and so
+   is the last line shown, whose wrapped rows may go on below the screen. Only the first edit in each
+   reply from Spark is used.
+2. **Your approval.** It shows the change as a diff with the file's line numbers, the exact keys it
+   will press and Spark's note, then asks *Type this edit? [y/N]*.
 3. **Typing, keyboard only.** Escape, then Ctrl+G. Glimmer checks that VS Code's Go to Line box (`:`)
    opened before anything else is typed: elsewhere, digits and Enter could act (in VS Code's terminal,
    Ctrl+G is *Go to Recent Directory*, and Enter would run a `cd`). Then the line number and Enter go to
-   the line. Glimmer reads the status bar (it must say *Ln S, Col 1*) and the lines there (they must be
-   the ones Spark changed). Ctrl+L once per line selects them, checked on the status bar again,
-   Backspace deletes them, and the new lines are typed.
+   the line. Glimmer reads the status bar (it must say *Ln S, Col 1*, with nothing selected) and the
+   lines there (they must be the ones Spark changed). Ctrl+L once per line selects them, checked on
+   the status bar again (the selection must end at column 1 of the next line), Backspace deletes
+   them, and the new lines are typed.
 4. **The result is checked.** Glimmer reads the screen again: the new lines must be there, followed by
-   the line that came after the old ones.
+   the line that came after the old ones. Each line must have the same indentation; runs of spaces
+   inside a line aren't compared, since Glimmer can't count them reliably.
 
-Any failed check stops the session, and nothing more is typed. Spark is told what happened in words
-and line numbers only, and can then propose the next edit (at most 4 edits and 6 requests to Spark per
-session). **Ctrl+C** in the terminal releases every key at once.
+If an edit fails step 1, or you decline it, nothing is typed: Spark is told why, in words and line
+numbers, and may propose another. A failed check in step 3 or 4 stops the session and nothing more is
+typed. Before Backspace, only navigation keys have been sent and the file is unchanged; after it,
+check the file. At most 4 edits and 6 requests to Spark per session. **Ctrl+C** in the terminal stops
+the typing within about a quarter of a second and releases every key.
 
-Before running `edit`: plug in cable 4, show the file in VS Code on the locked computer with its
-editor focused, switch the typing helpers off ([section 4](#4-locked-computer-settings)), and **save
-the file**. Undoing typed code takes many Ctrl+Z presses (VS Code undoes it in small steps), while
-*File: Revert File* returns to the saved version at once. Typing runs at about 20 characters a second,
-so ask for small, targeted edits.
+Before running `edit`: plug in cable 4, show the file in VS Code on the locked computer in a single
+editor group (no split editor or diff view) with its editor focused, switch the typing helpers off
+([section 4](#4-locked-computer-settings)), and **save the file**. Undoing typed code takes many
+Ctrl+Z presses (VS Code undoes it in small steps), while *File: Revert File* returns to the saved
+version at once. Typing runs at about 20 characters a second, so ask for small, targeted edits. While
+it types, leave the locked computer's own keyboard and mouse alone: Windows shares Shift, Ctrl and Alt
+between keyboards, and a click moves the focus. Keep Caps Lock off too; it is shared as well, and
+typing allows for it only when the NanoKVM reports it.
 
 ## 7. Watching the screen yourself
 
@@ -482,7 +534,8 @@ picture show:
 The window is read-only: keys and clicks in it stay on the AI computer, it never makes the service
 open the keyboard/mouse link, and it saves nothing to disk. It's an ordinary window, though: anything
 that captures the AI computer's screen (a screen share in a call, a screenshot tool, or a command an
-AI runs) captures the locked computer's screen too.
+AI runs) captures the locked computer's screen too. Close it before you let an AI work on the AI
+computer unattended.
 
 Keys: **F11** or a double-click for full screen, which hides the status lines so that a screen the size
 of the capture (1920x1080) shows the picture at actual size (**Esc** leaves it); **1** to switch
@@ -540,7 +593,8 @@ nanokvm serve           # run the service in the foreground with console logging
 
 `watch` options: `--min-change` (percent of the screen, default 0.5), `--settle` (milliseconds the
 screen must stay still, default 700), `--keep` (also saves every changed frame in `.run\watch\`)
-and `--count N` (stops after N changes).
+and `--count N` (stops after N changes). Unlike `read`, `ask` and `edit`, these commands, `diag` and
+the live views don't ask to share the screen: they need only the token in `.run\token`.
 
 Every screenshot the `nanokvm` command saves (`screenshot`, `watch`, `diag`, including a file you
 name) is **deleted automatically after 5 minutes** (`saved_image_minutes`). The service deletes
@@ -597,7 +651,8 @@ needed.
   irreversible step and after the typing ([section 6](#6-using-it-read-ask-and-edit)). Spark can only
   propose edits; it never types anything itself.
 - **No stuck keys.** Every action ends with all keys and buttons up, even when something fails, and
-  Ctrl+C during `nanokvm edit` releases them at once. Releasing never moves the pointer.
+  Ctrl+C during `nanokvm edit` stops the typing within about a quarter of a second and releases them.
+  Releasing never moves the pointer.
 - **One action at a time.** If two programs try to type at once, the second gets "busy". It's never
   queued to run later into whatever window has focus by then.
 - **Status requests never open the keyboard/mouse link.** The link opens only for an action, because
@@ -605,8 +660,11 @@ needed.
 - **Only the NanoKVM's COM port is used.** It's auto-picked only when the NanoKVM itself is
   attached and exactly one port matches `serial_ids` (this unit: CH343, `1A86:55D3`). If several
   match (Arduinos often use the same chips), it picks none and asks you to set `serial_port`.
-- **Screen text is untrusted.** Glimmer's and Spark's instructions treat everything read from the
-  screen as data, never as instructions.
+- **Screen text is untrusted.** Glimmer's and Spark's instructions say that screen text is data, not
+  instructions. That lowers, but doesn't remove, the risk of prompt injection (Meta reports attacks
+  on Glimmer succeeding 28.4% of the time), which is one reason every edit is shown to you before it
+  is typed. Text from the models is printed with control characters shown as escapes, so it can't
+  move the cursor or hide what the terminal shows.
 - **The local services are reachable only from this laptop.** The NanoKVM service listens only on
   `127.0.0.1`, rejects foreign Host headers, and requires the random token in `.run\token`, so web
   pages can't read the screen or type. Glimmer's server also listens only on `127.0.0.1` and needs its
@@ -630,6 +688,8 @@ needed.
 | `no numbered code lines on the screen` | Show the file in VS Code with line numbers on, maximised on Monitor A. |
 | `Not applied: after Ctrl+G, VS Code's Go to Line box isn't on the screen` | Only Escape, Ctrl+G and Escape were sent. Click into the file in VS Code on the locked computer (not its terminal or another app) and try again. |
 | `Not applied: after Go to Line the status bar shows …` | Nothing was typed except Go to Line. Check that the status bar is on (*View > Appearance > Status Bar*) and try again. |
+| `Not applied: after selecting, the status bar shows …` | Nothing was deleted: Escape dropped the selection. Check that folding is off ([section 4](#4-locked-computer-settings)) and that nothing else has the keyboard, then try again. |
+| `Spark's edit can't be typed: line N isn't on the screen, or can't be read reliably there` | Glimmer didn't read that line cleanly: it is off the screen, it's the last line shown, or its numbering looked wrong. Spark is told and may try again. If it keeps happening, scroll so the lines sit mid-screen and ask again. |
 | `typed, but the screen doesn't show the expected lines` | Check the file on the locked computer. *File: Revert File* returns to the last saved version; Ctrl+Z undoes typing only in small steps. Check that the typing helpers are off ([section 4](#4-locked-computer-settings)) and that `keyboard_layout` matches. |
 | Wrong characters typed (for example `"` and `@` swapped) | `keyboard_layout` doesn't match the locked computer's keyboard layout (on a Mac, see [section 1a](#1a-operating-systems)). Fix it and run `nanokvm stop`. |
 | Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
@@ -639,27 +699,31 @@ needed.
 
 ## 12. Files and testing without hardware
 
+Files marked **(new)** were written during the event. The others existed before it
+(`pre-event-baseline`), and most of them gained event work too, which `git diff pre-event-baseline`
+shows. Folders marked *(not in the repo)* are git-ignored and exist only on the AI computer.
+
 ```
 E:\meta_hackathon
 ├── README.md                     this file
-├── HACKATHON.md                  what was built before and during the hackathon
+├── HACKATHON.md                  what was built before and during the hackathon (new)
 ├── docs\
 │   ├── wiring.svg                wiring diagram used in this README
-│   ├── claude-code.md            the Claude Code bridge (built before the event)
-│   └── hackathon-plan.md         hackathon plan and measurements
+│   ├── claude-code.md            the Claude Code bridge, built before the event (new page)
+│   └── hackathon-plan.md         hackathon plan and measurements (written before the event)
 ├── nanokvm.toml                  settings
 ├── .mcp.json, .claude\           the Claude Code bridge's registration and permissions
 ├── pyproject.toml, uv.lock, uv.toml
 ├── src\nanokvm_mcp\
-│   ├── glimmer.py                client for the local Muse Glimmer server
-│   ├── redact.py                 placeholders for secrets, restored only on this laptop
-│   ├── outbound.py               the outbound gate: the only path from screen text to Meta
-│   ├── spark.py                  client for Muse Spark (Meta Model API): text only, Standard models only
-│   ├── pipeline.py               read, ask and edit: Glimmer, the gate and Spark together
-│   ├── editing.py                apply_edit: checks, the diff, and typing an approved edit into VS Code
+│   ├── glimmer.py                client for the local Muse Glimmer server (new)
+│   ├── redact.py                 placeholders for secrets, restored only on this laptop (new)
+│   ├── outbound.py               the outbound gate: the only path from screen text to Meta (new)
+│   ├── spark.py                  client for Muse Spark (Meta Model API): text only, Standard models only (new)
+│   ├── pipeline.py               read, ask and edit: Glimmer, the gate and Spark together (new)
+│   ├── editing.py                apply_edit: checks, the diff, and typing an approved edit into VS Code (new)
+│   ├── viewer.py                 the live view window for `nanokvm viewer` (Tk, read-only) (new)
 │   ├── service.py                shared background service (capture, keyboard/mouse, live view, HTTP API)
 │   ├── client.py                 talks to / auto-starts the service
-│   ├── viewer.py                 the live view window for `nanokvm viewer` (Tk, read-only)
 │   ├── cli.py                    the `nanokvm` command
 │   ├── config.py                 settings: nanokvm.toml, overridden by NANOKVM_* environment variables
 │   ├── capture.py                HDMI capture (OpenCV DirectShow; NanoKVM matched by USB ID only)
@@ -668,25 +732,30 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        231 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        250 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
 │   ├── spark_smoke.py            Meta Model API smoke test with dummy text (key: .run\meta_api_key)
 │   ├── capture_frame.py          saves full-resolution NanoKVM frames for the A/B (dummy content only)
 │   ├── glimmer_ab.py             scores Glimmer's reading of those frames against ab_screens\
-│   ├── ab_screens\               dummy C++ files and build errors to show for the A/B
-│   ├── downloads\                the two llama.cpp zips that llama.cpp\ was unpacked from
-│   └── llama.cpp\                llama.cpp b10976 (Windows CUDA 13.3 build)
-├── models\                       Glimmer weights (section 5a)
-├── .cache\nv\                    NVIDIA's compiled-kernel cache for llama.cpp
-├── .venv\  .uv\                  Python and packages (local to this folder)
-└── .run\                         token, keys, audit log, screenshots, calibration (created at runtime)
+│   ├── ab_screens\               dummy C++ files and build errors to show for the A/B, and
+│   │                             live_check.cpp for `nanokvm read --check` (new)
+│   ├── downloads\                the two llama.cpp zips that llama.cpp\ was unpacked from (not in the repo)
+│   └── llama.cpp\                llama.cpp b10976, Windows CUDA 13.3 build (not in the repo)
+├── models\                       Glimmer weights, section 5a (not in the repo)
+├── .cache\nv\                    NVIDIA's compiled-kernel cache for llama.cpp (not in the repo)
+├── .venv\  .uv\                  Python and packages, local to this folder (not in the repo)
+└── .run\                         token, keys, audit log, screenshots, calibration (created at runtime; not in the repo)
 ```
 
-- **Run the tests:** `.venv\Scripts\python.exe -m pytest -q`. They cover the whole pipeline against a
-  simulated locked computer, a fake Glimmer server and a fake Meta API, including that no image or
-  `data:` URL ever reaches "Meta" and that `edit` types nothing unless every check passes.
+- **Run the tests:** `.venv\Scripts\python.exe -m pytest -q`. They cover the pipeline's logic against
+  a simulated locked computer, a fake Glimmer server and a fake Meta API. The fake Glimmer answers
+  from the simulator's own text, so how well the real Glimmer reads the screen isn't tested there.
+  They check that no image or `data:` URL reaches "Meta", that `edit` selects, deletes and types
+  nothing until the status bar and the lines on the screen check out (only Go to Line is pressed
+  before that), that it stops after a failed check, and that Ctrl+C releases every key while the
+  service is still typing.
 - **Try the live view without the NanoKVM:**
 
   ```powershell
@@ -699,7 +768,9 @@ E:\meta_hackathon
 The keyboard/mouse protocol follows Sipeed's official NanoKVM-USB app (v1.1.4): CH9329 frames
 `57 AB 00 CMD LEN DATA SUM` at 57600 baud, with the absolute mouse on a 0–4095 grid. **Status as of
 2026-10-29:** `read`, `ask` and `edit` are built and pass their tests on the simulator; `read` and `ask`
-also ran end to end with the real Glimmer and the real Spark on simulated screens. On the real
-hardware (22 and 29 Oct), capture works at 1920x1080 and about 30 fps, and the `nanokvm viewer` window
-shows the locked computer's screen live (median delay from capture to window 37 ms). Typing on the
-locked computer (cable 4) isn't tested yet.
+also ran end to end with the real Glimmer and the real Spark on simulated screens. `edit` has so far
+run only against the simulator, with a fake Glimmer and a fake Meta API. On the real hardware (22 and
+29 Oct), capture works at 1920x1080 and about 30 fps, the `nanokvm viewer` window shows the locked
+computer's screen live (median delay from capture to window 37 ms), and the keyboard/mouse chip
+answers at 57600 baud. Glimmer reading a real capture, and typing on the locked computer (cable 4),
+aren't tested yet.

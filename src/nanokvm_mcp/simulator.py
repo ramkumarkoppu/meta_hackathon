@@ -107,8 +107,10 @@ class SimEditor:
             self._insert(ch)
 
     def _reveal(self, centre: bool = False) -> None:
-        if not self.top <= self.row < self.top + self.VISIBLE:
-            self.top = max(0, self.row - (self.VISIBLE // 2 if centre else self.VISIBLE - 1))
+        if centre:                                 # Go to Line always centres the line, as VS Code does
+            self.top = max(0, self.row - self.VISIBLE // 2)
+        elif not self.top <= self.row < self.top + self.VISIBLE:
+            self.top = max(0, self.row - (self.VISIBLE - 1))
 
     def _expand_line(self) -> None:
         if self.selection() is None:

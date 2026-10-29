@@ -8,8 +8,10 @@ at 9:00 PM ET. Only work from the event counts, so this page shows where the lin
 
 Commit `e624738`, tagged `pre-event-baseline`, holds everything that existed before the build
 window opened. I wrote its code and README between 7 and 25 Oct 2026. I took the snapshot at 16:16
-UK on 26 Oct; on that day only `.gitignore` and planning notes in `docs/hackathon-plan.md` had
-changed.
+UK on 26 Oct, 16 minutes after the window opened. In those minutes I only added notes from the
+kickoff to `docs/hackathon-plan.md` and wrote `.gitignore`; no code changed. On 29 Oct, before the
+first push, I reworded the commit messages, including the baseline's, which had given the start as
+17:00 UK instead of 16:00. Every commit's files and dates are unchanged.
 
 It has:
 
@@ -29,18 +31,31 @@ git log --stat pre-event-baseline..HEAD
 git diff pre-event-baseline
 ```
 
+or, on GitHub: <https://github.com/ramkumarkoppu/meta_hackathon/compare/pre-event-baseline...master>.
+
+The first event commit also renamed the two computers (*Work laptop* became the locked computer and
+*Personal laptop* the AI computer), the folder (`E:\work_laptop` became `E:\meta_hackathon`) and the
+Claude Code MCP server (`work-laptop` became `locked-computer`). So the diff shows those renames in
+pre-event files too. The Claude Code bridge itself changed only for the renames and the `locked_os`
+setting.
+
 So far:
 
 - **Meta models reading the screen (26 Oct).** Muse Glimmer runs on my own GPU and reads the
   locked computer's screen (`glimmer.py`, `nanokvm read`). Redaction (`redact.py`) and an outbound
   gate (`outbound.py`) mean Muse Spark only ever gets redacted text (`spark.py`, `pipeline.py`,
   `nanokvm ask`). The service gained full-resolution frames for the local model (`/api/frame`).
+  So far `read` and `ask` have run with the real Glimmer and Spark on simulated screens, not yet on
+  a real capture.
 - **Any OS on the locked computer (26 Oct).** The `locked_os` setting covers Windows, macOS and
   Linux.
-- **Live viewer (29 Oct).** `nanokvm viewer` shows the locked computer's screen live in a window.
+- **Live viewer window (29 Oct).** `nanokvm viewer` now shows the locked computer's screen live in a
+  window on the AI computer. Before the event it only opened the browser live view, which is
+  pre-event work.
 - **Approved edits typed back (29 Oct).** `nanokvm edit`: Muse Spark proposes code edits through
   function calling (`apply_edit`). Each one is shown as a diff with the exact keys, typed into VS Code
   on the locked computer only after I say yes, keyboard only through the NanoKVM, and checked by Muse
-  Glimmer on the screen before and after (`editing.py`).
+  Glimmer on the screen before and after (`editing.py`). So far it has run only on the simulator,
+  with a fake Glimmer and a fake Meta API: not yet with the real models or on a real computer.
 - **The README rewritten around the Meta-model pipeline (29 Oct).** The Claude Code bridge, built before
   the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).
