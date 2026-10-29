@@ -59,6 +59,8 @@ def test_commands_naming_the_run_folder_are_refused(tool, command):
     ("rg -uu TODO", "rg with --no-ignore or -u"),
     ("rg --no-ignore token", "rg with --no-ignore or -u"),
     ("find . -name '*.log' -exec tail -n 20 {} +", "find with -exec"),
+    ("grep -rn --exclude=.run LLM_ .", "a recursive grep"),            # --exclude= skips files, not folders
+    ("find /e/meta_hackathon -path ./.run -prune -o -name '*.log' -exec tail {} +", "find with -exec"),
 ])
 def test_searches_that_reach_the_folder_without_naming_it_are_refused(command, what):
     d = decision("Bash", command)
@@ -76,7 +78,8 @@ def test_searches_that_reach_the_folder_without_naming_it_are_refused(command, w
     ("Bash", "echo cfg.run_dir / 'token' && npm run build --dry-run"),
     ("Bash", "rg TODO src && git grep -n run_dir"),
     ("Bash", 'grep -rn "TODO" --exclude-dir=.venv --exclude-dir=.git --exclude-dir=.run .'),
-    ("Bash", 'grep -rn TODO --exclude-dir=".run" .'),
+    ("Bash", 'grep -rn TODO --exclude-dir=".run" . && grep -rn TODO --exclude-dir=./.run/ src'),
+    ("Bash", "find /e/meta_hackathon -path '*/.run' -prune -o -name '*.log' -exec tail {} +"),
     ("Bash", "rg -u -g '!.run' TODO && rg -uu --glob '!.run/**' TODO"),
     ("Bash", 'find . -path ./.run -prune -o -name "*.log" -exec tail {} +'),
     ("Bash", "find . -name '*.py' -not -path './.run/*' -exec wc -l {} +"),

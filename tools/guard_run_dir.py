@@ -29,21 +29,31 @@ import sys
 # ".run" as a path segment: not part of a longer name (cfg.run_dir, .runner) or a method call (subprocess.run(,
 # ).run(, ].run(), and followed by a path separator, quote, space, shell punctuation or the end.
 RUN_DIR = re.compile(r"(?<![\w.\-)\]])\.run(?=$|[\\/\s\"'`;|&<>),*?\[\]{}=:])", re.IGNORECASE)
-# Exclusions that keep a search or copy out of the folder. They're removed before RUN_DIR is applied, and a
-# recursive search that has one passes.
-EXCLUDE = re.compile(
-    r"""(?:--exclude(?:-dir)?[= ]|(?:-g|--glob|--iglob)[= ]?['"]?!)['"]?(?:\./)?\.run(?:/\*\*|/\*|/)?['"]?(?=\s|$)"""
-    r"""|-path\s+['"]?(?:\./|\*/)?\.run['"]?\s+-prune"""
-    r"""|(?:-not|!)\s+-path\s+['"]?(?:\./|\*/)?\.run(?:/\*)?['"]?(?=\s|$)""",
-    re.IGNORECASE)
-# Commands that reach .run without naming it, checked per simple command (between ; | & and newlines).
+# Exclusions that keep a search or copy out of the folder, each only for the tool it works with: grep's
+# --exclude= skips files, never folders, so only --exclude-dir counts for grep, and find's "./.run" only
+# matches when find starts at ".". All of them are removed before RUN_DIR is applied, so naming the folder
+# in an exclusion isn't refused; a recursive search passes only with an exclusion that works for it.
+GREP_SKIP = re.compile(r"""--exclude-dir[= ]['"]?(?:\./)?\.run/?['"]?(?=\s|$)""", re.IGNORECASE)
+RG_SKIP = re.compile(r"""(?:-g|--glob|--iglob)[= ]?['"]?!(?:\./)?\.run(?:/\*\*|/\*|/)?['"]?(?=\s|$)""", re.IGNORECASE)
+FIND_SKIP = re.compile(r"""-path\s+['"]?\*/\.run['"]?\s+-prune|(?:-not|!)\s+-path\s+['"]?\*/\.run(?:/\*)?['"]?(?=\s|$)""",
+                       re.IGNORECASE)
+FIND_SKIP_FROM_DOT = re.compile(
+    r"""-path\s+['"]?\./\.run['"]?\s+-prune|(?:-not|!)\s+-path\s+['"]?\./\.run(?:/\*)?['"]?(?=\s|$)""", re.IGNORECASE)
+FIND_FROM_DOT = re.compile(r"(?:^|[\s(`])find\s+\.(?=\s)")
+OTHER_SKIP = re.compile(r"""--exclude[= ]['"]?(?:\./)?\.run(?:/\*\*|/\*|/)?['"]?(?=\s|$)""", re.IGNORECASE)  # tar, rsync
+EXCLUSIONS = (GREP_SKIP, RG_SKIP, FIND_SKIP, FIND_SKIP_FROM_DOT, OTHER_SKIP)
+# Commands that reach .run without naming it, checked per simple command (between ; | & and newlines),
+# each with the test for an exclusion that keeps it out.
 WALKS = [
     ("a recursive grep", re.compile(
         r"(?:^|[\s(`])[ef]?grep\b(?=.*\s(?:-[A-Za-z]*[rR][A-Za-z]*|--recursive|--dereference-recursive|"
-        r"-d\s*recurse|--directories=recurse)(?=\s|$))")),
+        r"-d\s*recurse|--directories=recurse)(?=\s|$))"),
+     lambda part: GREP_SKIP.search(part)),
     ("rg with --no-ignore or -u", re.compile(
-        r"(?:^|[\s(`])rg\b(?=.*\s(?:-u+|--unrestricted|--no-ignore(?:-vcs|-dot|-global|-parent)?)(?=\s|$))")),
-    ("find with -exec", re.compile(r"(?:^|[\s(`])find\b(?=.*\s-(?:exec|execdir|ok|okdir)(?=\s|$))")),
+        r"(?:^|[\s(`])rg\b(?=.*\s(?:-u+|--unrestricted|--no-ignore(?:-vcs|-dot|-global|-parent)?)(?=\s|$))"),
+     lambda part: RG_SKIP.search(part)),
+    ("find with -exec", re.compile(r"(?:^|[\s(`])find\b(?=.*\s-(?:exec|execdir|ok|okdir)(?=\s|$))"),
+     lambda part: FIND_SKIP.search(part) or (FIND_SKIP_FROM_DOT.search(part) and FIND_FROM_DOT.search(part))),
 ]
 SIMPLE_COMMAND = re.compile(r"\|\||&&|[;|&\n]")
 SHELL_TOOLS = {"Bash", "PowerShell"}
@@ -56,20 +66,22 @@ NAMES_IT = ("This command names the project's .run folder, which holds API keys,
             "there is needed, ask the user to look at it themselves." + TEXT_ONLY)
 REACHES_IT = ("This command uses {what} without excluding the project's .run folder (API keys, the service token, "
               "the audit log), so it would reach that folder without naming it. Exclude it (grep "
-              "--exclude-dir=.run, rg -g '!.run', find -path ./.run -prune), or search with the Grep tool, which "
-              "skips git-ignored folders.")
+              "--exclude-dir=.run, since grep's --exclude= covers files only; rg -g '!.run'; find . -path ./.run "
+              "-prune), or search with the Grep tool, git grep or plain rg, which skip git-ignored folders.")
 CANT_CHECK = "the hook couldn't read the command to check, so it refuses it"
 
 
 def check_command(command: str) -> str | None:
     """Why this command line is refused, or None."""
-    if RUN_DIR.search(EXCLUDE.sub(" ", command)):
+    stripped = command
+    for exclusion in EXCLUSIONS:
+        stripped = exclusion.sub(" ", stripped)
+    if RUN_DIR.search(stripped):
         return NAMES_IT
     for part in SIMPLE_COMMAND.split(command):
-        if not EXCLUDE.search(part):
-            for what, pattern in WALKS:
-                if pattern.search(part):
-                    return REACHES_IT.format(what=what)
+        for what, walk, excluded in WALKS:
+            if walk.search(part) and not excluded(part):
+                return REACHES_IT.format(what=what)
     return None
 
 

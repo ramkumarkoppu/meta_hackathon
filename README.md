@@ -669,9 +669,10 @@ needed.
   `127.0.0.1`, rejects foreign Host headers, and requires the random token in `.run\token`, so web
   pages can't read the screen or type. Glimmer's server also listens only on `127.0.0.1` and needs its
   own key. Neither is locked down against programs on this laptop yet: any program that can read the
-  token can use the service. Claude Code in this folder is kept out of `.run\`, where the token and
-  keys are, though `screen_status` still gives it the token
-  ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)).
+  token can use the service. In this folder, Claude Code is refused when its file tools or shell
+  commands try to open `.run\`, where the token and keys are; `screen_status` still gives it the
+  token, and [docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)
+  lists what else isn't caught.
   To replace the token, run `nanokvm stop` and delete `.run\token`; the next start makes a new one.
 
 ## 11. Troubleshooting
@@ -734,7 +735,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        290 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        293 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

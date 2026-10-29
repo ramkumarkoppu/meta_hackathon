@@ -69,10 +69,12 @@ and `--browser` if Claude runs them (`nanokvm status` hides it).
 The rules live in `.claude\settings.local.json`, which isn't in the repo. To use them in your copy,
 add this to that file (the last two deny rules name this folder, so change them if yours is
 elsewhere). The hook needs Git Bash and the project's `.venv`, and Claude Code 2.1.295 or later for
-`onFailure`: if the hook itself fails, for example after `.venv` is deleted, every shell command is
-refused until it's fixed. Then run `uv sync` in a terminal outside Claude Code, or remove the
-`hooks` block. Claude Code normally picks up settings edits at once; if a change doesn't show in
-`/hooks` after a few seconds, start a new session.
+`onFailure`: if the hook itself can't run, for example when `.venv` breaks after the folder is renamed,
+every shell command is refused ("blocking because onFailure is "block""). Then rebuild the venv in a
+terminal outside Claude Code ([README section 5](../README.md#5-install-already-done)), or delete the
+`hooks` block from `.claude\settings.local.json`, and start a new conversation. Claude Code normally
+picks up settings edits at once; if a change doesn't show in `/hooks` after a few seconds, start a new
+conversation.
 
 ```json
 "permissions": {
