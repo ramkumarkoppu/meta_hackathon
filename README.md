@@ -481,12 +481,15 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
 
 **Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
 `tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must
-match the file exactly, so first switch off the typing helpers (the settings for typed edits in
-[section 4](#4-locked-computer-settings)). Then open a new empty window (Ctrl+Shift+N) so no work is on
-the screen, press Ctrl+N, set the language to C++ (Ctrl+K M) so it is coloured like real code, and type
-it, making the spaces with the space bar and pressing no Enter after the last `}`. Press End, then Home,
-on each line: the status bar should show *Col 5* on lines 5, 6, 8 and 9, *Col 9* on line 7 and *Col 1*
-on the others (Home alone jumps to column 1 when the cursor is already at the indent). Then run
+match the file exactly, so first add `"editor.autoClosingBrackets": "never"`, `"editor.autoIndent":
+"none"`, `"editor.acceptSuggestionOnEnter": "off"` and `"editor.inlineSuggest.enabled": false` to the
+user settings (all the typed-edit settings in [section 4](#4-locked-computer-settings) work too). Open a
+new empty window (Ctrl+Shift+N) so no work is on the screen, press Ctrl+N, choose Plain Text (Ctrl+K M)
+so VS Code can't switch the tab to C++ while you type, and type the file, making the spaces with the
+space bar and pressing no Enter after the last `}`. Press End, then Home, on each line: the status bar
+should show *Col 5* on lines 5, 6, 8 and 9, *Col 9* on line 7 and *Col 1* on the others (Home alone
+jumps to column 1 when the cursor is already at the indent). Then set the language to C++ (Ctrl+K M), so
+it is coloured like real code (the text doesn't change), and run
 `nanokvm read --check tools\ab_screens\live_check.cpp` (it finds the file from any folder). It lists by
 line number which lines Glimmer read exactly, which differ only in spaces, indentation or text, and
 which it missed. It never repeats the text read, so those lines can be shared; the transcription
