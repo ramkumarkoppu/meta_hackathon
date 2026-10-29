@@ -1,6 +1,7 @@
 """Local reading and the cloud coder: the locked computer's screen is read by Muse Glimmer on this laptop,
 and only redacted text goes to Muse Spark, through the outbound gate. Spark's code edits are typed back
-into VS Code only after the person at the keyboard approves each one (editing.py).
+into VS Code only after the person at the keyboard approves them: each one, or with --auto all of a run's at
+once, at the share prompt (editing.py, cli.py).
 
 The pipeline uses its own client id and screen share, approved by the person at the keyboard, and closes
 the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
@@ -206,14 +207,16 @@ class Pipeline:
         if fix:
             say("asking Muse Glimmer what is wrong on the screen")
             notes = self.read("diagnose", rect).text
+            say("Glimmer noticed (sent to Spark, redacted):\n" + E.safe_text(notes, multiline=True)[:800])
             request = E.FIX_REQUEST
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l",
                                      chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len))
-        gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
+        gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in,
+                            trusted=(E.FIX_REQUEST, E.CHECK_REQUEST))
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"),
-                                notes=notes, trim=notes is None)
+                                notes=notes, trim=not fix)
         result = EditResult(reading, prepared, "")
         history: list[dict] = []
         typed = 0
@@ -238,6 +241,13 @@ class Pipeline:
             result.cost_usd += answer.reply.cost_usd
             if not answer.tool_calls:
                 result.summary = answer.content
+                why = (f"Muse Spark refused: {E.safe_text(answer.reply.refusal)}" if answer.reply.refusal else
+                       f"Muse Spark's reply was cut off (finish_reason {answer.reply.finish_reason!r})"
+                       if answer.reply.finish_reason in ("length", "content_filter") else
+                       "Muse Spark sent an empty reply" if not (answer.content or "").strip() else None)
+                if why:                                 # not "nothing to fix": say why it ended
+                    result.stopped = why
+                    break
                 if not fix or typed == typed_at_check or result.checks >= E.MAX_CHECKS:
                     break                               # nothing typed since the screen was last checked
                 # Spark says it's done: read the screen afresh, and let Spark check the fix there

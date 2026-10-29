@@ -1,11 +1,13 @@
-"""Milestone 2: Muse Spark proposes code edits, the person at the keyboard approves each one, and the approved
-edit is typed into VS Code on the locked computer through the NanoKVM keyboard.
+"""Milestone 2: Muse Spark proposes code edits, the person at the keyboard approves each one (or, with --auto, all
+of a run's at once, at the share prompt), and the approved edit is typed into VS Code on the locked computer
+through the NanoKVM keyboard.
 
 Spark only sees redacted text (through the outbound gate) and answers with one tool, apply_edit, which replaces
 whole numbered lines. Its text is checked here before anything is typed: placeholders restored on this laptop
 and none left over, no tab characters, every character typeable on the locked computer's keyboard layout, the
-lines on the screen and read unambiguously, and within the size limits. Then, only after a yes at the console,
-it is typed keyboard-only, with a local read by Muse Glimmer before each irreversible step:
+lines on the screen and read unambiguously, and within the size limits. Then, only after a yes at the console
+(for this edit, or with --auto for the run), it is typed keyboard-only, with a local read by Muse Glimmer before
+each irreversible step:
 
   1. Escape, Ctrl+G                     close any widget or pending chord, open Go to Line
   2. check: VS Code's Go to Line box (":") is open; digits and Enter typed anywhere else could do harm
@@ -173,16 +175,16 @@ def is_goto_box(text: str) -> bool:
     """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line. Versions differ: VS Code 1.144 opens
     it with ':' already typed ('::' is a different mode) and the hint "Current Line: L, Character: C. Type a line
     number between 1 and N to navigate to."; the locked computer's VS Code (29 Oct) opens it empty, with "Type a
-    line number to go to (from 1 to N)." So either the ':' or a hint with "line number" counts: Go to Recent
-    Directory (Ctrl+G in VS Code's terminal, "Select a directory to go to"), Quick Open and the command palette
-    never say "line number"."""
+    line number to go to (from 1 to N)." So either the ':' or VS Code's wording "Type a line number" counts. Go to
+    Recent Directory (Ctrl+G in VS Code's terminal, "Select a directory to go to"), Quick Open and the command
+    palette never say it, and neither do the Go To dialogs of Notepad ("Line number:"), Visual Studio ("Line
+    number (1 - N):") or Word, which a focused app other than VS Code would open."""
     lines = [ln.strip().strip("'\"`").strip() for ln in (text or "").strip().splitlines()]
     if not lines or lines[0].startswith("::"):
         return False
     if lines[0].startswith(":"):
         return True
-    hint = " ".join(lines[:3]).lower()
-    return "line number" in hint and any(w in hint for w in ("go to", "navigate", "current line"))
+    return "type a line number" in " ".join(lines[:3]).lower()
 
 
 def lines_match(screen: dict[int, str], start: int, expected: list[str]) -> bool:

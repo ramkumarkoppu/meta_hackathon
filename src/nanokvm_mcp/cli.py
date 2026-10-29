@@ -539,8 +539,8 @@ def cmd_edit(cl: ServiceClient, args) -> int:
          f"checked on the screen{rechecked}; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
          f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
     if typed:
-        _out("Nothing was saved: review the changes in VS Code before you save. Ctrl+Z, or File: Revert File, "
-             "undoes them.")
+        _out("nanokvm saved nothing (keep VS Code's auto-save off): review the changes in VS Code before you save. "
+             "Ctrl+Z, or File: Revert File, undoes them.")
     return 0 if not res.stopped else 4
 
 

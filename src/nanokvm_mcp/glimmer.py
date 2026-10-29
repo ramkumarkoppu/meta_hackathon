@@ -28,12 +28,15 @@ DESCRIBE_PROMPT = ("Describe what is on this screen: the application, the file o
                    "or errors. Quote short on-screen text exactly. Be concise.")
 ERRORS_PROMPT = ("List every compiler error and warning line in this screenshot exactly as shown, one per line, "
                  "with nothing else. If there are none, output NONE.")
-DIAGNOSE_PROMPT = ("This screenshot is for someone fixing a problem on this computer. On the first line, name the "
-                   "application and the file or page shown. Then, one per line, every sign of an error or warning: "
-                   "messages in dialogs, notifications, a Problems panel or a terminal, quoted exactly; red or yellow "
-                   "squiggles under code, with their line numbers; and the error and warning counts in the status "
-                   "bar. If there is no sign of an error, write 'No errors shown.' on the second line. Output "
-                   "nothing else.")
+# Only the VS Code window: other apps and the system's notifications (mail and chat previews) can show anything, and
+# a file name is enough (a path can name the employer, as in a "OneDrive - <company>" folder).
+DIAGNOSE_PROMPT = ("This screenshot is for someone fixing the code in its VS Code window. On the first line, give the "
+                   "name of the file in VS Code's editor, the name only, without any folder or path. Then, one per "
+                   "line, every sign of an error or warning inside the VS Code window: red or yellow squiggles under "
+                   "code, with their line numbers; messages in its Problems panel or terminal panel, quoted exactly; "
+                   "and the error and warning counts in its status bar. Leave out everything outside the VS Code "
+                   "window, such as other apps and the system's notifications. If there is no sign of an error, "
+                   "write 'No errors shown.' on the second line. Output nothing else.")
 # No example readings in these two: a model that can't read the screen may copy an example, and these readings
 # decide whether keys are typed.
 STATUS_PROMPT = ("This is the bottom edge of a screen with a VS Code window. Copy the cursor position from VS Code's "

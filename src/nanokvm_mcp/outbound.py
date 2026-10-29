@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -33,6 +34,13 @@ from .spark import SparkClient, SparkModelMismatch, SparkReply
 
 OUTBOUND_MODES = ("auto", "approve", "local_only")
 BILLING_MODES = ("free_credits", "paid")
+_BLOCK_TAG = re.compile(r"<\s*/?\s*screen_(?:notes|text)\s*>", re.I)
+
+
+def defang(text: str) -> str:
+    """Text read from the screen can't open or close the message's own <screen_notes> or <screen_text> block, so
+    it can't pose as the user's request: its tags become ‹screen_text›."""
+    return _BLOCK_TAG.sub(lambda m: m.group(0).replace("<", "‹").replace(">", "›"), text)
 
 
 class OutboundBlocked(RuntimeError):
@@ -93,7 +101,11 @@ def excerpt(source: str, picked: str) -> str:
 
 class OutboundGate:
     def __init__(self, cfg: Config, glimmer: GlimmerClient, spark: SparkClient,
-                 approve: Callable[[str], bool] | None = None, stand_in: bool = False) -> None:
+                 approve: Callable[[str], bool] | None = None, stand_in: bool = False,
+                 trusted: tuple[str, ...] = ()) -> None:
+        """``trusted``: built-in instructions (nanokvm fix's), left out of the leak scan: a redacted screen value
+        such as "code" is also an ordinary word in them, and would otherwise block the send."""
+        self.trusted = trusted
         if cfg.outbound not in OUTBOUND_MODES:
             raise ValueError(f"outbound must be one of {OUTBOUND_MODES}")
         if cfg.meta_billing not in BILLING_MODES:
@@ -137,16 +149,17 @@ class OutboundGate:
         for part in (q, n):
             for k, v in (part.findings if part else {}).items():
                 findings[k] = findings.get(k, 0) + v
-        body, trimmed = r1.text, False
+        screen = defang(r1.text)
+        body, trimmed = screen, False
         if trim:
             try:
-                picked = self.glimmer.minimise(r1.text, q.text).content
-                cut = excerpt(r1.text, picked)
+                picked = self.glimmer.minimise(screen, q.text).content
+                cut = excerpt(screen, picked)
                 if cut:
                     body, trimmed = cut, True
             except GlimmerError:
                 pass                              # sends the whole redacted text, which is still redacted
-        block = f"<screen_notes>\n{n.text}\n</screen_notes>\n\n" if n else ""
+        block = f"<screen_notes>\n{defang(n.text)}\n</screen_notes>\n\n" if n else ""
         text = f"{q.text}\n\n{block}<screen_text>\n{body}\n</screen_text>"
         r2 = R.redact(text, terms, mapping=(n or q).mapping)    # second pass: anything Glimmer let back through
         for k, v in r2.findings.items():
@@ -160,8 +173,8 @@ class OutboundGate:
         terms = R.load_terms(self.cfg.run_dir / "redact_terms.txt")
         s = R.redact(screen_text, terms, mapping=p.mapping)
         n = R.redact(notes, terms, mapping=s.mapping) if notes else None
-        block = f"<screen_notes>\n{n.text}\n</screen_notes>\n\n" if n else ""
-        r = R.redact(f"{block}<screen_text>\n{s.text}\n</screen_text>", terms, mapping=(n or s).mapping)
+        block = f"<screen_notes>\n{defang(n.text)}\n</screen_notes>\n\n" if n else ""
+        r = R.redact(f"{block}<screen_text>\n{defang(s.text)}\n</screen_text>", terms, mapping=(n or s).mapping)
         p.mapping.update(r.mapping)
         for part in (s, n, r):
             for k, v in (part.findings if part else {}).items():
@@ -184,7 +197,10 @@ class OutboundGate:
         if self.halt_path.exists():
             raise OutboundBlocked(f"{self.halt_path} exists (a reply came from an unexpected model); "
                                   "delete it after checking .run/outbound.log")
-        if R.leaked_values(text, p.mapping):
+        scan = text
+        for t in self.trusted:
+            scan = scan.replace(t, "")
+        if R.leaked_values(scan, p.mapping):
             raise OutboundBlocked("a redacted value is still in the outgoing text")
         if "data:image" in text:
             raise OutboundBlocked("the outgoing text contains an inline image")

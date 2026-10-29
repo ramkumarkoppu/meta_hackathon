@@ -17,7 +17,7 @@ computer, the **AI computer**:
    again.
 4. **Ask the cloud.** Only that redacted text goes to **Muse Spark** through Meta's Model API
    (`store: false`). Spark answers, or proposes code edits as function calls.
-5. **Act, with your approval.** You approve each edit at the keyboard. It is typed into VS Code on the
+5. **Act, with your approval.** You approve each edit at the keyboard, or once per run with `--auto`. It is typed into VS Code on the
    locked computer through the NanoKVM-USB's keyboard, and Glimmer reads the screen again to check it.
 
 **Not just code.** The aim is to help with whatever the locked computer shows: the errors and messages
@@ -91,7 +91,7 @@ locked computer ──HDMI──► NanoKVM-USB ──USB──► AI computer
  2. read      Muse Glimmer on the GPU              │ screen → text; images never leave
  3. redact    outbound gate                        │ placeholders, trimming, checks, audit log
  4. ask       Muse Spark (Meta Model API)          │ redacted text in; an answer or apply_edit calls out
- 5. act       you approve; the NanoKVM types it    │ Glimmer checks the result on the screen
+ 5. act       you approve; the NanoKVM types it    │ Glimmer checks the result on the screen (--auto: one yes a run)
 locked computer ◄──USB keyboard── NanoKVM-USB ◄────┘
 ```
 
@@ -146,7 +146,7 @@ for the Windows CUDA build of llama.cpp. Running it elsewhere is future work
 |------|---------------|
 | The screen picture | **Nowhere**, with `read`, `ask` and `edit`: Muse Glimmer reads it on the AI computer's GPU. The pipeline never writes a frame to disk: each frame is dropped as soon as Glimmer has read it, the service zeroes its pixel copies, Glimmer's thinking text is discarded, and its server is flushed after every image. |
 | Redacted text | To Muse Spark through Meta's Model API, only through the outbound gate below. |
-| Spark's answer and edits | Back to the AI computer, where placeholders are restored. Edits are typed only after you approve each one ([section 6](#6-using-it-read-ask-and-edit)). |
+| Spark's answer and edits | Back to the AI computer, where placeholders are restored. Edits are typed only after you approve them: each one, or a whole run's once with `--auto` ([section 6](#6-using-it-read-ask-and-edit)). |
 | A record of both | `.run\outbound.log` on the AI computer: exactly what was sent and received. It holds redacted screen text, so treat it as sensitive. |
 | Screenshots, with the Claude Code bridge | To Anthropic, but only once you approve sharing in a Claude Code conversation. The bridge was built before the event and isn't part of the entry ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)). Don't share a real locked computer with it unless its owner has approved Anthropic too. |
 
@@ -189,7 +189,8 @@ improvement". While `meta_billing = "free_credits"`, only stand-in or dummy cont
 **What goes into the locked computer:** no network, no software, no drivers. HDMI carries the picture
 *out*; the only thing that goes back is the monitor identification (EDID) every monitor sends.
 Cable 4 carries only keyboard and mouse input; the NanoKVM can send keystrokes but never read them.
-`nanokvm edit` types only edits you approve at its prompt. The service itself accepts keystrokes from
+`nanokvm edit` and `fix` type only edits you approve at their prompt (each one, or once per run with
+`--auto`). The service itself accepts keystrokes from
 any program that can read `.run\token` ([section 10](#10-safety-details)), including the Claude Code
 bridge, which asks you in Claude Code before each action.
 **Physical switches:** unplug cable 4 and nothing can be typed; unplug cable 3 and the AI computer can
@@ -338,7 +339,9 @@ Open User Settings (JSON)* and add:
 they close brackets, quotes, `/*` comments and HTML or JSX tags, add indentation, wrap a selection
 instead of replacing it, generate Doxygen comments, and let Enter, Tab or punctuation accept a
 suggestion. Before you run
-`nanokvm edit`, switch them off in the same settings file. The C/C++ extension's own `[cpp]` defaults
+`nanokvm edit` or `fix`, switch them off in the same settings file, and keep VS Code from saving or
+reformatting by itself (`files.autoSave` off, `editor.formatOnSave` false): nanokvm never saves, so
+nothing it types is saved until you have looked at it. The C/C++ extension's own `[cpp]` defaults
 win over global settings, so the main ones are repeated in a `[cpp]` block. (These were checked
 against VS Code 1.144's source on 29 Oct.)
 
@@ -362,6 +365,8 @@ against VS Code 1.144's source on 29 Oct.)
 "javascript.autoClosingTags": false,
 "typescript.autoClosingTags": false,
 "C_Cpp.doxygen.generateOnType": false,
+"files.autoSave": "off",
+"editor.formatOnSave": false,
 "[cpp]": {
   "editor.autoClosingBrackets": "never",
   "editor.autoClosingQuotes": "never",
@@ -516,9 +521,10 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   `outbound` stricter, never looser), and `--local-only` has Glimmer answer instead, sending nothing.
 - **`edit`** works like `ask`, but Spark answers with `apply_edit` calls: replace lines S to E with new
   lines. `--stand-in` and `--approve` work as for `ask`.
-- **`fix`** is `edit` with no request. Glimmer also notes what is wrong on the screen (error messages,
-  squiggles, the Problems panel, the status bar's counts), and Spark gets a built-in instruction, those
-  notes and every code line on the screen, untrimmed, so it can find the error itself. After each typed
+- **`fix`** is `edit` with no request. Glimmer also notes what is wrong in the VS Code window (the file's
+  name only, squiggles, its Problems and terminal panels, the status bar's counts; never other apps or
+  the system's notifications), shows you those notes, and Spark gets a built-in instruction, the notes
+  and every code line on the screen, untrimmed, so it can find the error itself. After each typed
   edit, Spark also gets the screen as Glimmer read it to check that edit, so its next step starts from
   the screen as it is now. When Spark says it's done, Glimmer reads the screen afresh (the code and its
   notes again) and Spark checks every line for anything the edits broke; if something is still wrong it
@@ -721,7 +727,7 @@ needed.
 
 ## 10. Safety details
 
-- **Edits are typed only after your yes**, keyboard only, with Glimmer checking the screen before each
+- **Edits are typed only after your yes** (for each edit, or once per run with `--auto`), keyboard only, with Glimmer checking the screen before each
   irreversible step and after the typing ([section 6](#6-using-it-read-ask-and-edit)). Spark can only
   propose edits; it never types anything itself.
 - **No stuck keys.** Every action ends with all keys and buttons up, even when something fails, and
@@ -811,7 +817,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        304 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        306 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
