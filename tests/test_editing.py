@@ -285,7 +285,24 @@ def test_no_digits_or_enter_unless_the_go_to_line_box_opened(world, monkeypatch)
     res = w.run()
     assert w.ed.lines == FILE and res.edits[0].outcome.status == "not_applied"
     assert "Go to Line box" in res.stopped and "Glimmer saw no box" in res.stopped and "keytest" in res.stopped
-    assert [keys for _mods, keys in _keys_sent(w)] == [(E_KEY("esc"),), (E_KEY("g"),), (E_KEY("esc"),)]
+    esc, g = (E_KEY("esc"),), (E_KEY("g"),)                    # tried twice, then given up: no digit, no Enter
+    assert [keys for _mods, keys in _keys_sent(w)] == [esc, g, esc, g, esc]
+
+
+def test_a_go_to_line_box_that_opens_late_is_seen_on_the_second_try(world, monkeypatch):
+    w = world
+    real, presses = w.ed.key, []
+
+    def slow_vs_code(mods, usage):                               # the first Ctrl+G opens nothing
+        if mods and usage == E_KEY("g"):
+            presses.append(usage)
+            if len(presses) == 1:
+                return
+        real(mods, usage)
+    monkeypatch.setattr(w.ed, "key", slow_vs_code)
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="fix"), spark_stream("Fixed.")]
+    res = w.run()
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and res.edits[0].outcome.status == "verified"
 
 
 def test_the_last_line_on_the_screen_is_never_edited(world):

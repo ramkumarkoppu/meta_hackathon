@@ -374,6 +374,14 @@ class EditTyper:
         self._pause()
         box = self.read_box()
         if not is_goto_box(box):
+            # once more, and slower: VS Code can take a moment to draw the box. Only Escape and Ctrl+G are sent
+            # before the box is seen, so nothing is typed into the file either way.
+            self._keys("escape")
+            self._pause(0.5)
+            self._keys("ctrl+g")
+            self._pause(3)                          # three times the usual wait: 1.2 s at the default pause
+            box = self.read_box()
+        if not is_goto_box(box):
             self._keys("escape")
             first = ((box or "").strip().splitlines() or [""])[0].strip().strip("'\"`").strip().upper()
             if first in ("", "NONE"):

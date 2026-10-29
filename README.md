@@ -571,7 +571,8 @@ printed above them can't.
 2. **Your approval.** It shows the change as a diff with the file's line numbers, the exact keys it
    will press and Spark's note, then asks *Type this edit? [y/N]*.
 3. **Typing, keyboard only.** Escape, then Ctrl+G. Glimmer checks that VS Code's Go to Line box opened
-   (by the `:` some versions type into it, or by its hint about a line number) before anything else is
+   (by the `:` some versions type into it, or by its hint about a line number; if it isn't seen, Escape
+   and Ctrl+G are tried once more, with a longer wait) before anything else is
    typed: elsewhere, digits and Enter could act (in VS Code's terminal,
    Ctrl+G is *Go to Recent Directory*, and Enter would run a `cd`). Then the line number and Enter go to
    the line. Glimmer reads the status bar (it must say *Ln S, Col 1*, with nothing selected) and the
@@ -892,7 +893,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        306 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        307 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
