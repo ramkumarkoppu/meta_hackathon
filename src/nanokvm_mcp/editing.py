@@ -162,18 +162,19 @@ def parse_status(text: str) -> tuple[int, int, int] | None:
 
 
 def is_goto_box(text: str) -> bool:
-    """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line. VS Code opens it with ':' already
-    typed ('::' is a different mode), and its hint says "Current Line: L, Character: C. Type a line number between
-    1 and N to navigate to." Glimmer can miss the small ':' or give the hint first (seen on the real screen), so
-    the hint counts too: Go to Recent Directory (Ctrl+G in VS Code's terminal), Quick Open and the command
-    palette never show it."""
+    """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line. Versions differ: VS Code 1.144 opens
+    it with ':' already typed ('::' is a different mode) and the hint "Current Line: L, Character: C. Type a line
+    number between 1 and N to navigate to."; the locked computer's VS Code (29 Oct) opens it empty, with "Type a
+    line number to go to (from 1 to N)." So either the ':' or a hint with "line number" counts: Go to Recent
+    Directory (Ctrl+G in VS Code's terminal, "Select a directory to go to"), Quick Open and the command palette
+    never say "line number"."""
     lines = [ln.strip().strip("'\"`").strip() for ln in (text or "").strip().splitlines()]
     if not lines or lines[0].startswith("::"):
         return False
     if lines[0].startswith(":"):
         return True
     hint = " ".join(lines[:3]).lower()
-    return "line number" in hint and ("navigate" in hint or "current line" in hint)
+    return "line number" in hint and any(w in hint for w in ("go to", "navigate", "current line"))
 
 
 def lines_match(screen: dict[int, str], start: int, expected: list[str]) -> bool:

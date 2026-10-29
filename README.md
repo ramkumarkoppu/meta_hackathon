@@ -550,8 +550,9 @@ printed above them can't.
    reply from Spark is used.
 2. **Your approval.** It shows the change as a diff with the file's line numbers, the exact keys it
    will press and Spark's note, then asks *Type this edit? [y/N]*.
-3. **Typing, keyboard only.** Escape, then Ctrl+G. Glimmer checks that VS Code's Go to Line box (`:`)
-   opened before anything else is typed: elsewhere, digits and Enter could act (in VS Code's terminal,
+3. **Typing, keyboard only.** Escape, then Ctrl+G. Glimmer checks that VS Code's Go to Line box opened
+   (by the `:` some versions type into it, or by its hint about a line number) before anything else is
+   typed: elsewhere, digits and Enter could act (in VS Code's terminal,
    Ctrl+G is *Go to Recent Directory*, and Enter would run a `cd`). Then the line number and Enter go to
    the line. Glimmer reads the status bar (it must say *Ln S, Col 1*, with nothing selected) and the
    lines there (they must be the ones Spark changed). Ctrl+L once per line selects them, checked on

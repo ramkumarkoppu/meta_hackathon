@@ -386,12 +386,14 @@ def test_numbered_lines_follow_wrapping_and_sticky_scroll():
 
 
 def test_the_go_to_line_box_is_known_by_its_colon_or_its_hint():
-    hint = "Current Line: 9, Character: 1. Type a line number between 1 and 9 to navigate to."
+    hint = "Current Line: 9, Character: 1. Type a line number between 1 and 9 to navigate to."   # VS Code 1.144
+    other = "Type a line number to go to (from 1 to 9)."         # the locked computer's VS Code: no ':' typed
     for seen in (":", ":7\n" + hint, "`:`\n" + hint, "EMPTY\n" + hint, hint,      # Glimmer missed the ':'
-                 "Type a line number between 1 and 9 to navigate to."):
+                 "Type a line number between 1 and 9 to navigate to.", "EMPTY\n" + other, other):
         assert E.is_goto_box(seen), seen
     for seen in ("NONE", "", "::\n" + hint, ">\nShow All Commands", "EMPTY\nSelect a directory to go to",
-                 "hello.cpp\nrecently opened", "EMPTY\nSearch files by name"):
+                 "hello.cpp\nrecently opened", "EMPTY\nSearch files by name (append : to go to line or @ to go "
+                 "to symbol)", "EMPTY\nType the name of a symbol to go to"):
         assert not E.is_goto_box(seen), seen
 
 
