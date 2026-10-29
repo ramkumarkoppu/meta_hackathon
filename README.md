@@ -20,6 +20,20 @@ computer, the **AI computer**:
 5. **Act, with your approval.** You approve each edit at the keyboard. It is typed into VS Code on the
    locked computer through the NanoKVM-USB's keyboard, and Glimmer reads the screen again to check it.
 
+**Not just code.** The aim is to help with whatever the locked computer shows: the errors and messages
+of its software tools, often locked-down legacy tools nothing else can help with, as well as code.
+Glimmer already reads all of these on the AI computer (`read --describe` names the application and
+quotes its messages and errors). For now, `ask` and `edit` work from the code reading; asking Spark
+about a tool's error dialog is next.
+
+**Sensitive screens.** The locked computer may show patient records or company-confidential data. Its
+screen images never leave the AI computer. Redaction catches values with a recognisable shape (keys,
+tokens, passwords, email addresses, hostnames, card numbers, paths) and the terms you list, but it
+can't reliably catch names, patient details or confidential prose. So when such data is on the
+screen, send nothing: `nanokvm read` never sends, and `ask --local-only` (or `outbound = "local_only"`
+in `nanokvm.toml`) has Glimmer answer on the AI computer instead of Spark. The assistant helps with the
+software and its errors; it doesn't interpret patient data or give clinical advice.
+
 **Status (29 Oct).** All five steps are built and pass their tests on a simulated locked computer, with
 a fake Glimmer and a fake Meta API. With the real Glimmer and Spark, `read` and `ask` have run on
 simulated screens. On the real hardware, capture and the live view work, and on 29 Oct Glimmer read
@@ -101,7 +115,7 @@ audio device beside it for any HDMI sound, which the bridge never opens) and a U
 
 | Computer | Windows | macOS | Linux |
 |----------|---------|-------|-------|
-| Locked computer | Picture tested (Windows 11); keyboard and mouse not yet | Should work; not tested | Should work; not tested |
+| Locked computer | Picture and Glimmer's reading tested (Windows 11); keyboard and mouse not yet | Should work; not tested | Should work; not tested |
 | AI computer | Tested (Windows 11) | Not yet: needs porting | Not yet: needs porting |
 
 **A locked computer on macOS or Linux.** Set `locked_os = "macos"` or `"linux"` in `nanokvm.toml`
@@ -145,7 +159,10 @@ for the Windows CUDA build of llama.cpp. Running it elsewhere is future work
    `.corp`, `.internal`, `.intranet`, `.lan` or a `.uk` domain, with placeholders such as
    `[[EMAIL_1]]`, plus any terms you list in `.run\redact_terms.txt`. The patterns are narrow, so
    ordinary code survives (`std::vector<int>`, `a->b`, `0x2A`). Names, project code words and other
-   hostnames or machine names look like ordinary text: list them in `.run\redact_terms.txt`.
+   hostnames or machine names look like ordinary text: list them in `.run\redact_terms.txt`. Patient
+   details (names, NHS numbers, dates of birth, addresses, clinical notes) and confidential prose
+   aren't caught by the patterns, so when they are on the screen, use `local_only` and send nothing (see
+   *Sensitive screens* at the top of this page).
 2. **Trimming.** Glimmer copies out only the lines the question needs. The excerpt is rebuilt from the
    redacted lines themselves, so it can only contain text that was on the screen.
 3. **A second redaction pass**, with the same placeholders.
@@ -214,7 +231,7 @@ to the HOST end:
 > is an output, so you'd get no picture anywhere. The locked computer always connects to the
 > **TARGET** end.
 
-**The complete wiring (two desks, no docking station):**
+**The complete wiring (two desks; no docking station at the locked computer):**
 
 ```
 LOCKED COMPUTER DESK
@@ -224,25 +241,33 @@ LOCKED COMPUTER DESK
 
 AI COMPUTER DESK
 [3] NanoKVM HOST USB-C ───────── USB-C → USB-C ───► AI computer USB-C
-[5] AI computer HDMI port ────── HDMI → DVI-D ────► Dell Monitor B, white DVI port
+[5] AI computer other USB-C ──── USB-C dock ── DisplayPort ──► Dell Monitor B, DisplayPort input
 
 Logitech keyboard + mouse: Bluetooth to both laptops; Easy-Switch between them.
-Each laptop on its own charger. No docking station.
+Each laptop on its own charger.
 ```
 
 Setup steps:
 
-1. **Disconnect the docking station** from the locked computer and both monitors, and plug each
+1. **Disconnect the locked computer from its docking station** and both monitors, and plug each
    laptop into its own charger.
-2. Connect cables **1, 2, 3 and 5**. Connect cable **4** only when edits may be typed.
-3. On **both monitors**, use the buttons to set the **input source to DVI**.
+2. Connect cables **1, 2 and 3**, and connect Monitor B through the USB-C dock (**5**). Connect cable
+   **4** only when edits may be typed.
+3. Use the monitors' buttons to set **Monitor A's input source to DVI** and **Monitor B's to
+   DisplayPort**.
 4. On the locked computer, make **Monitor A the main display** ([section 4](#4-locked-computer-settings)).
+5. On the AI computer, set Armoury Crate's **GPU Mode to Standard**. Then `nvidia-smi
+   --query-gpu=display_active --format=csv` says *Disabled*: no display uses the NVIDIA GPU, and
+   Muse Glimmer has all of its memory ([section 11](#11-troubleshooting), *VS Code or the desktop stalls*).
 
 Notes:
 
-- **Why DVI.** The Dell monitors have DisplayPort, DVI-D and VGA inputs, but no HDMI. HDMI and
-  DVI-D carry the same digital picture, so a passive HDMI-to-DVI-D cable needs no power or
+- **Why DVI for Monitor A.** The Dell monitors have DisplayPort, DVI-D and VGA inputs, but no HDMI.
+  HDMI and DVI-D carry the same digital picture, so a passive HDMI-to-DVI-D cable needs no power or
   converter. Don't use VGA: it's analogue and blurry.
+- **Why Monitor B goes through a dock.** The dock (a StarTech.com 116N-USBC-DOCK, which uses
+  DisplayLink) keeps Monitor B off the NVIDIA GPU. A display on that GPU takes some of the memory
+  Glimmer needs, and the desktop then stalls while Glimmer runs.
 - **Monitor A depends on the AI computer.** The NanoKVM is powered through cable 3. If the
   AI computer is off or cable 3 is unplugged, Monitor A goes dark. To use the locked computer
   alone, unplug cable 1 and plug cable 2's HDMI end straight into the locked computer's HDMI port.
@@ -265,7 +290,7 @@ The NanoKVM-USB came with **no cables**. Ordered on Amazon UK on 2026-10-07:
 | 2 | [C2G HDMI to DVI-D cable](https://www.amazon.co.uk/C2G-Digital-Suitable-Raspberry-Stations/dp/B00CQSYS48), 1 m | NanoKVM HOST HDMI → Dell Monitor A DVI |
 | 3 | [Cable Matters USB-IF certified USB-C to USB-C, 10 Gbps](https://www.amazon.co.uk/USB-IF-Certified-Cable-Matters-Delivery/dp/B01L0F6AJI), 1 m | NanoKVM HOST USB-C → AI computer. Must be a USB 3 data cable: it carries the video and powers the NanoKVM. |
 | 4 | [UGREEN USB-A to USB-C, USB 3.0](https://www.amazon.co.uk/dp/B08XJP9GMP), 1 m | Locked computer USB-A → NanoKVM TARGET USB-C (keyboard/mouse) |
-| 5 | C2G HDMI to DVI-D cable, 2 m | AI computer HDMI → Dell Monitor B DVI |
+| 5 | StarTech.com 116N-USBC-DOCK and a DisplayPort cable (not part of the 7 Oct order) | AI computer USB-C → dock → Dell Monitor B DisplayPort. On 29 Oct it replaced the 2 m C2G HDMI-to-DVI-D cable ordered for Monitor B. |
 
 ## 4. Locked computer settings
 
@@ -424,7 +449,8 @@ rendered at 1920x1080):** all 27 of 27 lines right (compared with runs of spaces
 indentation wasn't checked), and a full-screen read in 6.7–7.0 s (image prompt about 5 s, generation 131–141 tokens/s), using
 about 23 GB of the GPU's 24 GB with the drafter on. To check the files yourself, run `Get-FileHash` on them and compare the SHA-256
 values above. Glimmer is fast only in Turbo mode on the 240 W barrel charger; see *Glimmer is slow*
-in [section 11](#11-troubleshooting). More measurements are in
+in [section 11](#11-troubleshooting). It also needs the NVIDIA GPU to itself, with no display on it
+([section 3](#3-wiring-for-this-desk), setup step 5). More measurements are in
 [the hackathon plan, section 7](docs/hackathon-plan.md#7-schedule-and-status).
 
 **On the real capture (29 Oct, during the event, without the drafter, 20.9 GB of GPU memory):** a
@@ -452,9 +478,10 @@ Standard model IDs.
 ## 6. Using it: read, ask and edit
 
 Start Muse Glimmer first, in its own terminal: `E:\meta_hackathon\tools\run-glimmer.ps1`
-([section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)). It refuses to start while another
-llama-server runs or port 8001 is taken: two servers could share the port, and requests would go to
-either. Then, in another terminal
+([section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)), after checking that no display
+uses the NVIDIA GPU ([section 3](#3-wiring-for-this-desk), setup step 5). It refuses to start while
+another llama-server runs or port 8001 is taken: two servers could share the port, and requests would
+go to either. Then, in another terminal
 (prefix each command with `E:\meta_hackathon\.venv\Scripts\`):
 
 ```powershell

@@ -68,9 +68,11 @@ So far:
 - **Ready to read the real screen (29 Oct).** Before Glimmer's first read of the real locked computer,
   `nanokvm read --check` now reports line numbers only, never the text read, so I can share its result.
   `read`, `ask` and `edit` check that Glimmer is up before asking to share the screen, refuse a frame
-  more than 2 s old, and print the service's warnings about the picture.
+  more than 2 s old, and print the service's warnings about the picture. `run-glimmer.ps1` refuses to
+  start a second server, and `nanokvm status` shows any active screen shares.
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
   transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,
-  with the DFlash drafter on (7.1 s and 13.5 s without it).
+  with the DFlash drafter on (7.1 s and 13.5 s without it). For that, the NVIDIA GPU drives no
+  display: Armoury Crate's GPU Mode is Standard, and my external monitor goes through a USB-C dock.
   `ask` on a real capture and typing over cable 4 come next.
