@@ -310,6 +310,13 @@ def _share_prompt(minutes: int) -> bool:
     return _console_yes(f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min?")
 
 
+def _auto_share_prompt(minutes: int) -> bool:
+    """--auto: one yes at the keyboard both shares the screen and lets this run type Spark's edits without asking
+    for each one (each is still shown and checked on the screen, and nothing is saved)."""
+    return _console_yes(f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min, "
+                        "and type Muse Spark's edits into VS Code without asking for each one?")
+
+
 def _line_summary(text: str) -> str:
     """Which line numbers Glimmer read, and any gaps: numbers only, no screen text."""
     from .editing import numbered_lines
@@ -477,7 +484,7 @@ def _approve_edit(plan) -> bool:
 
 
 def _auto_edit(plan) -> bool:
-    """--auto: show the edit and type it without asking (stand-in content only, checked in cmd_edit)."""
+    """--auto: show the edit and type it without asking (allowed once, at the share prompt)."""
     _show_edit(plan)
     _out("--auto: typing it without asking.")
     return True
@@ -489,12 +496,11 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     from .pipeline import EditError, Pipeline
     from .spark import SparkError
     cfg = cl.cfg
-    if args.auto and not args.stand_in:
-        raise SystemExit("--auto types edits without asking, so it is only for stand-in (toy) content: add --stand-in")
     if args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
     try:
-        with Pipeline(cfg, approve_share=_share_prompt, approve_send=_approve_send, stand_in=args.stand_in) as pipe:
+        with Pipeline(cfg, approve_share=_auto_share_prompt if args.auto else _share_prompt,
+                      approve_send=_approve_send, stand_in=args.stand_in) as pipe:
             if not _glimmer_up(pipe):
                 return 2
             pipe.open(args.minutes)
@@ -532,6 +538,9 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     _out(f"\n({typed} edit(s) typed, {sum(1 for r in res.edits if r.outcome and r.outcome.status == 'verified')} "
          f"checked on the screen{rechecked}; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
          f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
+    if typed:
+        _out("Nothing was saved: review the changes in VS Code before you save. Ctrl+Z, or File: Revert File, "
+             "undoes them.")
     return 0 if not res.stopped else 4
 
 
@@ -610,7 +619,8 @@ def main(argv: list[str] | None = None) -> int:
                        help="the screen shows stand-in or dummy content (required while Meta billing is on free credits)")
         p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
         p.add_argument("--auto", action="store_true",
-                       help="type each edit without asking (only with --stand-in: for toy files, never real work)")
+                       help="type the edits without asking for each one: you allow it once, at the share prompt; "
+                            "each edit is still shown and checked on the screen, and nothing is saved")
         p.set_defaults(fn=cmd_edit)
     args = ap.parse_args(argv)
     cl = ServiceClient(Config.load())

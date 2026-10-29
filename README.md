@@ -523,10 +523,14 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   the screen as it is now. When Spark says it's done, Glimmer reads the screen afresh (the code and its
   notes again) and Spark checks every line for anything the edits broke; if something is still wrong it
   carries on editing. That final check happens at most twice, within the limits below.
-- **`--auto`** (for `edit` and `fix`, and only together with `--stand-in`) types each edit without
-  asking, for toy files: each edit is still shown and checked before and after typing, and Ctrl+C stops
-  it. The share prompt remains. Real work keeps the per-edit approval: Meta's usage policy asks for
-  confirmation before consequential actions.
+- **`--auto`** (for `edit` and `fix`) types Spark's edits without asking for each one. You allow it once
+  per run, at the keyboard: the share prompt then asks to share the screen *and* to type without
+  asking. Each edit is still shown, the screen is checked before and after typing, the first failed
+  check stops the run, Ctrl+C stops it at once, and nothing is saved: review the changes before you save
+  (Ctrl+Z or *File: Revert File* undoes them). Meta's usage policy asks for authorization, oversight,
+  review and confirmation before consequential actions; the once-per-run yes, the checks and leaving the
+  saving to you are how this mode provides them. Check that the locked computer's owner is happy with
+  edits typed this way. While Meta billing is on free credits, `--stand-in` is still needed to send.
 
 **Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
 `tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must

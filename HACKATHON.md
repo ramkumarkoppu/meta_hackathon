@@ -74,9 +74,10 @@ So far:
   what is wrong on the screen (error messages, squiggles, the status bar's counts), and Spark gets those
   notes and the code, redacted, finds the error and fixes it through `apply_edit`. After each edit,
   Spark sees the screen as it now is; when it says it's done, Glimmer reads the screen afresh and Spark
-  checks the fix there, editing again if needed: understand, think, act, understand again. For toy files,
-  `--auto` (only with `--stand-in`) types each edit without asking; each is still checked on the screen
-  before and after typing.
+  checks the fix there, editing again if needed: understand, think, act, understand again. With
+  `--auto`, one yes at the start lets it type every edit without asking; each edit is still shown and
+  checked on the screen before and after typing, and nothing is saved. On 29 Oct it found and typed the
+  fix for a deliberate syntax error on the real locked computer.
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
   transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,

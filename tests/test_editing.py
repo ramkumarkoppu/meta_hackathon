@@ -144,21 +144,25 @@ def test_fix_finds_the_error_itself_from_the_screen(world):
     assert not any("<question>" in json.dumps(b) for b in w.glim.bodies("/v1/chat/completions"))
 
 
-def test_cli_fix_auto_types_without_asking_but_only_on_stand_in_content(world, monkeypatch, capsys):
+def test_cli_fix_auto_asks_once_then_types_without_asking(world, monkeypatch, capsys):
     w = world
     monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: w.cfg))
-    with pytest.raises(SystemExit, match="only for stand-in"):
-        cli.main(["fix", "--auto"])
-    monkeypatch.setattr(cli, "_share_prompt", lambda m: True)
+    asked = []
+    monkeypatch.setattr(cli, "_console_yes", lambda q: asked.append(q) or True)
+    assert cli._auto_share_prompt(10) and "without asking for each one" in asked[0]    # one yes covers both
+    monkeypatch.setattr(cli, "_auto_share_prompt", lambda m: True)
     monkeypatch.setattr(cli, "_console_yes", lambda q: pytest.fail(f"--auto asked: {q}"))
     monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the fake Meta API, never the real one
                         lambda cfg: SparkClient(cfg, base_url=f"http://127.0.0.1:{w.meta.port}"))
+    assert cli.main(["fix", "--auto"]) == 3                                   # free credits: still stand-in only
+    assert "free credits" in capsys.readouterr().out and w.meta.requests == [] and _keys_sent(w) == []
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6."),
                   spark_stream("The screen shows it fixed.")]
     assert cli.main(["fix", "--stand-in", "--auto"]) == 0
     out = capsys.readouterr().out
     assert "--auto: typing it without asking." in out and "verified" in out
     assert "reading the screen again with Muse Glimmer" in out and "1 fresh reading(s) of the screen" in out
+    assert "Nothing was saved: review the changes in VS Code before you save." in out
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and len(w.meta.requests) == 3
 
 
