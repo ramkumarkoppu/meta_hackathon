@@ -14,11 +14,11 @@ live. When you allow it, Claude can also use the locked computer's keyboard and 
   conversation, and **every** click or keypress needs its own approval
   ([section 2](#2-secure-mode-how-its-configured)).
 
-**Planned, not built yet:** adding Meta AI models and entering the Meta Global AI Developer
-Hackathon. Our application was accepted on 20 Oct; we decide go or no-go on 26 Oct. For the
-hackathon tests, Meta's Muse Glimmer model already runs on the AI computer's GPU
-([section 5a](#5a-local-muse-glimmer-hackathon-tests)), but the bridge doesn't use it yet. See
-[docs/hackathon-plan.md](docs/hackathon-plan.md).
+**Hackathon entry.** This repo is my solo entry in the Meta Global AI Developer Hackathon (Indie
+Developer track). The bridge described here existed before the event. What I built during it, from
+26 Oct, is Meta models reading the locked computer's screen: Muse Glimmer on the AI computer's GPU,
+and Muse Spark, which gets only redacted text. [HACKATHON.md](HACKATHON.md) says exactly what was
+built before and during the event.
 
 ---
 
@@ -41,7 +41,8 @@ hackathon tests, Meta's Muse Glimmer model already runs on the AI computer's GPU
 12. [Troubleshooting](#12-troubleshooting)
 13. [Files and testing without hardware](#13-files-and-testing-without-hardware)
 
-**Separate page:** [Hackathon plan: Meta models](docs/hackathon-plan.md) (planned, not built yet)
+**Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
+[Hackathon plan: Meta models](docs/hackathon-plan.md)
 
 ---
 
