@@ -59,7 +59,8 @@ def cmd_status(cl: ServiceClient, args) -> int:
          + (f"\n           {ctl['device_info']}" if ctl.get("device_info") else ""))
     _out(f"Screen:    {scr['width']}x{scr['height']} coordinate space, region {scr['region']} ({scr['region_source']})")
     _out(f"Viewers:   {st['viewers']}")
-    _out(f"Live view: {cl.viewer_url()}")
+    _out(f"Live view: {cl.cfg.base_url}/?t=<token>  (the token is hidden here: 'nanokvm viewer' opens the "
+         "window, and 'nanokvm viewer --no-open' prints the full URL)")
     return 0
 
 

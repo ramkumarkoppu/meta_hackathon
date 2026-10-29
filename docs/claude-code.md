@@ -5,9 +5,10 @@ VS Code on the AI computer** see the locked computer's screen and, when allowed,
 mouse, through an MCP server called `locked-computer`. It is in the `pre-event-baseline` commit, it
 still works, and it shares the NanoKVM service with the Meta-model pipeline. It is **not part of the
 hackathon entry**: see the [README](../README.md) for the entry and [HACKATHON.md](../HACKATHON.md) for
-what was built when. During the event it changed only for the renames (*Work laptop* became the
-locked computer, and the MCP server `work-laptop` became `locked-computer`) and for the `locked_os`
-setting, which tells Claude the locked computer's OS and shortcuts.
+what was built when. During the event it changed only for the renames (the two computers, and the MCP
+server, now `locked-computer`), the `locked_os` setting, which tells Claude the locked computer's OS
+and shortcuts, a pointer to the viewer window in `screen_status`'s reply, and, on 29 Oct, the rules
+in section 3 that keep it out of `.run\`.
 
 ## 1. Connect to Claude Code in VS Code
 
@@ -43,23 +44,35 @@ this bridge only with the approval of whoever owns the locked computer and its d
 **Keeping Claude out of `.run\`.** That folder holds what Claude must not see: the screenshots the
 `nanokvm` command saves, the audit log of what was sent to Muse Spark (`outbound.log`, with redacted
 screen text and Spark's replies), your redaction terms (`redact_terms.txt`), the API keys and the
-service token. Anything Claude reads goes to Anthropic, so since 29 Oct Claude Code in this folder
-can't open them:
+service token. Anything Claude reads goes to Anthropic, so since 29 Oct Claude Code in this folder is
+refused when it tries to open them:
 
-- deny rules keep its file tools (Read, Edit, Write, Grep and Glob) out of `.run\`;
-- a hook, `tools\guard_run_dir.py`, refuses any Bash or PowerShell command that names the `.run`
-  folder, in every permission mode (those deny rules don't cover shell commands while the Bash
-  sandbox is off).
+- **Deny rules** keep its file tools (Read, Edit, Write, NotebookEdit, and as far as Claude Code can,
+  Grep and Glob) out of `.run\`. They also stop the shell file commands Claude Code recognises, such
+  as `cat`, `head`, `tail`, `sed`, `tee` and redirections, but not other programs.
+- **A hook**, `tools\guard_run_dir.py`, refuses any Bash, PowerShell or Monitor command that names
+  the `.run` folder, in every permission mode, bypass included. It also refuses a recursive `grep`,
+  `rg` with `--no-ignore` or `-u`, and `find` with `-exec` unless they exclude the folder
+  (`--exclude-dir=.run`), because those reach it without naming it. Its message tells Claude how to
+  do the same thing safely, for example a commit message that mentions `.run` goes through
+  `git commit -F` with a file.
 
-Programs Claude runs still read the files they need, such as the `nanokvm` command and git's
-pre-commit check, and a command that builds the path some other way isn't caught. So this prevents
-mistakes; it isn't a barrier against a determined program. `screen_status` still puts the token in
-the live-view URL it returns ([section 5](#5-tools-claude-gets)).
+The hook reads only the command line, so it doesn't catch a script saved to a file and then run, code
+that uses the project's own `Config.run_dir`, or a command that copies or walks the whole project
+another way (`tar`, `cp -r`, a PowerShell `Get-ChildItem -Recurse` pipeline). Programs Claude runs
+still read the files they need, such as the `nanokvm` command and a local git pre-commit hook (git
+hooks aren't in the repo). So this prevents mistakes; it isn't a barrier against a
+determined program. The service token can still reach Claude: `screen_status` puts it in the
+live-view URL it returns ([section 5](#5-tools-claude-gets)), and so do `nanokvm viewer --no-open`
+and `--browser` if Claude runs them (`nanokvm status` hides it).
 
 The rules live in `.claude\settings.local.json`, which isn't in the repo. To use them in your copy,
 add this to that file (the last two deny rules name this folder, so change them if yours is
 elsewhere). The hook needs Git Bash and the project's `.venv`, and Claude Code 2.1.295 or later for
-`onFailure`: if the hook itself fails, every shell command is refused until it's fixed.
+`onFailure`: if the hook itself fails, for example after `.venv` is deleted, every shell command is
+refused until it's fixed. Then run `uv sync` in a terminal outside Claude Code, or remove the
+`hooks` block. Claude Code normally picks up settings edits at once; if a change doesn't show in
+`/hooks` after a few seconds, start a new session.
 
 ```json
 "permissions": {
@@ -70,7 +83,7 @@ elsewhere). The hook needs Git Bash and the project's `.venv`, and Claude Code 2
 },
 "hooks": {
   "PreToolUse": [{
-    "matcher": "Bash|PowerShell",
+    "matcher": "Bash|PowerShell|Monitor",
     "hooks": [{
       "type": "command",
       "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -I -S \"$CLAUDE_PROJECT_DIR/tools/guard_run_dir.py\"",

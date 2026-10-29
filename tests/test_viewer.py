@@ -446,7 +446,10 @@ def test_viewer_command_modes(sim, monkeypatch, capsys):
         return argparse.Namespace(**{"browser": False, "no_open": False, "fps": 30, "close_after": None, **kw})
 
     assert cli.cmd_viewer(sim.client, args(no_open=True)) == 0
-    assert "?t=" in capsys.readouterr().out and opened == [] and ran == []
+    assert sim.token in capsys.readouterr().out and opened == [] and ran == []
+    assert cli.cmd_status(sim.client, argparse.Namespace(json=False)) == 0
+    status = capsys.readouterr().out
+    assert "?t=<token>" in status and sim.token not in status     # status doesn't show the token
     assert cli.cmd_viewer(sim.client, args(browser=True)) == 0
     assert len(opened) == 1 and ran == []
     assert cli.cmd_viewer(sim.client, args(fps=12, close_after=3.0)) == 0

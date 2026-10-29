@@ -1,8 +1,8 @@
 """Key names -> HID usages, combo parsing ("ctrl+alt+delete") and text -> keystrokes.
 
-HID usages (page 0x07) follow sipeed/NanoKVM-USB browser/src/libs/keyboard/keymap.ts and
-charCodes.ts. Typing text follows the ``keyboard_layout`` setting ("us" or "uk"; HID usages are
-physical key positions; the target's layout decides which character a key produces).
+HID usages are the keyboard page (0x07) of the USB HID Usage Tables, checked against Sipeed's
+NanoKVM-USB app (v1.1.4). Typing text follows the ``keyboard_layout`` setting ("us" or "uk"; HID
+usages are physical key positions; the target's layout decides which character a key produces).
 """
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ KEYS.update({f"f{n}": 0x68 + (n - 13) for n in range(13, 25)})                  
 KEYS.update({f"num{d}": 0x59 + (d - 1) for d in range(1, 10)})                  # keypad 1..9
 KEYS["num0"] = 0x62
 
-# Printable ASCII -> (usage, needs_shift) for a US layout (charCodes.ts + ShiftChars).
+# Printable ASCII -> (usage, needs_shift) for a US layout.
 _SHIFTED = {
     "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8",
     "(": "9", ")": "0", "_": "-", "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";",

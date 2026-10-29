@@ -33,11 +33,11 @@ git diff pre-event-baseline
 
 or, on GitHub: <https://github.com/ramkumarkoppu/meta_hackathon/compare/pre-event-baseline...master>.
 
-The first event commit also renamed the two computers (*Work laptop* became the locked computer and
-*Personal laptop* the AI computer), the folder (`E:\work_laptop` became `E:\meta_hackathon`) and the
-Claude Code MCP server (`work-laptop` became `locked-computer`). So the diff shows those renames in
-pre-event files too. The Claude Code bridge itself changed only for the renames and the `locked_os`
-setting.
+The first event commit also renamed the two computers (now the locked computer and the AI computer),
+the project folder (now `E:\meta_hackathon`) and the Claude Code MCP server (now `locked-computer`).
+So the diff shows those renames in pre-event files too. The Claude Code bridge itself changed only
+for the renames, the `locked_os` setting, a pointer to the viewer window in `screen_status`'s reply
+and, on 29 Oct, the rules that keep it out of `.run\`.
 
 So far:
 
@@ -57,8 +57,10 @@ So far:
   on the locked computer only after I say yes, keyboard only through the NanoKVM, and checked by Muse
   Glimmer on the screen before and after (`editing.py`). So far it has run only on the simulator,
   with a fake Glimmer and a fake Meta API: not yet with the real models or on a real computer.
-- **Secrets kept from Claude Code (29 Oct).** Deny rules and a hook (`tools/guard_run_dir.py`) stop
-  Claude Code in this folder from reading `.run\`, where the Meta API key, the service token and the
-  audit log of what was sent to Spark live.
+- **Claude Code kept out of `.run\` (29 Oct).** Deny rules and a hook (`tools/guard_run_dir.py`) stop
+  Claude Code in this folder from opening `.run\` by mistake, where the Meta API key, the service
+  token and the audit log of what was sent to Spark live. They guard against mistakes, not a
+  determined program, and the bridge's `screen_status` still returns the token
+  ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)).
 - **The README rewritten around the Meta-model pipeline (29 Oct).** The Claude Code bridge, built before
   the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).

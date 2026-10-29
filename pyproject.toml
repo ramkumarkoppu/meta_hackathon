@@ -1,7 +1,7 @@
 [project]
 name = "nanokvm-mcp"
 version = "0.1.0"
-description = "Let Claude Code see (and optionally control) the locked computer through a Sipeed NanoKVM-USB"
+description = "AI help for a locked computer through a Sipeed NanoKVM-USB: Muse Glimmer reads the screen on the local GPU, Muse Spark gets only redacted text, and approved edits are typed back"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

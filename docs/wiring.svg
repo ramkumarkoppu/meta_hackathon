@@ -10,7 +10,7 @@
 
   <rect x="0" y="0" width="1000" height="780" fill="#ffffff"/>
   <text x="500" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">
-    Locked computer  →  NanoKVM-USB  →  AI computer (Claude Code)
+    Locked computer  →  NanoKVM-USB  →  AI computer
   </text>
   <text x="140" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">LOCKED COMPUTER DESK</text>
   <text x="870" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">LOCKED COMPUTER DESK</text>
@@ -20,7 +20,7 @@
   <!-- Locked computer -->
   <rect x="40" y="226" width="200" height="140" rx="8" fill="#fef3c7" stroke="#92400e" stroke-width="2"/>
   <text x="140" y="254" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Locked computer</text>
-  <text x="140" y="276" text-anchor="middle" fill="#374151">offline · nothing installed</text>
+  <text x="140" y="276" text-anchor="middle" fill="#374151">nothing installed</text>
   <text x="140" y="296" text-anchor="middle" fill="#374151">own charger · no dock</text>
   <text x="140" y="316" text-anchor="middle" fill="#374151">Monitor A = main display</text>
   <rect x="226" y="282" width="20" height="16" rx="2" fill="#111827"/>
@@ -51,15 +51,15 @@
   <text x="870" y="92" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Dell Monitor A</text>
   <text x="870" y="114" text-anchor="middle" fill="#374151">input source: DVI</text>
   <text x="870" y="134" text-anchor="middle" fill="#374151">Locked computer's main display</text>
-  <text x="870" y="154" text-anchor="middle" fill="#1d4ed8" font-weight="600">the screen Claude sees</text>
+  <text x="870" y="154" text-anchor="middle" fill="#1d4ed8" font-weight="600">the captured screen</text>
   <text x="870" y="180" text-anchor="middle" font-size="11" fill="#6b7280">fed through the NanoKVM</text>
   <rect x="754" y="132" width="12" height="18" rx="2" fill="#f9fafb" stroke="#111827"/>
 
   <!-- AI computer -->
   <rect x="760" y="300" width="220" height="140" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
   <text x="870" y="328" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">AI computer</text>
-  <text x="870" y="350" text-anchor="middle" fill="#374151">VS Code + Claude Code</text>
-  <text x="870" y="370" text-anchor="middle" fill="#374151">nanokvm service · MCP server</text>
+  <text x="870" y="350" text-anchor="middle" fill="#374151">Muse Glimmer (llama.cpp)</text>
+  <text x="870" y="370" text-anchor="middle" fill="#374151">nanokvm service</text>
   <text x="870" y="390" text-anchor="middle" fill="#374151">online · own charger</text>
   <text x="870" y="424" text-anchor="middle" font-size="11" fill="#6b7280">USB-C · HDMI</text>
   <rect x="754" y="362" width="12" height="16" rx="4" fill="#111827"/>
@@ -87,12 +87,12 @@
   <text x="308" y="295" text-anchor="middle" font-weight="700" fill="#ffffff">1</text>
   <text x="308" y="270" text-anchor="middle" font-size="11" fill="#1d4ed8">HDMI</text>
 
-  <!-- cable 4: Locked computer USB-A -> TARGET USB-C (dashed = only when Claude may act) -->
+  <!-- cable 4: Locked computer USB-A -> TARGET USB-C (dashed = only when edits may be typed) -->
   <polyline points="246,331 300,331 300,368 372,368" fill="none" stroke="#ea580c" stroke-width="5" stroke-dasharray="10 6"/>
   <circle cx="336" cy="368" r="12" fill="#ea580c"/>
   <text x="336" y="373" text-anchor="middle" font-weight="700" fill="#ffffff">4</text>
   <text x="252" y="398" font-size="11" fill="#c2410c">keyboard/mouse, only</text>
-  <text x="252" y="412" font-size="11" fill="#c2410c">when Claude may act</text>
+  <text x="252" y="412" font-size="11" fill="#c2410c">when edits may be typed</text>
 
   <!-- cable 2: HOST HDMI -> Monitor A DVI -->
   <polyline points="690,290 722,290 722,141 754,141" fill="none" stroke="#2563eb" stroke-width="5"/>
@@ -128,5 +128,5 @@
   <circle cx="522" cy="706" r="10" fill="#ea580c"/><text x="522" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
   <text x="540" y="710" font-size="12" fill="#111827">UGREEN USB-A ↔ USB-C 1 m: Locked computer USB-A → NanoKVM TARGET</text>
 
-  <text x="40" y="764" font-size="11" fill="#6b7280">Dashed orange = plug in only when Claude may type/click. Dotted purple = Bluetooth. The NanoKVM (and so Monitor A) is powered by cable 3.</text>
+  <text x="40" y="764" font-size="11" fill="#6b7280">Dashed orange = plug in only when edits may be typed. Dotted purple = Bluetooth. The NanoKVM (and so Monitor A) is powered by cable 3.</text>
 </svg>
