@@ -256,7 +256,8 @@ def test_share_expires(sim):
     from nanokvm_mcp.client import ServiceClient
     claude = ServiceClient(sim.cfg, client_id="conversation-A")
     claude.share(1)
-    exp, wall = sim.service._shares["conversation-A"]
-    sim.service._shares["conversation-A"] = (exp - 61, wall)        # pretend a minute passed
+    exp, wall, local = sim.service._shares["conversation-A"]
+    sim.service._shares["conversation-A"] = (exp - 61, wall, local)  # pretend a minute passed
     with pytest.raises(ServiceError, match="sharing is off"):
         claude.screenshot()
+    assert sim.client.status()["shares_active"] == 0                 # and it no longer counts

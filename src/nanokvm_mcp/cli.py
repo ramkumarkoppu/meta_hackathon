@@ -92,6 +92,13 @@ def _fps(text: str) -> int:
     return value
 
 
+def _seconds(text: str) -> float:
+    value = float(text)
+    if not value > 0:
+        raise argparse.ArgumentTypeError("must be more than 0")
+    return value
+
+
 def cmd_screenshot(cl: ServiceClient, args) -> int:
     shot = cl.screenshot()
     path = _save_jpeg(shot, Path(args.file) if args.file else cl.cfg.run_dir / "screenshot.jpg", cl.cfg)
@@ -307,9 +314,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("stop", help="stop the background service").set_defaults(fn=cmd_stop)
     p = sub.add_parser("viewer", help="watch the locked computer screen live in a window (read-only)")
     p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
-    p.add_argument("--close-after", type=float, metavar="SECONDS", help="close the window after this long")
-    p.add_argument("--browser", action="store_true", help="open the live view in your browser instead")
-    p.add_argument("--no-open", action="store_true", help="only print the browser live view's URL")
+    p.add_argument("--close-after", type=_seconds, metavar="SECONDS", help="close the window after this long")
+    where = p.add_mutually_exclusive_group()
+    where.add_argument("--browser", action="store_true", help="open the live view in your browser instead")
+    where.add_argument("--no-open", action="store_true", help="only print the browser live view's URL")
     p.set_defaults(fn=cmd_viewer)
     p = sub.add_parser("screenshot", help="save a screenshot of the locked computer screen")
     p.add_argument("file", nargs="?")

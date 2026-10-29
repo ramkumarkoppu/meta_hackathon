@@ -312,17 +312,20 @@ picture show:
 
 - the capture mode, the capture and window frame rates, and the delay from capture to the window;
 - a warning if the picture is uniform (no HDMI signal, a sleeping display or a blank screen);
-- the keyboard/mouse COM port and, once Claude has used it, whether the NanoKVM reports cable 4 as
-  connected;
-- whether any Claude conversation is sharing the screen.
+- the keyboard/mouse COM port and, once a keyboard/mouse action has opened the link, whether the
+  NanoKVM reports cable 4 as connected;
+- whether any Claude conversation is sharing the screen, and whether `nanokvm read` or `ask` is
+  reading it with Muse Glimmer on this laptop.
 
-The window is read-only: keys and clicks in it stay on the AI computer, it never opens the
-keyboard/mouse link, and it saves nothing to disk. Claude can't see it, but it's an ordinary
-window, so it does show if you share the AI computer's screen in a call.
+The window is read-only: keys and clicks in it stay on the AI computer, it never makes the service
+open the keyboard/mouse link, and it saves nothing to disk. Nothing in it is sent to Claude, but it's
+an ordinary window: anything that captures the AI computer's screen (a screen share in a call, a
+screenshot tool, or a command an AI runs) captures the locked computer's screen too, without the
+screen-sharing approval. Close it before you let an AI work on the AI computer unattended.
 
 Keys: **F11** or a double-click for full screen (**Esc** leaves it), **1** to switch between fitting
-the window and actual pixels (drag to pan), **R** to start the service if it has stopped, **Q** to
-close. When it closes, it prints how many frames it showed and the delay.
+the window and actual pixels (drag to pan), **R** to start the service if it has stopped, **Q** (or
+Ctrl+C in the terminal) to close. When it closes, it prints how many frames it showed and the delay.
 
 ### Watching it inside VS Code instead
 

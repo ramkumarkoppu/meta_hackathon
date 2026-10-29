@@ -3,11 +3,12 @@
 Made for checking the setup by eye. The window is read-only:
   * it plays the service's MJPEG live stream (/stream.mjpg) and polls /api/status, so the service
     stays the only process that opens the NanoKVM;
-  * it never opens the keyboard/mouse link and sends nothing to the locked computer: keys and
-    clicks in the window stay on this laptop;
+  * it never makes the service open the keyboard/mouse link and sends nothing to the locked
+    computer: keys and clicks in the window stay on this laptop;
   * frames live only in memory; nothing is written to disk.
 Like the browser live view it uses the service token without a client id, so Claude's screen-sharing
-gate doesn't apply: it is for the person at this laptop, and Claude can't see the window.
+gate doesn't apply: it is for the person at this laptop. Nothing in it is sent to Claude, but it is an
+ordinary window, so anything that captures this laptop's screen captures the locked computer's too.
 
 Frames are decoded and scaled on a background thread and the window shows only the newest one, so
 it skips frames rather than falling behind the capture.
@@ -100,8 +101,9 @@ class Picture:
     width: int                       # size as shown
     height: int
     frame_size: tuple[int, int]      # size as streamed
-    seq: int | None                  # capture sequence number; None for the service's "no video" picture
+    seq: int | None                  # capture sequence number (None from an older service)
     captured: float | None           # wall-clock capture time (time.time()) sent by the service
+    placeholder: bool = False        # the service's "no video" picture
 
 
 class LiveFeed:
@@ -117,10 +119,12 @@ class LiveFeed:
         self.error: str | None = None
         self.unreachable = False                           # the last failure: nothing listens on the port
         self.parts = 0                                     # pictures received, placeholders included
-        self.reconnects = 0
+        self.reconnects = 0                                # streams opened again after one was lost
+        self._had_stream = False
         self._latest: Picture | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._wake = threading.Event()                     # cuts a back-off wait short
         self._thread = threading.Thread(target=self._run, name="viewer-stream", daemon=True)
 
     def start(self) -> "LiveFeed":
@@ -129,8 +133,13 @@ class LiveFeed:
 
     def stop(self, wait: float = 0.0) -> None:
         self._stop.set()
+        self._wake.set()
         if wait and self._thread.is_alive():
             self._thread.join(wait)
+
+    def retry_now(self) -> None:
+        """Try to connect again at once instead of finishing the back-off wait (after R started the service)."""
+        self._wake.set()
 
     def take(self) -> Picture | None:
         """The newest picture not taken yet, or None."""
@@ -148,6 +157,9 @@ class LiveFeed:
             else:
                 backoff = 0.5
                 self.state, self.error, self.unreachable = "streaming", None, False
+                if self._had_stream:
+                    self.reconnects += 1
+                self._had_stream = True
                 try:
                     for headers, body in read_parts(resp, _boundary(resp.getheader("Content-Type"))):
                         if self._stop.is_set():
@@ -158,10 +170,8 @@ class LiveFeed:
                     self.state, self.error = "reconnecting", f"the live stream was interrupted ({e or type(e).__name__})"
                 finally:
                     resp.close()
-                if self._stop.is_set():
-                    return
-                self.reconnects += 1
-            self._stop.wait(backoff)
+            self._wake.wait(backoff)
+            self._wake.clear()
             backoff = min(backoff * 2, 5.0)
 
     def _accept(self, headers: dict[str, str], body: bytes) -> None:
@@ -175,7 +185,8 @@ class LiveFeed:
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         h, w = rgb.shape[:2]
         pic = Picture(b"P6\n%d %d\n255\n" % (w, h) + rgb.tobytes(), w, h, (fw, fh),
-                      _number(headers.get("x-frame-seq"), int), _number(headers.get("x-frame-time"), float))
+                      _number(headers.get("x-frame-seq"), int), _number(headers.get("x-frame-time"), float),
+                      headers.get("x-frame-placeholder") == "1")
         with self._lock:
             self._latest = pic
             self.parts += 1
@@ -183,13 +194,14 @@ class LiveFeed:
 
 class StatusPoller:
     """Fetches /api/status about once a second on a background thread, so the window never waits on
-    HTTP. Also looks for the NanoKVM's COM port by USB ID (listed only, never opened)."""
+    HTTP. Also looks for the NanoKVM's COM port (listed only, never opened). /api/status itself never
+    opens the keyboard/mouse link."""
 
     def __init__(self, client: ServiceClient, period: float = 1.0) -> None:
         self.client = client
         self.period = period
         self.latest: tuple[dict | None, str | None] = (None, None)    # (status, error)
-        self.serial_port: str | None = None
+        self.serial: tuple[str | None, bool] = (None, False)          # find_serial_port's answer
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="viewer-status", daemon=True)
 
@@ -206,7 +218,7 @@ class StatusPoller:
         polls = 0
         while not self._stop.is_set():
             if polls % 10 == 0:
-                self.serial_port = find_serial_port(self.client.cfg)
+                self.serial = find_serial_port(self.client.cfg)
             polls += 1
             try:
                 self.latest = (self.client.request("GET", "/api/status", timeout=3.0), None)
@@ -215,16 +227,18 @@ class StatusPoller:
             self._stop.wait(self.period)
 
 
-def find_serial_port(cfg: Config) -> str | None:
-    """The NanoKVM keyboard/mouse COM port(s), by USB ID as in nanokvm diag: listed, never opened."""
-    if cfg.serial_port:
-        return cfg.serial_port
+def find_serial_port(cfg: Config) -> tuple[str | None, bool]:
+    """(port, present): the NanoKVM keyboard/mouse COM port(s) by USB ID as in nanokvm diag, or the
+    serial_port set in nanokvm.toml and whether it exists. Ports are listed, never opened."""
     try:
         from .hid import list_serial_ports
-        hits = [p["device"] for p in list_serial_ports() if (p["vid"], p["pid"]) in cfg.serial_id_list]
+        ports = list_serial_ports()
+        if cfg.serial_port:
+            return cfg.serial_port, cfg.serial_port.upper() in {p["device"].upper() for p in ports}
+        hits = [p["device"] for p in ports if (p["vid"], p["pid"]) in cfg.serial_id_list]
     except Exception:  # noqa: BLE001  (pyserial missing, malformed serial_ids, ...)
-        return None
-    return ", ".join(hits) or None
+        return cfg.serial_port, False
+    return ", ".join(hits) or None, bool(hits)
 
 
 # ---------------------------------------------------------------- status lines
@@ -243,7 +257,7 @@ class ViewStats:
         now = time.monotonic()
         self.shown += 1
         self._recent.append(now)
-        if pic.seq is None:
+        if pic.placeholder:
             self.placeholders += 1
             return
         self._last_new = now
@@ -281,14 +295,23 @@ class ViewStats:
         return text + "."
 
 
-def video_line(status: dict | None, status_error: str | None, feed, stats: ViewStats) -> tuple[str, str]:
-    """The window's first status line (video) and its colour. ``feed`` is the LiveFeed."""
+def video_line(status: dict | None, status_error: str | None, feed, stats: ViewStats,
+               starting: bool = False, start_error: str | None = None) -> tuple[str, str]:
+    """The window's first status line (video) and its colour. ``feed`` is the LiveFeed; ``starting``
+    and ``start_error`` describe a service start requested with R."""
     if feed.state != "streaming":
+        if starting:
+            return "Starting the NanoKVM service…", FG
+        if start_error:
+            first = start_error.splitlines()[0].split(". ")[0].rstrip(".:")
+            return f"Couldn't start the NanoKVM service: {first} – press R to try again", BAD_FG
         why = feed.error or status_error or "Connecting to the NanoKVM service…"
         if feed.unreachable:
             why += " – press R to start it"
         return why, (FG if feed.state == "connecting" else BAD_FG)
     if status is None:
+        if status_error is None:                   # the first status answer hasn't arrived yet
+            return f"Video: window {stats.fps():.0f} fps · waiting for the service status…", FG
         return f"Video: window {stats.fps():.0f} fps (service status not available: {status_error})", WARN_FG
     cap = status.get("capture") or {}
     sim = "SIMULATOR · " if status.get("simulated") else ""
@@ -307,13 +330,17 @@ def video_line(status: dict | None, status_error: str | None, feed, stats: ViewS
     if idle is not None and idle > 2:
         parts.append(f"no new frame for {idle:.0f} s")
         colour = WARN_FG
+    if "shares_active" not in status:              # a service process started from older code
+        parts.append("an older service is running (no frame times or --fps): run nanokvm stop, then reopen this")
+        colour = WARN_FG
     return " · ".join(parts), colour
 
 
-def keyboard_text(control: dict, serial_port: str | None) -> str:
+def keyboard_text(control: dict, serial: tuple[str | None, bool]) -> str:
+    """``serial`` is find_serial_port's (port, present)."""
     if not control.get("enabled"):
         return "Keyboard/mouse: off (control = false)"
-    if control.get("link"):                        # opened by an action from Claude or the nanokvm command
+    if control.get("link"):                        # opened by a keyboard/mouse action
         text = f"Keyboard/mouse: {control['link']}"
         info = control.get("device_info")
         if isinstance(info, dict):
@@ -322,22 +349,33 @@ def keyboard_text(control: dict, serial_port: str | None) -> str:
         if control.get("error"):
             text += f" ({control['error']})"
         return text
-    if serial_port:
-        return f"Keyboard/mouse: {serial_port} found (opens on Claude's first action)"
+    port, present = serial
+    if port and present:
+        return f"Keyboard/mouse: {port} found (opens on the first keyboard/mouse action)"
+    if port:
+        return f"Keyboard/mouse: {port} (serial_port in nanokvm.toml) is not present"
     return "Keyboard/mouse: NanoKVM COM port not found (check the HOST-end USB-C cable)"
 
 
-def other_line(status: dict | None, serial_port: str | None) -> tuple[str, str]:
-    """The second status line (keyboard/mouse, Claude's screen sharing, keys) and its colour."""
+def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[str, str]:
+    """The second status line (keyboard/mouse, screen sharing, keys) and its colour."""
+    claude = 0
     if status is None:
-        kb, share, n = "Keyboard/mouse: ?", "Claude screen sharing: ?", None
+        kb, share = "Keyboard/mouse: ?", "Claude screen sharing: ?"
     else:
-        kb = keyboard_text(status.get("control") or {}, serial_port)
+        control = status.get("control") or {}
+        if status.get("simulated") and not control.get("link"):
+            kb = "Keyboard/mouse: simulated"
+        else:
+            kb = keyboard_text(control, serial)
         n = status.get("shares_active")
+        claude = n or 0
         share = ("Claude screen sharing: ?" if n is None else "Claude screen sharing: off" if n == 0
                  else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
+        if status.get("local_shares_active"):
+            share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask)"
     keys = "read-only · F11 full screen, 1 actual pixels, Q quit"
-    return f"{kb} · {share} · {keys}", (WARN_FG if n else FG)
+    return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
 
 
 # ---------------------------------------------------------------- the window
@@ -380,7 +418,8 @@ class ViewerWindow:
         self.photo = None           # the picture on screen; Tk shows nothing once it is garbage-collected
         self.mode = "fit"           # "fit" the window, or "actual" pixels (drag to pan)
         self.closed = False
-        self.start_error: str | None = None
+        self.start_error: str | None = None       # why the last R start failed
+        self._starter: threading.Thread | None = None
         self.stats = ViewStats()
         self.feed = LiveFeed(client, fps)
         self.poller = StatusPoller(client)
@@ -435,8 +474,8 @@ class ViewerWindow:
         return text
 
     def _callback_error(self, exc, val, tb) -> None:
-        if issubclass(exc, KeyboardInterrupt):      # Ctrl+C in the terminal that started the viewer
-            self.close()
+        if issubclass(exc, KeyboardInterrupt):      # Ctrl+C that lands inside a callback; it usually
+            self.close()                            # comes out of mainloop() instead (run_viewer)
         else:
             traceback.print_exception(exc, val, tb)
 
@@ -474,11 +513,17 @@ class ViewerWindow:
         self.canvas.coords(self.image_item, max(0, (cw - w) // 2), max(0, (ch - h) // 2))
         self.canvas.configure(scrollregion=(0, 0, max(cw, w), max(ch, h)))
 
+    @property
+    def starting(self) -> bool:
+        return self._starter is not None and self._starter.is_alive()
+
     def _update_bar(self) -> None:
         status, error = self.poller.latest
-        text, colour = video_line(status, self.start_error or error, self.feed, self.stats)
+        if self.feed.state == "streaming":
+            self.start_error = None
+        text, colour = video_line(status, error, self.feed, self.stats, self.starting, self.start_error)
         self.line1.configure(text=text, fg=colour)
-        text, colour = other_line(status, self.poller.serial_port)
+        text, colour = other_line(status, self.poller.serial)
         self.line2.configure(text=text, fg=colour)
 
     # ---- keys
@@ -502,14 +547,21 @@ class ViewerWindow:
         self.set_fullscreen(not bool(self.root.attributes("-fullscreen")))
 
     def start_service(self) -> None:
-        """R: start the service if it isn't running (on a thread, so the window stays responsive)."""
+        """R: start the service if it isn't running. One start at a time (a held key repeats), on a
+        thread so the window stays responsive; the status line says it is starting, or why it failed."""
+        if self.starting:
+            return
+        self.start_error = None
+
         def start() -> None:
             try:
                 self.client.ensure_running()
-                self.start_error = None
             except ServiceError as e:
                 self.start_error = str(e)
-        threading.Thread(target=start, name="viewer-start-service", daemon=True).start()
+            else:
+                self.feed.retry_now()
+        self._starter = threading.Thread(target=start, name="viewer-start-service", daemon=True)
+        self._starter.start()
 
 
 def run_viewer(client: ServiceClient, fps: int = DEFAULT_FPS, close_after: float | None = None) -> int:
@@ -522,8 +574,13 @@ def run_viewer(client: ServiceClient, fps: int = DEFAULT_FPS, close_after: float
         return 2
     print("The locked computer's screen is open in a window (read-only). Close it or press Q to quit.",
           flush=True)
-    win.run()
+    interrupted = False
+    try:
+        win.run()
+    except KeyboardInterrupt:          # Ctrl+C in the terminal: mainloop() usually raises it
+        interrupted = True
+        win.close()
     win.feed.stop(wait=1.0)
     win.poller.stop(wait=1.0)
     print(win.summary(), flush=True)
-    return 0
+    return 130 if interrupted else 0

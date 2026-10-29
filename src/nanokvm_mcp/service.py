@@ -83,16 +83,18 @@ class Service:
         self._hid_lock = threading.Lock()
         self._calib_path = cfg.run_dir / "calibration.json"
         self._calib = self._load_calibration()
-        self._viewer_lock = threading.Lock()
+        self._viewer_lock = threading.Lock()                # guards the viewers counter
+        self._encode_lock = threading.Lock()                # one live-view encode at a time (viewer_jpeg)
         self._viewer_cache: tuple[int, bytes] = (0, b"")
         self.viewers = 0
         self._activity = time.monotonic()
         self.started = time.time()
         self._last_space: tuple[int, int, G.Region] | None = None   # space of the last screenshot served
         self.sim_desktop = None   # set in simulator mode (tests read its state through /api/status)
-        # Screen sharing: Claude conversation id -> (expiry monotonic, end wall-clock). Requests from
-        # the MCP server carry X-NanoKVM-Client; captures for that client need an active share.
-        self._shares: dict[str, tuple[float, float]] = {}
+        # Screen sharing: client id -> (expiry monotonic, end wall-clock, local). Requests from the MCP
+        # server (one id per Claude conversation) and from nanokvm read/ask (local=True) carry
+        # X-NanoKVM-Client; captures for that client need an active share.
+        self._shares: dict[str, tuple[float, float, bool]] = {}
         self._shares_lock = threading.Lock()
 
     # ------------------------------------------------------------ bookkeeping
@@ -327,14 +329,15 @@ class Service:
         if not self.share_active(client):
             raise ServiceError(self.SHARE_REFUSED, 403)
 
-    def share(self, client: str | None, minutes: int) -> dict:
+    def share(self, client: str | None, minutes: int, local: bool = False) -> dict:
+        """local=True: the share is for a reader on this laptop (nanokvm read/ask), not a Claude conversation."""
         if not client:
             raise ServiceError("screen sharing needs a client id (X-NanoKVM-Client header)")
         minutes = max(1, min(int(minutes), self.MAX_SHARE_MINUTES))
         end_wall = time.time() + minutes * 60
         with self._shares_lock:
-            self._shares[client] = (time.monotonic() + minutes * 60, end_wall)
-        log.info("screen sharing ON for client %s for %d min", client[:8], minutes)
+            self._shares[client] = (time.monotonic() + minutes * 60, end_wall, bool(local))
+        log.info("screen sharing ON for %s %s for %d min", "local reader" if local else "client", client[:8], minutes)
         return {"sharing": True, "minutes": minutes, "until": time.strftime("%H:%M", time.localtime(end_wall))}
 
     def unshare(self, client: str | None) -> dict:
@@ -344,13 +347,15 @@ class Service:
             log.info("screen sharing OFF for client %s", client[:8])
         return {"sharing": False, "was_sharing": was}
 
-    def active_shares(self) -> int:
-        """How many Claude conversations may capture the screen right now (expired shares are dropped)."""
+    def active_shares(self) -> tuple[int, int]:
+        """(Claude conversations, local readers such as nanokvm read/ask) that may capture the screen
+        right now. Expired shares are dropped."""
         now = time.monotonic()
         with self._shares_lock:
-            for c in [c for c, (exp, _end) in self._shares.items() if now >= exp]:
+            for c in [c for c, (exp, _end, _local) in self._shares.items() if now >= exp]:
                 del self._shares[c]
-            return len(self._shares)
+            local = sum(1 for _exp, _end, is_local in self._shares.values() if is_local)
+            return len(self._shares) - local, local
 
     def share_info(self, client: str | None) -> dict | None:
         if client is None:
@@ -361,7 +366,7 @@ class Service:
             entry = self._shares.get(client)
         if entry is None:
             return {"active": False}
-        exp, end_wall = entry
+        exp, end_wall, _local = entry
         return {"active": True, "remaining_min": round((exp - time.monotonic()) / 60, 1),
                 "until": time.strftime("%H:%M", time.localtime(end_wall))}
 
@@ -372,6 +377,10 @@ class Service:
         if self.cfg.control:
             if self._hid is None:
                 control["state"] = "not opened yet (opens on the first keyboard/mouse action)"
+            elif not getattr(self._hid.link, "is_open", True):
+                # never (re)open the port for a status request: opening it sends an all-keys-up report
+                # to the locked computer (a refused action or a dropped link leaves it closed)
+                control["state"] = "not open (opens on the next keyboard/mouse action)"
             else:
                 control["link"] = self._hid.link.describe()
                 try:
@@ -388,6 +397,7 @@ class Service:
         blank = None
         if latest is not None:
             blank = G.blank_stats(latest.image)[0]
+        claude_shares, local_shares = self.active_shares()
         return {
             "service": SERVICE_NAME, "version": __version__, "pid": os.getpid(),
             "uptime_s": int(time.time() - self.started),
@@ -398,7 +408,8 @@ class Service:
             "viewers": self.viewers,
             "idle_exit_min": self.cfg.idle_exit_min,
             "sharing": self.share_info(client),
-            "shares_active": self.active_shares(),
+            "shares_active": claude_shares,          # Claude conversations
+            "local_shares_active": local_shares,     # nanokvm read/ask (Muse Glimmer on this laptop)
             **({"sim": {"text": self.sim_desktop.text, "button_presses": self.sim_desktop.button_presses}}
                if self.sim_desktop is not None else {}),
         }
@@ -598,16 +609,18 @@ class Service:
 
     # ------------------------------------------------------------ viewer
     def viewer_jpeg(self, frame: Frame) -> bytes:
-        with self._viewer_lock:
-            if self._viewer_cache[0] == frame.seq:
-                return self._viewer_cache[1]
-        h, w = frame.image.shape[:2]
-        vw = min(self.cfg.viewer_width, w)
-        img = G.resize(frame.image, vw, max(1, round(h * vw / w)))
-        jpg = G.encode_jpeg(img, self.cfg.viewer_quality)
-        with self._viewer_lock:
-            self._viewer_cache = (frame.seq, jpg)
-        return jpg
+        """The live-view JPEG of a frame. One encode per frame however many viewers wait for it: they
+        are woken together, so the encode runs under its own lock and the others take the cached copy."""
+        with self._encode_lock:
+            seq, jpg = self._viewer_cache
+            if seq == frame.seq:
+                return jpg
+            h, w = frame.image.shape[:2]
+            vw = min(self.cfg.viewer_width, w)
+            jpg = G.encode_jpeg(G.resize(frame.image, vw, max(1, round(h * vw / w))), self.cfg.viewer_quality)
+            if frame.seq > seq:                      # a viewer that fell behind never moves the cache back
+                self._viewer_cache = (frame.seq, jpg)
+            return jpg
 
     def placeholder_jpeg(self) -> bytes:
         w = self.cfg.viewer_width
@@ -804,7 +817,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/frame": frame,
             "/api/wait_change": wait_change,
             "/api/act": lambda: svc.act(body, client),
-            "/api/share": lambda: svc.share(client, int(body.get("minutes", svc.cfg.share_minutes))),
+            "/api/share": lambda: svc.share(client, int(body.get("minutes", svc.cfg.share_minutes)),
+                                            bool(body.get("local", False))),
             "/api/unshare": lambda: svc.unshare(client),
             "/api/calibrate": lambda: svc.calibrate(bool(body.get("reset", False))),
             "/api/shutdown": self._shutdown,
@@ -821,10 +835,15 @@ class Handler(BaseHTTPRequestHandler):
         return {"stopping": True}
 
     def _stream(self, query: dict) -> None:
-        """MJPEG live view. ``?fps=N`` (1-60) overrides viewer_fps for this viewer. Each real frame's
-        part carries X-Frame-Seq and X-Frame-Time (wall-clock capture time) so the viewer window can
-        show its delay; the "no video" placeholder carries neither."""
+        """MJPEG live view for the user. ``?fps=N`` (1-60) overrides viewer_fps for this viewer. Each
+        real frame's part carries X-Frame-Seq and X-Frame-Time (wall-clock capture time) so the viewer
+        window can show its delay; the "no video" picture carries X-Frame-Placeholder: 1 instead.
+        Like every capture, a request with a client id (a Claude conversation) needs an active share."""
         svc = self.server.service
+        client = self._client()
+        if client is not None and not svc.share_active(client):
+            self._json(403, {"error": svc.SHARE_REFUSED})
+            return
         self.send_response(200)
         self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         self.send_header("Cache-Control", "no-store")
@@ -843,7 +862,7 @@ class Handler(BaseHTTPRequestHandler):
                 t0 = time.monotonic()
                 f = svc.capture.wait_frame(last_seq, timeout=1.0)
                 if f is None:
-                    jpg, extra = svc.placeholder_jpeg(), b""
+                    jpg, extra = svc.placeholder_jpeg(), b"X-Frame-Placeholder: 1\r\n"
                 else:
                     last_seq = f.seq
                     jpg = svc.viewer_jpeg(f)

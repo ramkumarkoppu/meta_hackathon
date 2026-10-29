@@ -92,6 +92,11 @@ class SerialLink:
             return f"{self._ser.port} @ {self._baud} baud"
         return "not open"
 
+    @property
+    def is_open(self) -> bool:
+        """Whether the port is open now. Status reports check this so they never open it themselves."""
+        return self._ser is not None and self._ser.is_open
+
     def _pick_port(self) -> str:
         if self._fixed:
             return self._fixed

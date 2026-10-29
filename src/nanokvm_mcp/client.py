@@ -94,8 +94,13 @@ class ServiceClient:
 
     def open_stream(self, fps: int, timeout: float = 5.0) -> http.client.HTTPResponse:
         """The live view's MJPEG stream (/stream.mjpg) at up to ``fps`` frames a second, for the viewer
-        window. Like the browser live view it sends no client id. The caller reads the parts
-        (viewer.read_parts) and closes the response; a read that waits longer than ``timeout`` s fails."""
+        window. Like the browser live view it is the user's own view and sends no client id, so a client
+        made for a Claude conversation (client_id set) is refused: its captures need screen sharing.
+        The caller reads the parts (viewer.read_parts) and closes the response; a read that waits
+        longer than ``timeout`` s fails."""
+        if self.client_id:
+            raise ServiceError("the live stream is the user's own view; Claude's captures need screen sharing",
+                               status=403)
         conn = http.client.HTTPConnection("127.0.0.1", self.cfg.port, timeout=timeout)
         try:
             conn.request("GET", f"/stream.mjpg?fps={int(fps)}", headers={"X-NanoKVM-Token": self._token()})
@@ -244,8 +249,10 @@ class ServiceClient:
             timeout += 2.0 * int(body.get("repeat", 1)) * max(1, len(str(body.get("keys", "")).split()))
         return self.call("POST", "/api/act", body, timeout=timeout)
 
-    def share(self, minutes: int) -> dict:
-        return self.call("POST", "/api/share", {"minutes": minutes})
+    def share(self, minutes: int, local: bool = False) -> dict:
+        """local=True marks the share as a reader on this laptop (nanokvm read/ask), not a Claude
+        conversation, so the live view reports the two apart."""
+        return self.call("POST", "/api/share", {"minutes": minutes, **({"local": True} if local else {})})
 
     def unshare(self) -> dict:
         return self.call("POST", "/api/unshare", {})
