@@ -64,3 +64,5 @@ So far:
   ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)).
 - **The README rewritten around the Meta-model pipeline (29 Oct).** The Claude Code bridge, built before
   the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).
+- **MIT licence (29 Oct).** The repo is now under the MIT licence ([LICENSE](LICENSE)), and it covers
+  the pre-event groundwork too.

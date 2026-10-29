@@ -59,6 +59,7 @@ work computer.
 10. [Safety details](#10-safety-details)
 11. [Troubleshooting](#11-troubleshooting)
 12. [Files and testing without hardware](#12-files-and-testing-without-hardware)
+13. [Licence](#13-licence)
 
 **Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
 [Hackathon plan (written before the event and on its first day; not kept up to date)](docs/hackathon-plan.md) ·
@@ -710,6 +711,7 @@ shows. Folders marked *(not in the repo)* are git-ignored and exist only on the 
 E:\meta_hackathon
 ├── README.md                     this file
 ├── HACKATHON.md                  what was built before and during the hackathon (new)
+├── LICENSE                       MIT licence (new)
 ├── docs\
 │   ├── wiring.svg                wiring diagram used in this README
 │   ├── claude-code.md            the Claude Code bridge, built before the event (new page)
@@ -779,3 +781,10 @@ run only against the simulator, with a fake Glimmer and a fake Meta API. On the 
 computer's screen live (median delay from capture to window 37 ms), and the keyboard/mouse chip
 answers at 57600 baud. Glimmer reading a real capture, and typing on the locked computer (cable 4),
 aren't tested yet.
+
+## 13. Licence
+
+MIT: see [LICENSE](LICENSE). It covers everything in this repo, including the groundwork from before
+the event. Muse Glimmer's weights (Apache-2.0), llama.cpp (MIT) and the Python packages aren't in the
+repo: they're downloaded during the install ([section 5](#5-install-already-done)) and keep their own
+licences.
