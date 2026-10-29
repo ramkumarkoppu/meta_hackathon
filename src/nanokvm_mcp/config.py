@@ -69,7 +69,7 @@ class Config:
     region: str | None = None            # manual active area "x,y,w,h" in capture pixels
 
     # --- live viewer ---
-    viewer_fps: int = 15
+    viewer_fps: int = 15                 # browser live view; the nanokvm viewer window asks for its own (--fps)
     viewer_width: int = 1920             # 1920 = 1:1 with the capture (sharpest text)
     viewer_quality: int = 90             # JPEG quality of the live view
 

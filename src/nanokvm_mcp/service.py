@@ -2,7 +2,8 @@
 
 It captures HDMI continuously, drives keyboard/mouse over serial, and serves a small HTTP API +
 live viewer on 127.0.0.1 so every Claude Code session (each runs its own MCP server) and
-the user's browser / VS Code Simple Browser can share the device.
+the user's live view (the ``nanokvm viewer`` window, a browser or VS Code Simple Browser) can
+share the device.
 
 Security: bound to 127.0.0.1 only, exclusive port bind, Host header must be localhost (blocks
 DNS rebinding), and every request needs the random token stored in .run/token (header
@@ -343,6 +344,14 @@ class Service:
             log.info("screen sharing OFF for client %s", client[:8])
         return {"sharing": False, "was_sharing": was}
 
+    def active_shares(self) -> int:
+        """How many Claude conversations may capture the screen right now (expired shares are dropped)."""
+        now = time.monotonic()
+        with self._shares_lock:
+            for c in [c for c, (exp, _end) in self._shares.items() if now >= exp]:
+                del self._shares[c]
+            return len(self._shares)
+
     def share_info(self, client: str | None) -> dict | None:
         if client is None:
             return None
@@ -389,6 +398,7 @@ class Service:
             "viewers": self.viewers,
             "idle_exit_min": self.cfg.idle_exit_min,
             "sharing": self.share_info(client),
+            "shares_active": self.active_shares(),
             **({"sim": {"text": self.sim_desktop.text, "button_presses": self.sim_desktop.button_presses}}
                if self.sim_desktop is not None else {}),
         }
@@ -741,7 +751,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             self._send(200, VIEWER_HTML.encode("utf-8"), "text/html; charset=utf-8")
         elif url.path == "/stream.mjpg":
-            self._stream()
+            self._stream(query)
         elif url.path == "/api/status":
             self._dispatch(lambda: svc.status(self._client()))
         elif url.path == "/api/screenshot":
@@ -810,14 +820,21 @@ class Handler(BaseHTTPRequestHandler):
         self.server.request_stop()
         return {"stopping": True}
 
-    def _stream(self) -> None:
+    def _stream(self, query: dict) -> None:
+        """MJPEG live view. ``?fps=N`` (1-60) overrides viewer_fps for this viewer. Each real frame's
+        part carries X-Frame-Seq and X-Frame-Time (wall-clock capture time) so the viewer window can
+        show its delay; the "no video" placeholder carries neither."""
         svc = self.server.service
         self.send_response(200)
         self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
         self.end_headers()
-        period = 1.0 / max(1, svc.cfg.viewer_fps)
+        try:
+            fps = int((query.get("fps") or [svc.cfg.viewer_fps])[0])
+        except ValueError:
+            fps = svc.cfg.viewer_fps
+        period = 1.0 / max(1, min(fps, 60))
         last_seq = 0
         with svc._viewer_lock:
             svc.viewers += 1
@@ -826,11 +843,12 @@ class Handler(BaseHTTPRequestHandler):
                 t0 = time.monotonic()
                 f = svc.capture.wait_frame(last_seq, timeout=1.0)
                 if f is None:
-                    jpg = svc.placeholder_jpeg()
+                    jpg, extra = svc.placeholder_jpeg(), b""
                 else:
                     last_seq = f.seq
                     jpg = svc.viewer_jpeg(f)
-                self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                    extra = b"X-Frame-Seq: %d\r\nX-Frame-Time: %.6f\r\n" % (f.seq, f.wall)
+                self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n" + extra + b"Content-Length: "
                                  + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
                 self.wfile.flush()
                 time.sleep(max(0.0, period - (time.monotonic() - t0)))

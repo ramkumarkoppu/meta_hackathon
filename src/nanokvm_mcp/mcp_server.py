@@ -262,7 +262,8 @@ def screen_status() -> str:
     lines.append("Screen sharing with this conversation: "
                  + (f"ON until {sh['until']} ({sh['remaining_min']} min left)" if sh.get("active")
                     else "OFF (call start_screen_sharing; the user approves once)"))
-    lines.append(f"Live view for the user: {client.viewer_url()}  (VS Code: Ctrl+Shift+P > 'Simple Browser: Show')")
+    lines.append(f"Live view for the user: the `nanokvm viewer` command opens a window, or {client.viewer_url()}  "
+                 "(VS Code: Ctrl+Shift+P > 'Simple Browser: Show')")
     return "\n".join(lines)
 
 

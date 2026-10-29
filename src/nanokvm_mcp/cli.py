@@ -2,7 +2,7 @@
 
     nanokvm diag            check the NanoKVM devices and take a test screenshot
     nanokvm start | stop | status
-    nanokvm viewer          open the live view in the browser (or print its URL)
+    nanokvm viewer          watch the screen live in a window (--browser: in the browser; --no-open: URL)
     nanokvm screenshot [FILE]
     nanokvm watch           print one line per screen change (for the user; not gated by screen sharing)
     nanokvm serve           run the service in the foreground (debugging)
@@ -74,12 +74,22 @@ def cmd_stop(cl: ServiceClient, args) -> int:
 
 def cmd_viewer(cl: ServiceClient, args) -> int:
     cl.ensure_running()
-    url = cl.viewer_url()
-    _out(url)
-    _out("In VS Code: Ctrl+Shift+P > 'Simple Browser: Show' and paste the URL above.")
-    if not args.no_open:
-        webbrowser.open(url)
-    return 0
+    if args.browser or args.no_open:
+        url = cl.viewer_url()
+        _out(url)
+        _out("In VS Code: Ctrl+Shift+P > 'Simple Browser: Show' and paste the URL above.")
+        if args.browser:
+            webbrowser.open(url)
+        return 0
+    from .viewer import run_viewer
+    return run_viewer(cl, args.fps, args.close_after)
+
+
+def _fps(text: str) -> int:
+    value = int(text)
+    if not 1 <= value <= 60:
+        raise argparse.ArgumentTypeError("must be 1 to 60")
+    return value
 
 
 def cmd_screenshot(cl: ServiceClient, args) -> int:
@@ -295,8 +305,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_start)
     sub.add_parser("stop", help="stop the background service").set_defaults(fn=cmd_stop)
-    p = sub.add_parser("viewer", help="open the live view of the locked computer screen")
-    p.add_argument("--no-open", action="store_true", help="only print the URL")
+    p = sub.add_parser("viewer", help="watch the locked computer screen live in a window (read-only)")
+    p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
+    p.add_argument("--close-after", type=float, metavar="SECONDS", help="close the window after this long")
+    p.add_argument("--browser", action="store_true", help="open the live view in your browser instead")
+    p.add_argument("--no-open", action="store_true", help="only print the browser live view's URL")
     p.set_defaults(fn=cmd_viewer)
     p = sub.add_parser("screenshot", help="save a screenshot of the locked computer screen")
     p.add_argument("file", nargs="?")

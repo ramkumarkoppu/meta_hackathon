@@ -24,7 +24,7 @@ serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other NanoKVM-USB units) and CH343 
 shot_width = 1456            # screenshot width Claude sees (= pointer coordinate space); 1456 keeps code legible
                              # (capped to avoid downscaling: 1456 is the widest at 16:9; at 16:10 it gives 1370)
 # capture_fourcc = "YUY2"    # default "MJPG"; try on hardware day: uncompressed = sharpest code text (needs USB 3)
-# viewer_fps = 30            # live view frame rate (default 15)
+# viewer_fps = 30            # browser live view frame rate (default 15; the nanokvm viewer window uses --fps)
 # viewer_width = 1920        # live view width (default 1920 = 1:1 with the capture)
 # viewer_quality = 90        # live view JPEG quality (default 90)
 # display_aspect = "16:10"   # only if the locked computer desktop is 16:10 and the picture looks squashed

@@ -61,7 +61,8 @@ time a tool returns one. This setup gets as close as Claude Code allows:
 
 - **Always current.** Every screenshot is the current frame (~0.1 s old).
 - **Reacting to changes.** `wait_for_change` makes Claude respond as soon as the screen changes.
-- **Live view for you.** You can watch the locked computer screen live in a VS Code tab.
+- **Live view for you.** You can watch the locked computer screen live in a window on the AI
+  computer (`nanokvm viewer`) or in a VS Code tab.
 
 ### 1a. Operating systems
 
@@ -302,7 +303,27 @@ The server is registered **for this folder** in `.mcp.json`, and is already conn
 
 ## 7. Using it
 
-### Watching the locked computer screen yourself, inside VS Code
+### Watching the locked computer screen yourself
+
+Run `E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer`. A window on the AI computer shows the
+locked computer's screen live, at up to 30 fps (`--fps` changes it). Two status lines under the
+picture show:
+
+- the capture mode, the capture and window frame rates, and the delay from capture to the window;
+- a warning if the picture is uniform (no HDMI signal, a sleeping display or a blank screen);
+- the keyboard/mouse COM port and, once Claude has used it, whether the NanoKVM reports cable 4 as
+  connected;
+- whether any Claude conversation is sharing the screen.
+
+The window is read-only: keys and clicks in it stay on the AI computer, it never opens the
+keyboard/mouse link, and it saves nothing to disk. Claude can't see it, but it's an ordinary
+window, so it does show if you share the AI computer's screen in a call.
+
+Keys: **F11** or a double-click for full screen (**Esc** leaves it), **1** to switch between fitting
+the window and actual pixels (drag to pan), **R** to start the service if it has stopped, **Q** to
+close. When it closes, it prints how many frames it showed and the delay.
+
+### Watching it inside VS Code instead
 
 1. Run `E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer --no-open` in the terminal.
 2. Copy the printed URL (`http://127.0.0.1:8765/?t=…`).
@@ -465,14 +486,15 @@ E:\meta_hackathon\.venv\Scripts\nanokvm.exe diag --mouse-test # also moves the l
   `diag --mouse-test` and check that the locked computer's pointer moves. After that, `nanokvm status`
   shows `'target_usb_connected': True` if the NanoKVM reports cable 4 as connected.
 
-It ends with `RESULT: OK` or a list of problems with fixes.
+It ends with `RESULT: OK` or a list of problems with fixes. Then run `nanokvm viewer` and check the
+picture by eye ([section 7](#watching-the-locked-computer-screen-yourself)).
 
 Other commands (prefix with `E:\meta_hackathon\.venv\Scripts\`):
 
 ```powershell
 nanokvm status          # service, video and keyboard/mouse state (--json for the raw data)
 nanokvm screenshot      # saves .run\screenshot.jpg, or the file you name
-nanokvm viewer          # opens the live view in your browser (--no-open: only prints the URL)
+nanokvm viewer          # live view in a window (--browser: in your browser; --no-open: only prints the URL)
 nanokvm watch           # prints a line per screen change and saves .run\watch\latest.jpg
 nanokvm start | stop    # the service also starts automatically when Claude uses a tool
 nanokvm serve           # run the service in the foreground with console logging (debugging)
@@ -499,7 +521,7 @@ laptop piling up where other programs and AI file tools can read them.
 | `locked_os` | `"windows"` (default) | The locked computer's OS: `"windows"`, `"macos"` or `"linux"`. Claude is told it, so it uses that system's shortcuts. With any other value Claude is told the OS is unknown and asks you, and `nanokvm diag` reports it. |
 | `display_aspect` | not set | `"16:10"` if Monitor A is 1920x1200 and the picture looks squashed |
 | `shot_width` | 1456 | Screenshot width Claude sees. 1456 keeps code legible; it's capped automatically so Claude never gets a downscaled image. |
-| `viewer_fps` / `viewer_width` / `viewer_quality` | 15 / 1920 / 90 | Live view smoothness, sharpness and quality. Use `viewer_fps = 30` for a smoother picture (more CPU). |
+| `viewer_fps` / `viewer_width` / `viewer_quality` | 15 / 1920 / 90 | The browser live view's frame rate, and the sharpness and quality of both live views. Use `viewer_fps = 30` for a smoother browser view (more CPU); the `nanokvm viewer` window asks for 30 fps itself (`--fps`). |
 | `capture_fourcc` | `"MJPG"` | Try `"YUY2"` (uncompressed, sharpest code text) on hardware day, if `nanokvm diag` lists the NanoKVM as *USB3 Video*. |
 | `serial_port` | auto | Force a COM port, for example `"COM5"` |
 | `serial_ids` | `"1A86:7523,1A86:55D3"` | USB IDs that identify the NanoKVM's serial port; this unit's chip is a CH343 (`1A86:55D3`) |
@@ -576,6 +598,7 @@ E:\meta_hackathon
 │   ├── mcp_server.py             MCP tools for Claude
 │   ├── service.py                shared background service (capture, keyboard/mouse, live view, HTTP API)
 │   ├── client.py                 talks to / auto-starts the service
+│   ├── viewer.py                 the live view window for `nanokvm viewer` (Tk, read-only)
 │   ├── config.py                 settings: nanokvm.toml, overridden by NANOKVM_* environment variables
 │   ├── capture.py                HDMI capture (OpenCV DirectShow; NanoKVM matched by USB ID only)
 │   ├── hid.py, protocol.py, keys.py   keyboard/mouse over the CH9329-compatible serial protocol
@@ -583,7 +606,7 @@ E:\meta_hackathon
 │   ├── simulator.py              simulated locked computer for tests
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   └── cli.py                    the `nanokvm` command
-├── tests\                        111 tests (simulator, no hardware needed)
+├── tests\                        202 tests (simulator, no hardware needed)
 ├── tools\                        hackathon test scripts (Glimmer: section 5a), not used by the bridge yet
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
@@ -604,13 +627,14 @@ E:\meta_hackathon
 
   ```powershell
   $env:NANOKVM_SIMULATE = "1"; $env:NANOKVM_PORT = "8790"
-  .venv\Scripts\nanokvm.exe viewer        # live view of a simulated screen
+  .venv\Scripts\nanokvm.exe viewer        # a live window showing a simulated screen
   .venv\Scripts\nanokvm.exe stop
   Remove-Item Env:NANOKVM_SIMULATE, Env:NANOKVM_PORT   # this terminal uses the real NanoKVM again
   ```
 
 The keyboard/mouse protocol follows Sipeed's official NanoKVM-USB app (v1.1.4): CH9329 frames
 `57 AB 00 CMD LEN DATA SUM` at 57600 baud, with the absolute mouse on a 0–4095 grid. Status as of
-2026-10-26: tested with the simulator, and on real hardware on 22 Oct: capture works at 1920x1080
-and the keyboard/mouse chip answers at 57600 baud. Keyboard and mouse on the locked computer
-(cable 4) aren't tested yet.
+2026-10-29: tested with the simulator, and on real hardware on 22 and 29 Oct: capture works at
+1920x1080 and about 30 fps, the `nanokvm viewer` window shows the locked computer's screen live
+(median delay from capture to window 37 ms), and the keyboard/mouse chip answers at 57600 baud.
+Keyboard and mouse on the locked computer (cable 4) aren't tested yet.

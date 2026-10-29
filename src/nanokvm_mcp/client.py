@@ -92,6 +92,36 @@ class ServiceClient:
                                    f"{self.cfg.port}? (set port in nanokvm.toml)") from None
         raise AssertionError("unreachable")
 
+    def open_stream(self, fps: int, timeout: float = 5.0) -> http.client.HTTPResponse:
+        """The live view's MJPEG stream (/stream.mjpg) at up to ``fps`` frames a second, for the viewer
+        window. Like the browser live view it sends no client id. The caller reads the parts
+        (viewer.read_parts) and closes the response; a read that waits longer than ``timeout`` s fails."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.cfg.port, timeout=timeout)
+        try:
+            conn.request("GET", f"/stream.mjpg?fps={int(fps)}", headers={"X-NanoKVM-Token": self._token()})
+            resp = conn.getresponse()
+        except ConnectionRefusedError:
+            conn.close()
+            raise ServiceUnreachable(f"cannot reach the NanoKVM service at {self.cfg.base_url}: "
+                                     "connection refused (is it running?)") from None
+        except (OSError, http.client.HTTPException) as e:
+            conn.close()
+            if _is_timeout(e):
+                raise ServiceTimeout(f"the NanoKVM service did not answer within {timeout:.0f}s "
+                                     "(GET /stream.mjpg)") from None
+            raise ServiceError(f"cannot open the live stream at {self.cfg.base_url}: "
+                               f"{type(e).__name__}: {e}") from None
+        if resp.status != 200:
+            try:
+                msg = json.loads(resp.read(2000).decode("utf-8")).get("error", "")
+            except Exception:  # noqa: BLE001
+                msg = ""
+            resp.close()
+            conn.close()
+            raise ServiceError(f"the live stream was refused (HTTP {resp.status}) {msg}".strip(),
+                               status=resp.status)
+        return resp
+
     # ---- lifecycle
     def is_running(self) -> bool:
         """True if our service answers (or is merely slow); False only when nothing listens."""
