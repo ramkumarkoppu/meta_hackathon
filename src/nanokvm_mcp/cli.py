@@ -306,15 +306,24 @@ def _region(text: str | None) -> tuple[float, float, float, float] | None:
     return parts[0], parts[1], parts[2], parts[3]
 
 
-def _share_prompt(minutes: int) -> bool:
-    return _console_yes(f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min?")
+def _share_prompt(minutes: int, auto: bool = False, test_content: bool = False) -> bool:
+    """The one question before the screen is shared. ``auto`` (--auto): the same yes lets this run type Spark's
+    edits without asking for each one (each is still shown and checked on the screen, and nothing is saved).
+    ``test_content``: Meta billing is on free credits and --stand-in wasn't given, so the yes also confirms the
+    screen shows only test or dummy content, the only content that may go while Meta can use what is sent."""
+    q = f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min"
+    if auto:
+        q += ", and type Muse Spark's edits into VS Code without asking for each one"
+    if test_content:
+        q += (". Meta billing is on free credits and Meta may use what is sent, so say yes only if the screen shows "
+              "test or dummy content. Go ahead")
+    return _console_yes(q + "?")
 
 
-def _auto_share_prompt(minutes: int) -> bool:
-    """--auto: one yes at the keyboard both shares the screen and lets this run type Spark's edits without asking
-    for each one (each is still shown and checked on the screen, and nothing is saved)."""
-    return _console_yes(f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min, "
-                        "and type Muse Spark's edits into VS Code without asking for each one?")
+def _asks_test_content(cfg: Config, stand_in: bool) -> bool:
+    """Whether the share prompt must also confirm test content: the free-credit rule, which the outbound gate
+    checks again before every send."""
+    return cfg.outbound != "local_only" and cfg.meta_billing == "free_credits" and not stand_in
 
 
 def _line_summary(text: str) -> str:
@@ -439,8 +448,10 @@ def cmd_ask(cl: ServiceClient, args) -> int:
         cfg.outbound = "local_only"
     elif args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
+    test = _asks_test_content(cfg, args.stand_in)
     try:
-        with Pipeline(cfg, approve_share=_share_prompt, approve_send=_approve_send, stand_in=args.stand_in) as pipe:
+        with Pipeline(cfg, approve_share=lambda m: _share_prompt(m, test_content=test), approve_send=_approve_send,
+                      stand_in=args.stand_in or test) as pipe:
             if not _glimmer_up(pipe):
                 return 2
             pipe.open(args.minutes)
@@ -498,9 +509,10 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     cfg = cl.cfg
     if args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
+    test = _asks_test_content(cfg, args.stand_in)
     try:
-        with Pipeline(cfg, approve_share=_auto_share_prompt if args.auto else _share_prompt,
-                      approve_send=_approve_send, stand_in=args.stand_in) as pipe:
+        with Pipeline(cfg, approve_share=lambda m: _share_prompt(m, auto=args.auto, test_content=test),
+                      approve_send=_approve_send, stand_in=args.stand_in or test) as pipe:
             if not _glimmer_up(pipe):
                 return 2
             pipe.open(args.minutes)
@@ -600,7 +612,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
     p.add_argument("--minutes", type=int, default=5, help="length of the screen share (default 5)")
     p.add_argument("--stand-in", action="store_true",
-                   help="the screen shows stand-in or dummy content (required while Meta billing is on free credits)")
+                   help="the screen shows only test or dummy content: answers in advance what the share prompt asks "
+                            "while Meta billing is on free credits")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--approve", action="store_true", help="show the exact text and ask before sending")
     mode.add_argument("--local-only", action="store_true", help="answer with Glimmer on this laptop; send nothing")
@@ -616,7 +629,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
         p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")
         p.add_argument("--stand-in", action="store_true",
-                       help="the screen shows stand-in or dummy content (required while Meta billing is on free credits)")
+                       help="the screen shows only test or dummy content: answers in advance what the share prompt asks "
+                            "while Meta billing is on free credits")
         p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
         p.add_argument("--auto", action="store_true",
                        help="type the edits without asking for each one: you allow it once, at the share prompt; "

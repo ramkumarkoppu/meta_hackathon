@@ -174,16 +174,14 @@ def test_cli_fix_auto_asks_once_then_types_without_asking(world, monkeypatch, ca
     monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: w.cfg))
     asked = []
     monkeypatch.setattr(cli, "_console_yes", lambda q: asked.append(q) or True)
-    assert cli._auto_share_prompt(10) and "without asking for each one" in asked[0]    # one yes covers both
-    monkeypatch.setattr(cli, "_auto_share_prompt", lambda m: True)
-    monkeypatch.setattr(cli, "_console_yes", lambda q: pytest.fail(f"--auto asked: {q}"))
     monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the fake Meta API, never the real one
                         lambda cfg: SparkClient(cfg, base_url=f"http://127.0.0.1:{w.meta.port}"))
-    assert cli.main(["fix", "--auto"]) == 3                                   # free credits: still stand-in only
-    assert "free credits" in capsys.readouterr().out and w.meta.requests == [] and _keys_sent(w) == []
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6."),
                   spark_stream("The screen shows it fixed.")]
-    assert cli.main(["fix", "--stand-in", "--auto"]) == 0
+    assert cli.main(["fix", "--auto"]) == 0                    # free credits, no --stand-in: the one yes covers it
+    assert len(asked) == 1 and "without asking for each one" in asked[0] and "test or dummy content" in asked[0]
+    asked.clear()
+    assert cli._share_prompt(10, auto=True) and "test or dummy" not in asked[0]       # --stand-in, or paid billing
     out = capsys.readouterr().out
     assert "--auto: typing it without asking." in out and "verified" in out
     assert "reading the screen again with Muse Glimmer" in out and "1 fresh reading(s) of the screen" in out

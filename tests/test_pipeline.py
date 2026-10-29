@@ -161,7 +161,7 @@ def test_cli_read_refuses_without_a_person_at_the_keyboard(world, monkeypatch, c
 def test_cli_read_shares_nothing_if_glimmer_is_down_or_the_check_file_is_missing(world, monkeypatch, capsys):
     make, glim, meta, cfg = world
     asked = []
-    monkeypatch.setattr(cli, "_share_prompt", lambda m: asked.append(m) or True)
+    monkeypatch.setattr(cli, "_share_prompt", lambda m, **k: asked.append(m) or True)
     monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: cfg))
     with pytest.raises(SystemExit, match="no file"):
         cli.main(["read", "--check", "no_such_file.cpp"])
@@ -177,7 +177,7 @@ def test_cli_read_shares_nothing_if_glimmer_is_down_or_the_check_file_is_missing
 
 def test_cli_read_prints_the_frame_warnings_and_finds_the_check_file(world, monkeypatch, capsys, tmp_path):
     make, glim, meta, cfg = world
-    monkeypatch.setattr(cli, "_share_prompt", lambda m: True)
+    monkeypatch.setattr(cli, "_share_prompt", lambda m, **k: True)
     monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: cfg))
     read = Pipeline.read
 

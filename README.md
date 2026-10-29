@@ -185,8 +185,10 @@ to Spark about an edit is in words and line numbers only, never screen text.
 and asks first; `local_only` sends nothing, and `nanokvm ask` then answers with Glimmer alone.
 
 **Free credits.** Meta's Billing page says content sent on free credits "may be used for product
-improvement". While `meta_billing = "free_credits"`, only stand-in or dummy content may be sent
-(`--stand-in`). For real content, switch Billing to pay as you go and set `meta_billing = "paid"`.
+improvement". While `meta_billing = "free_credits"`, only test or dummy content may be sent: the
+share prompt of `ask`, `edit` and `fix` then also asks you to confirm that the screen shows only such
+content (`--stand-in` answers that in advance), and nothing is sent without it. For real content,
+switch Billing to pay as you go and set `meta_billing = "paid"`.
 
 **What goes into the locked computer:** no network, no software, no drivers. HDMI carries the picture
 *out*; the only thing that goes back is the monitor identification (EDID) every monitor sends.
@@ -518,8 +520,9 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   more than 2 s old: when the video stops, the service's last frame may show what is no longer there.
 - **`ask`** reads, sends only the redacted, trimmed text to Spark, and prints its answer with the
   placeholders restored. It also says what was redacted, whether Glimmer trimmed the text, what the
-  request cost and where it is logged. `--stand-in` marks the screen as dummy content (required while
-  Meta billing is on free credits), `--approve` shows the exact text before sending (it can only make
+  request cost and where it is logged. While Meta billing is on free credits, the share prompt also
+  asks you to confirm the screen shows only test or dummy content (`--stand-in` answers that in
+  advance), `--approve` shows the exact text before sending (it can only make
   `outbound` stricter, never looser), and `--local-only` has Glimmer answer instead, sending nothing.
 - **`edit`** works like `ask`, but Spark answers with `apply_edit` calls: replace lines S to E with new
   lines. `--stand-in` and `--approve` work as for `ask`.
@@ -538,7 +541,8 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   (Ctrl+Z or *File: Revert File* undoes them). Meta's usage policy asks for authorization, oversight,
   review and confirmation before consequential actions; the once-per-run yes, the checks and leaving the
   saving to you are how this mode provides them. Check that the locked computer's owner is happy with
-  edits typed this way. While Meta billing is on free credits, `--stand-in` is still needed to send.
+  edits typed this way. While Meta billing is on free credits, the same yes also confirms that the
+  screen shows only test or dummy content.
 
 **Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
 `tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must
@@ -645,11 +649,12 @@ looks at the screen again until the problem is fixed.
 7. **Let Spark fix it:**
 
    ```powershell
-   E:\meta_hackathon\.venv\Scripts\nanokvm.exe fix --stand-in --auto   # dummy content, Meta billing on free credits
-   E:\meta_hackathon\.venv\Scripts\nanokvm.exe fix --auto              # real work: pay as you go and meta_billing = "paid"
+   E:\meta_hackathon\.venv\Scripts\nanokvm.exe fix --auto
    ```
 
-   One `y` shares the screen and lets the edits be typed without asking for each one. Then, on its own:
+   One `y` shares the screen and lets the edits be typed without asking for each one. While Meta billing
+   is on free credits, the same question asks you to confirm the screen shows only test or dummy content;
+   real work needs pay as you go and `meta_billing = "paid"`. Then, on its own:
    Glimmer reads and diagnoses the screen → Spark proposes an edit → the NanoKVM types it, with
    Glimmer checking the screen before and after → Spark sees the screen as it now is → when Spark says
    it's done, Glimmer reads the screen afresh and Spark checks the fix there. It stops when the fix is
@@ -760,7 +765,7 @@ never save a screenshot.
 | Setting | This setup | Effect |
 |---------|------------|--------|
 | `outbound` | `"auto"` (default) | `"auto"` sends redacted text to Spark; `"approve"` shows it and asks first; `"local_only"` sends nothing ([section 2](#2-what-leaves-the-ai-computer)) |
-| `meta_billing` | `"free_credits"` (default) | `"free_credits"`: only stand-in content (`--stand-in`) may go to Meta; `"paid"`: real content, once Billing is pay as you go |
+| `meta_billing` | `"free_credits"` (default) | `"free_credits"`: only test or dummy content may go to Meta, confirmed at the share prompt or with `--stand-in`; `"paid"`: real content, once Billing is pay as you go |
 | `spark_model` | `"muse-spark-1.3"` | A Standard model ID; `-contributor` IDs are refused |
 | `spark_reasoning` | `"medium"` | Spark's `reasoning_effort`: `minimal`, `low`, `medium`, `high`, `xhigh` or `max` |
 | `spark_max_tokens` | 8000 | `max_completion_tokens`, which includes Spark's reasoning |
@@ -837,7 +842,7 @@ needed.
 | `COMx is in use` or `no video` | Close the official NanoKVM-USB app or the `usbkvm.sipeed.com` browser tab; only one program can hold the device. Use `nanokvm stop` before opening the official app. |
 | `Muse Glimmer isn't ready at http://127.0.0.1:8001` or `Glimmer isn't answering` | Start `tools\run-glimmer.ps1` and wait until its window shows `model loaded` and `listening on http://127.0.0.1:8001` (about 6 s with the model files cached, about 72 s from cold). |
 | `no Meta API key` | Save the key as the only line of `.run\meta_api_key` ([section 5b](#5b-muse-spark-through-metas-model-api)). |
-| `the Meta account is on free credits` | Use `--stand-in` with dummy content, or switch Billing to pay as you go and set `meta_billing = "paid"` ([section 2](#2-what-leaves-the-ai-computer)). |
+| `the Meta account is on free credits` | Only test or dummy content may go: say yes to the share prompt's question about it, or add `--stand-in`. For real work, switch Billing to pay as you go and set `meta_billing = "paid"` ([section 2](#2-what-leaves-the-ai-computer)). |
 | `no numbered code lines on the screen` | Show the file in VS Code with line numbers on, maximised on Monitor A. |
 | `Not applied: after Ctrl+G, VS Code's Go to Line box isn't on the screen` | Only Escape, Ctrl+G and Escape were sent. Click into the file in VS Code on the locked computer (not its terminal or another app) and try again. |
 | `Not applied: after Go to Line the status bar shows …` | Nothing was typed except Go to Line. Check that the status bar is on (*View > Appearance > Status Bar*) and try again. |

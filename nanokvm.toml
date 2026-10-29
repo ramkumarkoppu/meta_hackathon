@@ -10,8 +10,8 @@
 # --- Muse Glimmer and Muse Spark (README sections 2 and 9) ---
 # outbound = "auto"              # text for Muse Spark: "auto" (send after redaction), "approve" (show it and
                                  # ask first) or "local_only" (send nothing)
-# meta_billing = "free_credits"  # only stand-in content (--stand-in) may go to Meta; "paid" once Billing is
-                                 # pay as you go
+# meta_billing = "free_credits"  # only test or dummy content may go to Meta (confirmed at the share
+                                 # prompt, or --stand-in); "paid" once Billing is pay as you go
 # spark_model = "muse-spark-1.3" # a Standard model ID; -contributor IDs are refused
 # meta_budget_usd = 25.0         # stop sending once the audit log (.run\outbound.log) adds up to this much
 # glimmer_port = 8001            # the local llama-server (always 127.0.0.1), started by tools\run-glimmer.ps1
