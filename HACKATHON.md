@@ -38,3 +38,9 @@ So far:
 - **Any OS on the locked computer (26 Oct).** The `locked_os` setting covers Windows, macOS and
   Linux.
 - **Live viewer (29 Oct).** `nanokvm viewer` shows the locked computer's screen live in a window.
+- **Approved edits typed back (29 Oct).** `nanokvm edit`: Muse Spark proposes code edits through
+  function calling (`apply_edit`). Each one is shown as a diff with the exact keys, typed into VS Code
+  on the locked computer only after I say yes, keyboard only through the NanoKVM, and checked by Muse
+  Glimmer on the screen before and after (`editing.py`).
+- **The README rewritten around the Meta-model pipeline (29 Oct).** The Claude Code bridge, built before
+  the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).

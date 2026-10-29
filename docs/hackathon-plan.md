@@ -201,7 +201,7 @@ Rules for the loop:
 
 | Rule | Why |
 |------|-----|
-| Locked-computer content goes to a cloud model (Anthropic's today, Meta's later) **only with the approval of whoever owns the laptop and its data**. Until Meta's models are approved too, the Meta agent works only on the stand-in PC. | Meta's Acceptable Use Policy forbids using its models to defeat security controls or to act on systems against their own terms, and requires human oversight of consequential actions. The same approval applies to Claude today ([README section 2](../README.md#2-secure-mode-how-its-configured)). |
+| Locked-computer content goes to a cloud model (Anthropic's today, Meta's later) **only with the approval of whoever owns the laptop and its data**. Until Meta's models are approved too, the Meta agent works only on the stand-in PC. | Meta's Acceptable Use Policy forbids using its models to defeat security controls or to act on systems against their own terms, and requires human oversight of consequential actions. The same approval applies to Claude today ([the Claude Code bridge, section 3](claude-code.md#3-approvals-and-what-goes-to-anthropic)). |
 | Use **Standard** model IDs only, never `-contributor` ones. | Meta trains on Contributor inputs, and its terms forbid confidential data there. Meta also warns that requests can be routed to a Contributor model, hence the model check in [section 4](#4-the-meta-agent-loop). |
 | While the account is paying with the **$150 of free credits**, send Meta **dummy or stand-in content only**: development, tests and the demo. Never send locked-computer text, even redacted. For real work, first click *Stop using free credits* in Billing and pay as you go. | Meta's Billing page says: "While using free credits your content may be used for product improvement" (seen 26 Oct). The employer approved redacted text under Standard terms, which don't allow training on it (Terms of Service §5.1). Free-credit traffic isn't covered by that. |
 | Send `store: false`. | The Responses API stores conversations by default. Even in Standard mode, Meta may keep content for safety and abuse review; zero retention is only for organisations Meta's sales team approves. |
@@ -214,7 +214,7 @@ Rules for the loop:
 
 *Installed by 24 Oct, apart from the Meta API key.* Everything stays inside `E:\meta_hackathon`, like
 the rest of the project ([README section 5](../README.md#5-install-already-done)).
-[README section 5a](../README.md#5a-local-muse-glimmer-hackathon-tests) has the commands to start and
+[README section 5a](../README.md#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights) has the commands to start and
 check Glimmer.
 
 | What | Location | Notes |
@@ -274,7 +274,7 @@ Status as of 2026-10-24.
 | 24 Oct | Install llama.cpp b10976 and Glimmer (Meta's and Unsloth's weights, all SHA-256-verified); write the launcher and the test scripts ([section 6](#6-install-locations)) | Done |
 | 24 Oct | Test Glimmer on a dummy C++ screen rendered as an image; measure transcription accuracy and speed (below) | Done |
 | Before 26 Oct | Confirm the work is ours to submit (original, solely owned and free of contract limits), as the waiver requires | To do |
-| Before 26 Oct | Hardware bring-up with `nanokvm diag` ([README section 9](../README.md#9-first-run-with-the-hardware)) | To do |
+| Before 26 Oct | Hardware bring-up with `nanokvm diag` ([README section 8](../README.md#8-first-run-with-the-hardware)) | To do |
 | Before 26 Oct | Build change 1 (approvals owned by the service), a fix to today's bridge | To do |
 | Before 26 Oct | Test Glimmer through the NanoKVM's capture, with dummy content only: reconnect the NanoKVM, loop the AI computer's HDMI into its TARGET end (leave the TARGET USB-C unplugged then), open the `.cpp` files in `tools\ab_screens\` in VS Code and `build_errors.txt` in a terminal, save the frames with `capture_frame.py --interactive` (after `nanokvm stop`) and score them with `glimmer_ab.py`. Compare Meta's and Unsloth's weights, and DFlash on and off. | To do; scripts ready |
 | 26 Oct | Test the Meta Model API with `tools\spark_smoke.py`, dummy text only. Results: works from the UK, on free credits, with no card added; 9 models enabled; `muse-spark-1.3` answered in 1.6 s and the reply named exactly that model; strict JSON and streaming with usage worked; 136 of 149 output tokens were reasoning, even at low effort; cost $0.0035. The `computer` tool isn't tested because we don't use it. | **Done** |
