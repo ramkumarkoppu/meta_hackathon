@@ -430,7 +430,9 @@ in [section 11](#11-troubleshooting). More measurements are in
 **On the real capture (29 Oct, during the event, without the drafter, 20.9 GB of GPU memory):** a
 9-line C++ file in VS Code on the locked computer was transcribed exactly (checked by eye against the
 screen) in 7.1 s, and `read --describe` named the app, the file and the status bar's contents
-correctly in 13.5 s, each from a 1920x1080 frame of 2,691 image tokens.
+correctly in 13.5 s, each from a 1920x1080 frame of 2,691 image tokens. **With the drafter on** (21.7 GB,
+with the NVIDIA GPU driving no display), the same two reads took **6.1 s and 6.7 s**, with the same
+transcription and an equally correct description.
 
 ### 5b. Muse Spark through Meta's Model API
 
@@ -724,7 +726,7 @@ needed.
 | `keyboard/mouse busy` | Another program is typing. Wait for it to finish. |
 | `token` or `port` errors | Run `nanokvm stop`, or end stray `pythonw.exe` processes, then retry. If another program uses the port (8765), set `port` in `nanokvm.toml`. Logs are in `.run\service.log`. |
 | Glimmer is slow (a full-screen read takes much longer than about 7 s) | Use Armoury Crate's **Turbo** mode (**Fn+F5** switches modes; changing the Windows power plan doesn't), on the **240 W barrel charger**, and GPU Mode **Standard** or **Optimized**. Silent mode, battery and USB-C (PD) power hold the GPU to about 55 W; `run-glimmer.ps1` warns about each. Once, in Turbo on the charger, the GPU still stayed near 55 W for a reason not yet found. To see whether that is happening, run `nvidia-smi --query-gpu=power.draw,clocks.gr --format=csv -l 1` during a read. Details: [hackathon plan, section 8](docs/hackathon-plan.md#8-open-questions-and-risks). |
-| VS Code or the desktop stalls while Glimmer runs | Check whether the NVIDIA GPU also drives the display: `nvidia-smi --query-gpu=display_active --format=csv` says *Enabled*. Then the desktop shares the GPU's 24 GB with Glimmer, which takes about 23 GB with the drafter. Start Glimmer with `run-glimmer.ps1 -NoDFlash` (20.9 GB): on 29 Oct a short code read still took 7.1 s, though longer answers are slower. |
+| VS Code or the desktop stalls while Glimmer runs | Check whether the NVIDIA GPU also drives a display: `nvidia-smi --query-gpu=display_active --format=csv` says *Enabled*. Then the desktop shares the GPU's 24 GB with Glimmer (21.7 GB with the drafter). Keep the displays off it: Armoury Crate's GPU Mode **Standard**, not *Ultimate* (which wires the panel to the NVIDIA GPU), and any external monitor on a port the Intel GPU drives (on 29 Oct, with Standard mode and the monitor on a DisplayLink USB-C dock, it said *Disabled*). Then Glimmer has the whole GPU. Until then, `run-glimmer.ps1 -NoDFlash` (20.9 GB) leaves the desktop more room, at the cost of slower long answers (describe 13.5 s instead of 6.7 s). |
 
 ## 12. Files and testing without hardware
 
@@ -805,7 +807,8 @@ run only against the simulator, with a fake Glimmer and a fake Meta API. On the 
 29 Oct), capture works at 1920x1080 and about 30 fps, the `nanokvm viewer` window shows the locked
 computer's screen live (median delay from capture to window 37 ms), and the keyboard/mouse chip
 answers at 57600 baud. On 29 Oct Glimmer read a real capture: a 9-line C++ file transcribed exactly
-in 7.1 s, and the screen described correctly in 13.5 s ([section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)).
+in 6.1 s, and the screen described correctly in 6.7 s, with the drafter (7.1 s and 13.5 s without it;
+[section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)).
 `ask` on a real capture, and typing on the locked computer (cable 4), aren't tested yet.
 
 ## 13. Licence
