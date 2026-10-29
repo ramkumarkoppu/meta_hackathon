@@ -460,6 +460,27 @@ def test_viewer_command_modes(sim, monkeypatch, capsys):
             cli.main(["viewer", *bad])
 
 
+def test_keytest_checks_that_num_lock_follows_each_press(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "KEYTEST_WAIT_S", 0)
+
+    class Client:                                      # the locked computer's Num Lock, as the chip reports it
+        def __init__(self, follows):
+            self.follows, self.num, self.acts = follows, True, []
+
+        def act(self, body):
+            self.acts.append(body)
+            if body["action"] == "keys" and self.follows:
+                self.num = not self.num
+            return {}
+
+        def status(self):
+            return {"control": {"device_info": {"num_lock": self.num}}}
+    ok = Client(True)
+    assert cli.cmd_keytest(ok, None) == 0 and "Keyboard OK" in capsys.readouterr().out
+    assert [a["action"] for a in ok.acts] == ["release_all", "keys", "keys"] and ok.num is True
+    assert cli.cmd_keytest(Client(False), None) == 1 and "isn't taking keystrokes" in capsys.readouterr().out
+
+
 def test_stop_says_whether_the_service_stopped(capsys):
     class Client:
         def __init__(self, running, stops):

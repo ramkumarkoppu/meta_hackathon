@@ -2,6 +2,7 @@
 
     nanokvm diag            check the NanoKVM devices and take a test screenshot
     nanokvm start | stop | status
+    nanokvm keytest         check that the locked computer takes the NanoKVM's keystrokes (Num Lock, no picture)
     nanokvm viewer          watch the screen live in a window (--browser: in the browser; --no-open: URL)
     nanokvm screenshot [FILE]
     nanokvm watch           print one line per screen change (for the user; not gated by screen sharing)
@@ -80,6 +81,40 @@ def cmd_stop(cl: ServiceClient, args) -> int:
         _out("NanoKVM service stopped.")
         return 0
     _out("NanoKVM service did not stop within 20 s: end its pythonw.exe process, then check with 'nanokvm status'.")
+    return 1
+
+
+KEYTEST_WAIT_S = 5.5       # the service re-reads the keyboard chip's Num Lock state at most every 5 s
+
+
+def cmd_keytest(cl: ServiceClient, args) -> int:
+    """Press Num Lock twice through the NanoKVM and check that the locked computer's Num Lock state follows each
+    time: proof that its operating system takes the NanoKVM's keystrokes. No picture is taken, and Num Lock ends
+    as it started."""
+    def num_lock() -> bool | None:
+        info = (cl.status().get("control") or {}).get("device_info")
+        return info.get("num_lock") if isinstance(info, dict) else None
+
+    cl.act({"action": "release_all"})            # opens the keyboard/mouse link: every key up
+    time.sleep(KEYTEST_WAIT_S)
+    states = [num_lock()]
+    if states[0] is None:
+        _out("No Num Lock state from the NanoKVM's keyboard chip: check cable 4, then 'nanokvm status'.")
+        return 1
+    for _ in range(2):
+        cl.act({"action": "keys", "keys": "numlock"})
+        time.sleep(KEYTEST_WAIT_S)
+        states.append(num_lock())
+    shown = ", then ".join("on" if s else "off" if s is not None else "unknown" for s in states)
+    if states[1] == (not states[0]) and states[2] == states[0]:
+        _out(f"Keyboard OK: the locked computer switched Num Lock at each press from the NanoKVM ({shown}).")
+        return 0
+    if states[0] == states[1] == states[2]:
+        _out(f"The locked computer didn't react to the NanoKVM's Num Lock key ({shown}), so it isn't taking "
+             "keystrokes from the NanoKVM. Check cable 4 (the NanoKVM's TARGET USB-C to a USB-A port of the "
+             "locked computer). A managed laptop can also block new USB keyboards by policy.")
+        return 1
+    _out(f"Num Lock didn't change as expected ({shown}): check it on the locked computer.")
     return 1
 
 
@@ -514,6 +549,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_start)
     sub.add_parser("stop", help="stop the background service").set_defaults(fn=cmd_stop)
+    sub.add_parser("keytest", help="press Num Lock twice through the NanoKVM and check that the locked computer "
+                                   "follows (no picture taken)").set_defaults(fn=cmd_keytest)
     p = sub.add_parser("viewer", help="watch the locked computer screen live in a window (read-only)")
     p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
     p.add_argument("--close-after", type=_seconds, metavar="SECONDS", help="close the window after this long")

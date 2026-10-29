@@ -352,10 +352,18 @@ class EditTyper:
         self._pause(0.5)
         self._keys("ctrl+g")
         self._pause()
-        if not is_goto_box(self.read_box()):
+        box = self.read_box()
+        if not is_goto_box(box):
             self._keys("escape")
-            return EditOutcome("not_applied", "after Ctrl+G, VS Code's Go to Line box isn't on the screen (is the "
-                                              "file focused in VS Code?)")
+            first = ((box or "").strip().splitlines() or [""])[0].strip().strip("'\"`").strip().upper()
+            if first in ("", "NONE"):
+                seen = ("Glimmer saw no box at the top of the screen, so VS Code's Go to Line box didn't open: is the "
+                        "file focused in VS Code, and does the locked computer take the NanoKVM's keys (try "
+                        "'nanokvm keytest')?")
+            else:
+                seen = ("Glimmer saw a box at the top of the screen, but not VS Code's Go to Line box (':'): is "
+                        "another panel or app focused?")
+            return EditOutcome("not_applied", f"after Ctrl+G, {seen}")
         # 3. go to the line; nothing is changed yet
         self._type(str(plan.start))
         self._pause(0.25)

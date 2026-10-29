@@ -231,7 +231,7 @@ def test_no_digits_or_enter_unless_the_go_to_line_box_opened(world, monkeypatch)
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="fix")]
     res = w.run()
     assert w.ed.lines == FILE and res.edits[0].outcome.status == "not_applied"
-    assert "Go to Line box" in res.stopped
+    assert "Go to Line box" in res.stopped and "Glimmer saw no box" in res.stopped and "keytest" in res.stopped
     assert [keys for _mods, keys in _keys_sent(w)] == [(E_KEY("esc"),), (E_KEY("g"),), (E_KEY("esc"),)]
 
 

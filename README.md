@@ -648,6 +648,7 @@ Other commands (prefix with `E:\meta_hackathon\.venv\Scripts\`):
 
 ```powershell
 nanokvm status          # service, video, keyboard/mouse and screen shares (--json for the raw data)
+nanokvm keytest         # presses Num Lock twice: does the locked computer take the NanoKVM's keys? (no picture)
 nanokvm screenshot      # saves .run\screenshot.jpg, or the file you name
 nanokvm viewer          # live view in a window (--browser: in your browser; --no-open: only prints the URL)
 nanokvm watch           # prints a line per screen change and saves .run\watch\latest.jpg
@@ -759,7 +760,7 @@ needed.
 | `Spark's edit can't be typed: line N isn't on the screen, or can't be read reliably there` | Glimmer didn't read that line cleanly: it is off the screen, it's the last line shown, or its numbering looked wrong. Spark is told and may try again. If it keeps happening, scroll so the lines sit mid-screen and ask again. |
 | `typed, but the screen doesn't show the expected lines` | Check the file on the locked computer. *File: Revert File* returns to the last saved version; Ctrl+Z undoes typing only in small steps. Check that the typing helpers are off ([section 4](#4-locked-computer-settings)) and that `keyboard_layout` matches. |
 | Wrong characters typed (for example `"` and `@` swapped) | `keyboard_layout` doesn't match the locked computer's keyboard layout (on a Mac, see [section 1a](#1a-operating-systems)). Fix it and run `nanokvm stop`. |
-| Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
+| Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Run `nanokvm keytest`: it presses Num Lock twice and checks that the locked computer's Num Lock follows, with no picture taken. If it says *Keyboard OK*, the keys arrive, and an edit that stops at *Go to Line* means VS Code didn't have the focus: click into the file first. Otherwise check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
 | `keyboard/mouse busy` | Another program is typing. Wait for it to finish. |
 | `token` or `port` errors | Run `nanokvm stop`, or end stray `pythonw.exe` processes, then retry. If another program uses the port (8765), set `port` in `nanokvm.toml`. Logs are in `.run\service.log`. |
 | Glimmer is slow (a full-screen read takes much longer than about 7 s) | Use Armoury Crate's **Turbo** mode (**Fn+F5** switches modes; changing the Windows power plan doesn't), on the **240 W barrel charger**, and GPU Mode **Standard** or **Optimized**. Silent mode, battery and USB-C (PD) power hold the GPU to about 55 W; `run-glimmer.ps1` warns about each. Once, in Turbo on the charger, the GPU still stayed near 55 W for a reason not yet found. To see whether that is happening, run `nvidia-smi --query-gpu=power.draw,clocks.gr --format=csv -l 1` during a read. Details: [hackathon plan, section 8](docs/hackathon-plan.md#8-open-questions-and-risks). |
