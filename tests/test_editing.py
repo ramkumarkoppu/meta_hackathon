@@ -9,7 +9,7 @@ from conftest import SimEnv
 from fakes import FakeServer, llama_reply, spark_stream
 from nanokvm_mcp import cli
 from nanokvm_mcp import editing as E
-from nanokvm_mcp.glimmer import STATUS_PROMPT, GlimmerClient
+from nanokvm_mcp.glimmer import BOX_PROMPT, STATUS_PROMPT, GlimmerClient
 from nanokvm_mcp.outbound import OutboundBlocked, OutboundGate
 from nanokvm_mcp.pipeline import EditError, Pipeline
 from nanokvm_mcp.spark import SparkClient
@@ -43,8 +43,11 @@ def world(tmp_path):
             return 200, llama_reply("ok")
         msgs = body["messages"]
         if "image_url" in json.dumps(msgs):
-            if msgs[1]["content"][0]["text"] == STATUS_PROMPT:
+            prompt = msgs[1]["content"][0]["text"]
+            if prompt == STATUS_PROMPT:
                 return 200, llama_reply(w.status_override or ed.status())
+            if prompt == BOX_PROMPT:
+                return 200, llama_reply(ed.box_text())
             return 200, llama_reply(ed.transcription())
         user = msgs[1]["content"]
         if "<question>" in user:                             # minimise: keep every line
@@ -63,7 +66,7 @@ def world(tmp_path):
     def run(request="fix the off-by-one", approve=lambda plan: True):
         with make() as pipe:
             pipe.open()
-            typer = E.EditTyper(pipe.svc.act, pipe.read_lines, pipe.read_status, pause_s=0)
+            typer = E.EditTyper(pipe.svc.act, pipe.read_lines, pipe.read_status, pipe.read_box, pause_s=0)
             return pipe.edit(request, approve_edit=approve, typer=typer)
     w.make, w.run = make, run
     yield w
@@ -120,7 +123,7 @@ def test_nothing_is_typed_after_navigation_if_the_screen_changed(world):
     assert w.ed.lines[5] == "    // changed meanwhile" and w.ed.lines[6:] == FILE[6:]
     assert res.edits[0].outcome.status == "not_applied" and "no longer shows" in res.stopped
     sent = {usage for _mods, keys in _keys_sent(w) for usage in keys}
-    assert sent == {E_KEY("g"), E_KEY("6"), E_KEY("enter")}       # only Go to Line: no select, delete or typing
+    assert sent == {E_KEY("esc"), E_KEY("g"), E_KEY("6"), E_KEY("enter")}   # only Go to Line: no select, delete or typing
     assert len(w.meta.requests) == 1                                # and Spark isn't asked again
 
 
@@ -131,6 +134,29 @@ def test_nothing_is_typed_if_the_status_bar_doesnt_confirm_the_line(world):
     res = w.run()
     assert w.ed.lines == FILE and res.edits[0].outcome.status == "not_applied"
     assert "status bar" in res.stopped
+
+
+def test_no_digits_or_enter_unless_the_go_to_line_box_opened(world, monkeypatch):
+    w = world
+    real = w.ed.key
+
+    def terminal_has_focus(mods, usage):                          # Ctrl+G doesn't open Go to Line
+        if not (mods and usage == E_KEY("g")):
+            real(mods, usage)
+    monkeypatch.setattr(w.ed, "key", terminal_has_focus)
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="fix")]
+    res = w.run()
+    assert w.ed.lines == FILE and res.edits[0].outcome.status == "not_applied"
+    assert "Go to Line box" in res.stopped
+    assert [keys for _mods, keys in _keys_sent(w)] == [(E_KEY("esc"),), (E_KEY("g"),), (E_KEY("esc"),)]
+
+
+def test_the_files_last_line_gets_no_extra_line_break(world):
+    w = world
+    w.replies += [_call(start_line=10, end_line=10, new_text="}  // sum_first", note="label the end"),
+                  spark_stream("Done.")]
+    res = w.run()
+    assert w.ed.lines == FILE[:9] + ["}  // sum_first"] and res.edits[0].outcome.status == "verified"
 
 
 @pytest.mark.parametrize("args,reason", [
@@ -233,7 +259,7 @@ def test_ctrl_c_while_typing_releases_every_key():
         if body["action"] == "type" and len(body["text"]) > 5:
             raise KeyboardInterrupt
         return {"summary": "ok"}
-    typer = E.EditTyper(act, lambda: screen, lambda: next(statuses), pause_s=0)
+    typer = E.EditTyper(act, lambda: screen, lambda: next(statuses), lambda: ":", pause_s=0)
     with pytest.raises(KeyboardInterrupt):
         typer.apply(plan)
     assert actions[-1] == "release_all"

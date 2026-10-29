@@ -143,16 +143,24 @@ class Pipeline:
     def read_lines(self, rect: tuple[float, float, float, float] | None = None) -> dict[int, str]:
         return E.numbered_lines(self.read("code", rect).text)
 
-    def read_status(self) -> str:
-        """VS Code's status-bar text ("Ln 23, Col 1"), read by Glimmer from the bottom tenth of the screen."""
+    def _read_crop(self, fx: float, fy: float, fw: float, fh: float, reader) -> str:
+        """Glimmer's reading of a part of the screen given in fractions of its width and height."""
         screen = self.svc.status()["screen"]
         w, h = screen["width"], screen["height"]
-        frame = self.svc.frame((0, h * 0.9, w, h * 0.1))
+        frame = self.svc.frame((w * fx, h * fy, w * fw, h * fh))
         try:
-            return self.glimmer.cursor_status(frame["image_b64"], frame["format"]).content
+            return reader(frame["image_b64"], frame["format"]).content
         finally:
             frame["image_b64"] = None
             del frame
+
+    def read_status(self) -> str:
+        """VS Code's status-bar text ("Ln 23, Col 1"), read from the bottom tenth of the screen."""
+        return self._read_crop(0, 0.9, 1, 0.1, self.glimmer.cursor_status)
+
+    def read_box(self) -> str:
+        """VS Code's quick-input box (":" for Go to Line), read from the top quarter of the screen."""
+        return self._read_crop(0.15, 0, 0.7, 0.25, self.glimmer.quick_input)
 
     def edit(self, request: str, rect: tuple[float, float, float, float] | None = None, *,
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
@@ -170,7 +178,7 @@ class Pipeline:
         if not screen:
             raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
-        typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status,
+        typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l")
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"))

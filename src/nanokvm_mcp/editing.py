@@ -7,11 +7,15 @@ and none left over, no tab characters, every character typeable on the locked co
 lines on the screen, and within the size limits. Then, only after a yes at the console, it is typed
 keyboard-only, with a local read by Muse Glimmer before each irreversible step:
 
-  1. Ctrl+G, the start line, Enter      go to the line; VS Code puts the cursor at column 1
-  2. check: the status bar says "Ln S, Col 1" and the lines there are the ones Spark changed
-  3. Ctrl+L once per line               select the whole lines; check the status bar again
-  4. Backspace, then type the new lines delete first, so editor.autoSurround can't wrap the selection
-  5. check: the new lines are on the screen, followed by the line that came after the old ones
+  1. Escape, Ctrl+G                     close any widget or pending chord, open Go to Line
+  2. check: VS Code's Go to Line box (":") is open; digits and Enter typed anywhere else could do harm
+     (in VS Code's terminal, Ctrl+G is Go to Recent Directory and Enter runs a cd)
+  3. the start line's digits, Enter     VS Code puts the cursor at column 1 (checked against its source)
+  4. check: the status bar says "Ln S, Col 1" and the lines there are the ones Spark changed
+  5. Ctrl+L once per line               select the whole lines (file lines, even with word wrap); check
+                                        the status bar again
+  6. Backspace, then type the new lines delete first, so editor.autoSurround can't wrap the selection
+  7. check: the new lines are on the screen, followed by the line that came after the old ones
 
 Any failed check stops the session, and nothing more is typed. Messages sent back to Spark say what happened
 in words and line numbers only, never screen text.
@@ -93,6 +97,14 @@ def parse_status(text: str) -> tuple[int, int, int] | None:
     return int(m.group(1)), int(m.group(2)), int((m.group(3) or "0").replace(",", ""))
 
 
+def is_goto_box(text: str) -> bool:
+    """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line: VS Code opens it with ':'
+    already typed ('::' is a different mode, and Go to Recent Directory has no ':')."""
+    lines = (text or "").strip().splitlines()
+    first = lines[0].strip().strip("'\"`").strip() if lines else ""
+    return first.startswith(":") and not first.startswith("::")
+
+
 def lines_match(screen: dict[int, str], start: int, expected: list[str]) -> bool:
     """Whether the screen shows ``expected`` from line ``start`` on (spacing inside a line may differ: OCR)."""
     return all(start + i in screen and _norm(screen[start + i]) == _norm(line) for i, line in enumerate(expected))
@@ -117,7 +129,8 @@ class EditPlan:
         return self.end - self.start + 1
 
     def steps(self) -> list[str]:
-        s = [f"Ctrl+G, type {self.start}, Enter (go to line {self.start}), then check the status bar and the lines"]
+        s = ["Escape, Ctrl+G, then check that VS Code's Go to Line box opened",
+             f"type {self.start}, Enter (go to line {self.start}), then check the status bar and the lines"]
         if self.replaced:
             key = "+".join(k.capitalize() for k in self.select_key.split("+"))
             s.append(f"{key} x{self.replaced} (select line{'s' if self.replaced > 1 else ''} {self.span()}), "
@@ -189,12 +202,14 @@ class EditOutcome:
 
 class EditTyper:
     """Types one approved EditPlan into VS Code through the service (keyboard only), checking the screen with
-    Glimmer before each irreversible step. ``read_lines`` and ``read_status`` read the screen locally."""
+    Glimmer before each irreversible step. ``read_lines``, ``read_status`` and ``read_box`` read the screen
+    locally: the code lines, the status bar, and the quick-input box at the top."""
 
     def __init__(self, act: Callable[[dict], dict], read_lines: Callable[[], dict[int, str]],
-                 read_status: Callable[[], str], pause_s: float = 0.4, select_line_key: str = "ctrl+l") -> None:
-        self.act, self.read_lines, self.read_status, self.pause_s = act, read_lines, read_status, pause_s
-        self.select_line_key = select_line_key
+                 read_status: Callable[[], str], read_box: Callable[[], str], pause_s: float = 0.4,
+                 select_line_key: str = "ctrl+l") -> None:
+        self.act, self.read_lines, self.read_status, self.read_box = act, read_lines, read_status, read_box
+        self.pause_s, self.select_line_key = pause_s, select_line_key
 
     def _keys(self, keys: str, repeat: int = 1) -> None:
         self.act({"action": "keys", "keys": keys, "repeat": repeat})
@@ -220,14 +235,21 @@ class EditTyper:
             raise
 
     def _apply(self, plan: EditPlan) -> EditOutcome:
-        # 1. go to the line; nothing is changed yet
+        # 1-2. open Go to Line, and type nothing more until it is seen open: elsewhere digits and Enter could act
+        self._keys("escape")                         # closes an open widget and cancels a pending chord
+        self._pause(0.5)
         self._keys("ctrl+g")
         self._pause()
+        if not is_goto_box(self.read_box()):
+            self._keys("escape")
+            return EditOutcome("not_applied", "after Ctrl+G, VS Code's Go to Line box isn't on the screen (is the "
+                                              "file focused in VS Code?)")
+        # 3. go to the line; nothing is changed yet
         self._type(str(plan.start))
         self._pause(0.25)
         self._keys("enter")
         self._pause()
-        # 2. is the cursor really there, and are these still the lines Spark changed?
+        # 4. is the cursor really there, and are these still the lines Spark changed?
         st = self._status()
         if st is None or st[:2] != (plan.start, 1):
             seen = "nothing" if st is None else f"Ln {st[0]}, Col {st[1]}"
@@ -237,7 +259,8 @@ class EditTyper:
         expected = plan.old if plan.replaced else ([plan.after] if plan.after is not None else [])
         if not lines_match(screen, plan.start, expected):
             return EditOutcome("not_applied", f"the screen no longer shows the expected lines at line {plan.start}")
-        # 3. select the whole lines and check the selection before deleting anything
+        # 5. select the whole lines and check the selection before deleting anything
+        text = plan.text
         if plan.replaced:
             self._keys(self.select_line_key, plan.replaced)
             self._pause()
@@ -248,12 +271,14 @@ class EditTyper:
                 seen = "nothing" if st is None else f"Ln {st[0]}, Col {st[1]}, {st[2]} selected"
                 return EditOutcome("not_applied", f"after selecting, the status bar shows {seen}, not the "
                                                   f"selection of line(s) {plan.span()}")
-            # 4. delete them, then type the new lines
+            if st[0] == want - 1:
+                text = text[:-1]          # the file's last line, with no line break: don't add one
+            # 6. delete them, then type the new lines
             self._keys("backspace")
-        if plan.new:
-            self._type(plan.text)
+        if text:
+            self._type(text)
         self._pause(1.5)
-        # 5. check the result
+        # 7. check the result
         screen = self.read_lines()
         expected = plan.new + ([plan.after] if plan.after is not None else [])
         if not expected:

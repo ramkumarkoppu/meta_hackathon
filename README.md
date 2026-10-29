@@ -282,19 +282,46 @@ Open User Settings (JSON)* and add:
   themes work, but thin coloured text is slightly softer.
 
 **VS Code for typed edits (cable 4).** VS Code's typing helpers would garble code typed key by key:
-they double closing brackets and quotes, add extra indentation, wrap a selection instead of replacing
-it, and let Enter or punctuation accept auto-complete suggestions. Before you run `nanokvm edit`,
-switch them off in the same settings file:
+they close brackets, quotes and `/*` comments, add indentation, wrap a selection instead of replacing
+it, generate Doxygen comments, and let Enter, Tab or punctuation accept a suggestion. Before you run
+`nanokvm edit`, switch them off in the same settings file. The C/C++ extension's own `[cpp]` defaults
+win over global settings, so the main ones are repeated in a `[cpp]` block. (These were checked
+against VS Code 1.144's source on 29 Oct.)
 
 ```jsonc
 "editor.autoClosingBrackets": "never",
 "editor.autoClosingQuotes": "never",
+"editor.autoClosingComments": "never",
 "editor.autoSurround": "never",
 "editor.autoIndent": "none",
 "editor.formatOnType": false,
+"editor.trimAutoWhitespace": false,
 "editor.acceptSuggestionOnEnter": "off",
-"editor.acceptSuggestionOnCommitCharacter": false
+"editor.acceptSuggestionOnCommitCharacter": false,
+"editor.quickSuggestions": { "other": "off", "comments": "off", "strings": "off" },
+"editor.suggestOnTriggerCharacters": false,
+"editor.inlineSuggest.enabled": false,
+"editor.wordBasedSuggestions": "off",
+"editor.unusualLineTerminators": "off",
+"editor.folding": false,
+"C_Cpp.doxygen.generateOnType": false,
+"[cpp]": {
+  "editor.autoClosingBrackets": "never",
+  "editor.autoClosingQuotes": "never",
+  "editor.autoClosingComments": "never",
+  "editor.autoSurround": "never",
+  "editor.autoIndent": "none",
+  "editor.formatOnType": false,
+  "editor.acceptSuggestionOnEnter": "off",
+  "editor.acceptSuggestionOnCommitCharacter": false,
+  "editor.quickSuggestions": { "other": "off", "comments": "off", "strings": "off" },
+  "editor.suggestOnTriggerCharacters": false
+}
 ```
+
+One helper has no setting: a line that starts with `}`, `)` or `]` is re-indented to match the line
+that opened it. For well-indented code that is what gets typed anyway, and the check after typing
+catches any difference.
 
 ## 5. Install (already done)
 
@@ -410,10 +437,12 @@ running commands, can't approve. `--region x,y,w,h` reads only part of the scree
    and 2,000 characters per edit.
 2. **Your approval.** It shows the change as a diff with the exact keys it will press, then asks
    *Type this edit? [y/N]*.
-3. **Typing, keyboard only.** Ctrl+G and the line number go to the line. Glimmer then reads the status
-   bar (it must say *Ln S, Col 1*) and the lines there (they must be the ones Spark changed). Ctrl+L
-   once per line selects them, checked on the status bar again, Backspace deletes them, and the new
-   lines are typed.
+3. **Typing, keyboard only.** Escape, then Ctrl+G. Glimmer checks that VS Code's Go to Line box (`:`)
+   opened before anything else is typed: elsewhere, digits and Enter could act (in VS Code's terminal,
+   Ctrl+G is *Go to Recent Directory*, and Enter would run a `cd`). Then the line number and Enter go to
+   the line. Glimmer reads the status bar (it must say *Ln S, Col 1*) and the lines there (they must be
+   the ones Spark changed). Ctrl+L once per line selects them, checked on the status bar again,
+   Backspace deletes them, and the new lines are typed.
 4. **The result is checked.** Glimmer reads the screen again: the new lines must be there, followed by
    the line that came after the old ones.
 
@@ -422,8 +451,10 @@ and line numbers only, and can then propose the next edit (at most 4 edits and 6
 session). **Ctrl+C** in the terminal releases every key at once.
 
 Before running `edit`: plug in cable 4, show the file in VS Code on the locked computer with its
-editor focused, and switch the typing helpers off ([section 4](#4-locked-computer-settings)). Typing
-runs at about 20 characters a second, so ask for small, targeted edits.
+editor focused, switch the typing helpers off ([section 4](#4-locked-computer-settings)), and **save
+the file**. Undoing typed code takes many Ctrl+Z presses (VS Code undoes it in small steps), while
+*File: Revert File* returns to the saved version at once. Typing runs at about 20 characters a second,
+so ask for small, targeted edits.
 
 ## 7. Watching the screen yourself
 
@@ -591,8 +622,9 @@ needed.
 | `no Meta API key` | Save the key as the only line of `.run\meta_api_key` ([section 5b](#5b-muse-spark-through-metas-model-api)). |
 | `the Meta account is on free credits` | Use `--stand-in` with dummy content, or switch Billing to pay as you go and set `meta_billing = "paid"` ([section 2](#2-what-leaves-the-ai-computer)). |
 | `no numbered code lines on the screen` | Show the file in VS Code with line numbers on, maximised on Monitor A. |
-| `Not applied: after Go to Line the status bar shows …` | Nothing was typed except Go to Line. Click into the file in VS Code on the locked computer, check that the status bar is on (*View > Appearance > Status Bar*), and try again. |
-| `typed, but the screen doesn't show the expected lines` | Check the file on the locked computer; Ctrl+Z there undoes typing. Check that the typing helpers are off ([section 4](#4-locked-computer-settings)) and that `keyboard_layout` matches. |
+| `Not applied: after Ctrl+G, VS Code's Go to Line box isn't on the screen` | Only Escape, Ctrl+G and Escape were sent. Click into the file in VS Code on the locked computer (not its terminal or another app) and try again. |
+| `Not applied: after Go to Line the status bar shows …` | Nothing was typed except Go to Line. Check that the status bar is on (*View > Appearance > Status Bar*) and try again. |
+| `typed, but the screen doesn't show the expected lines` | Check the file on the locked computer. *File: Revert File* returns to the last saved version; Ctrl+Z undoes typing only in small steps. Check that the typing helpers are off ([section 4](#4-locked-computer-settings)) and that `keyboard_layout` matches. |
 | Wrong characters typed (for example `"` and `@` swapped) | `keyboard_layout` doesn't match the locked computer's keyboard layout (on a Mac, see [section 1a](#1a-operating-systems)). Fix it and run `nanokvm stop`. |
 | Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
 | `keyboard/mouse busy` | Another program is typing. Wait for it to finish. |

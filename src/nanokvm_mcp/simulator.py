@@ -65,6 +65,12 @@ class SimEditor:
     def transcription(self) -> str:
         return "\n".join(f"{n} {line}" for n, line in self.visible())
 
+    def box_text(self) -> str:
+        """The quick-input box as Glimmer would read it: Go to Line opens with ':' typed."""
+        if self.goto is None:
+            return "NONE"
+        return f":{self.goto}\nType a line number between 1 and {len(self.lines)} to navigate to."
+
     # ---- input
     def key(self, mods: int, usage: int) -> None:
         ctrl, shift = bool(mods & _CTRL), bool(mods & _SHIFT)
@@ -78,6 +84,8 @@ class SimEditor:
                 self.goto = None
             elif usage == KEYS["esc"]:
                 self.goto = None
+            elif ctrl and usage == KEYS["g"]:
+                self.goto = ""                     # VS Code selects the old digits: new ones replace them
             elif usage == KEYS["backspace"]:
                 self.goto = self.goto[:-1]
             elif not ctrl and ch is not None and ch.isdigit():
@@ -230,8 +238,13 @@ class SimDesktop:
                     cv2.putText(desk, line, (160, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (20, 20, 20), 1, cv2.LINE_AA)
                     y += 24
                 cv2.rectangle(desk, (80, 870), (1400, 900), (200, 120, 0), -1)        # status bar
-                cv2.putText(desk, ed.status() + ("   Go to line: " + ed.goto if ed.goto is not None else ""),
-                            (1000, 892), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+                cv2.putText(desk, ed.status(), (1000, 892), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+                            cv2.LINE_AA)
+                if ed.goto is not None:                                              # the Go to Line box
+                    cv2.rectangle(desk, (440, 135), (1040, 205), (60, 60, 60), -1)
+                    for i, line in enumerate(ed.box_text().splitlines()):
+                        cv2.putText(desk, line, (455, 162 + 30 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                    (255, 255, 255), 1, cv2.LINE_AA)
             bx, by, bw, bh = BUTTON_RECT
             colour = (60, 160, 60) if self.button_presses % 2 else (60, 60, 200)
             cv2.rectangle(desk, (bx, by), (bx + bw, by + bh), colour, -1)
