@@ -45,8 +45,7 @@ So far:
   locked computer's screen (`glimmer.py`, `nanokvm read`). Redaction (`redact.py`) and an outbound
   gate (`outbound.py`) mean Muse Spark only ever gets redacted text (`spark.py`, `pipeline.py`,
   `nanokvm ask`). The service gained full-resolution frames for the local model (`/api/frame`).
-  So far `read` and `ask` have run with the real Glimmer and Spark on simulated screens, not yet on
-  a real capture.
+  `read` and `ask` first ran with the real Glimmer and Spark on simulated screens.
 - **Any OS on the locked computer (26 Oct).** The `locked_os` setting covers Windows, macOS and
   Linux.
 - **Live viewer window (29 Oct).** `nanokvm viewer` now shows the locked computer's screen live in a
@@ -70,3 +69,7 @@ So far:
   `nanokvm read --check` now reports line numbers only, never the text read, so I can share its result.
   `read`, `ask` and `edit` check that Glimmer is up before asking to share the screen, refuse a frame
   more than 2 s old, and print the service's warnings about the picture.
+- **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
+  transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 7.1 s, and
+  `read --describe` named the app, the file and the status bar's contents correctly, in 13.5 s.
+  `ask` on a real capture and typing over cable 4 come next.
