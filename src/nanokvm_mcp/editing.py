@@ -39,6 +39,7 @@ MAX_EDIT_LINES = 40            # per edit, old or new: the edited block must sta
 MAX_EDIT_CHARS = 2000          # per edit; typing runs at about 20 characters a second
 MAX_EDITS = 4                  # typed edits per session
 MAX_TURNS = 6                  # requests to Spark per session
+MAX_CHECKS = 2                 # nanokvm fix: fresh readings of the screen sent back to Spark after it says it's done
 TYPE_CHUNK = 1500              # characters per type action (at most the service's max_text_len)
 MAX_NOTE = 200                 # characters of Spark's note shown at the approval prompt
 
@@ -75,6 +76,10 @@ EDIT_SYSTEM = ("You fix code for a developer. The user's message has their reque
 FIX_REQUEST = ("Find what is wrong in this file and fix it: errors that stop it compiling or running first, then "
                "obvious bugs. <screen_notes> says what the screen reader noticed, but it can be incomplete or wrong, "
                "so check the code itself. If nothing needs fixing, say so without calling the tool.")
+# nanokvm fix: sent with a fresh reading of the screen once Spark says it's done, so the fix is checked on the screen.
+CHECK_REQUEST = ("Here is the screen again, read after your edits. If the problem is fixed, say so in one sentence "
+                 "without calling the tool. If something is still wrong, fix it with apply_edit, using these line "
+                 "numbers.")
 
 
 class EditRejected(ValueError):

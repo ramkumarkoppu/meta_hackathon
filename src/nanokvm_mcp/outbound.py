@@ -153,6 +153,21 @@ class OutboundGate:
             findings[k] = findings.get(k, 0) + v
         return Prepared(r2.text, q.text, r2.mapping, findings, _sha(screen_text), frame_sha256, trimmed)
 
+    def follow_up(self, p: Prepared, screen_text: str, notes: str | None, intro: str) -> str:
+        """A later user message carrying a fresh reading of the screen (nanokvm fix's check after the edits),
+        redacted with the same placeholders. New values join ``p.mapping``, so the checks before every request and
+        restoring Spark's replies cover them too. Not trimmed, like fix's first message."""
+        terms = R.load_terms(self.cfg.run_dir / "redact_terms.txt")
+        s = R.redact(screen_text, terms, mapping=p.mapping)
+        n = R.redact(notes, terms, mapping=s.mapping) if notes else None
+        block = f"<screen_notes>\n{n.text}\n</screen_notes>\n\n" if n else ""
+        r = R.redact(f"{intro}\n\n{block}<screen_text>\n{s.text}\n</screen_text>", terms, mapping=(n or s).mapping)
+        p.mapping.update(r.mapping)
+        for part in (s, n, r):
+            for k, v in (part.findings if part else {}).items():
+                p.findings[k] = p.findings.get(k, 0) + v
+        return r.text
+
     # ---- checks and sending
     def check(self, p: Prepared, history: list[dict] | None = None) -> None:
         text = p.text + ("\n" + history_text(history) if history else "")

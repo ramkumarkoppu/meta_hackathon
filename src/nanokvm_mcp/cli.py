@@ -528,8 +528,9 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     if res.stopped:
         _out(f"\nStopped early: {_shown(res.stopped)}")
     typed = sum(1 for r in res.edits if r.outcome is not None and r.outcome.status != "not_applied")
+    rechecked = f"; Spark checked the fix on {res.checks} fresh reading(s) of the screen" if res.checks else ""
     _out(f"\n({typed} edit(s) typed, {sum(1 for r in res.edits if r.outcome and r.outcome.status == 'verified')} "
-         f"checked on the screen; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
+         f"checked on the screen{rechecked}; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
          f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
     return 0 if not res.stopped else 4
 

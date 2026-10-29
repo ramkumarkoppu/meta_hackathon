@@ -72,7 +72,8 @@ So far:
   start a second server, and `nanokvm status` shows any active screen shares.
 - **Spark finds the error itself (29 Oct).** `nanokvm fix`: with no request from me, Glimmer notes
   what is wrong on the screen (error messages, squiggles, the status bar's counts), and Spark gets those
-  notes and the code, redacted, finds the error and fixes it through `apply_edit`. For toy files,
+  notes and the code, redacted, finds the error and fixes it through `apply_edit`. When Spark says it's
+  done, Glimmer reads the screen afresh and Spark checks the fix there, editing again if needed. For toy files,
   `--auto` (only with `--stand-in`) types each edit without asking; each is still checked on the screen
   before and after typing.
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU

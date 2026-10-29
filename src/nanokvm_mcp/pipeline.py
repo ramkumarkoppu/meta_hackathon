@@ -64,6 +64,7 @@ class EditResult:
     turns: int = 0
     stopped: str | None = None        # why the session ended early, or None
     cost_usd: float = 0.0
+    checks: int = 0                   # nanokvm fix: fresh readings of the screen Spark checked its fix against
 
 
 class Pipeline:
@@ -185,7 +186,9 @@ class Pipeline:
         returned, with ``stopped`` saying why.
 
         With no ``request`` (nanokvm fix), Glimmer also notes what is wrong on the screen, and Spark gets
-        E.FIX_REQUEST, those notes and every code line on the screen (not trimmed), and finds the error itself."""
+        E.FIX_REQUEST, those notes and every code line on the screen (not trimmed), and finds the error itself.
+        When Spark then says it's done, Glimmer reads the screen afresh and Spark checks the fix there; if
+        something is still wrong it carries on editing (at most E.MAX_CHECKS times, within the usual limits)."""
         say = on_event or (lambda _m: None)
         if self.cfg.outbound == "local_only":
             raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
@@ -196,7 +199,8 @@ class Pipeline:
         if not screen:
             raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
         notes = None
-        if not (request or "").strip():
+        fix = not (request or "").strip()
+        if fix:
             say("asking Muse Glimmer what is wrong on the screen")
             notes = self.read("diagnose", rect).text
             request = E.FIX_REQUEST
@@ -210,11 +214,15 @@ class Pipeline:
         result = EditResult(reading, prepared, "")
         history: list[dict] = []
         typed = 0
+        typed_at_check = 0                              # typed edits when the screen was last read afresh
+        checking = False
         while True:
             if result.turns >= E.MAX_TURNS:
                 result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
                 break
-            say("asking Muse Spark" if not result.turns else "telling Muse Spark the result")
+            say("asking Muse Spark" if not result.turns else
+                "asking Muse Spark whether the screen shows it fixed" if checking else "telling Muse Spark the result")
+            checking = False
             try:
                 answer = gate.ask(prepared, E.EDIT_SYSTEM, tools=[E.APPLY_EDIT], parallel_tool_calls=False,
                                   history=history)
@@ -227,7 +235,28 @@ class Pipeline:
             result.cost_usd += answer.reply.cost_usd
             if not answer.tool_calls:
                 result.summary = answer.content
-                break
+                if not fix or typed == typed_at_check or result.checks >= E.MAX_CHECKS:
+                    break                               # nothing typed since the screen was last checked
+                # Spark says it's done: read the screen afresh, and let Spark check the fix there
+                say("reading the screen again with Muse Glimmer to check the fix")
+                try:
+                    fresh = self.read("code", rect)
+                    fresh_notes = self.read("diagnose", rect).text
+                except (GlimmerError, ServiceError) as e:
+                    result.stopped = f"the screen couldn't be read again to check the fix: {e}"
+                    break
+                now = E.numbered_lines(fresh.text, strict=True)
+                if not now:
+                    result.stopped = "after the edits, no numbered code lines could be read to check the fix"
+                    break
+                screen = now
+                result.checks += 1
+                typed_at_check = typed
+                history.append({"role": "assistant", "content": answer.reply.content or ""})
+                history.append({"role": "user",
+                                "content": gate.follow_up(prepared, fresh.text, fresh_notes, E.CHECK_REQUEST)})
+                checking = True
+                continue
             raw = answer.reply.tool_calls             # replayed as Spark sent them: redacted
             history.append({"role": "assistant", "content": answer.reply.content or None,
                             "tool_calls": [{"id": c["id"], "type": "function",

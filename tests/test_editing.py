@@ -119,7 +119,7 @@ def test_fix_finds_the_error_itself_from_the_screen(world):
     w = world
     w.diagnosis = "VS Code, sum.cpp\nRed squiggle under line 6; ask jane.doe@example.org"
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use < so v[n] isn't read"),
-                  spark_stream("Fixed the loop bound on line 6.")]
+                  spark_stream("Fixed the loop bound on line 6."), spark_stream("The screen shows it fixed.")]
     events = []
     with w.make() as pipe:
         pipe.open()
@@ -127,6 +127,11 @@ def test_fix_finds_the_error_itself_from_the_screen(world):
         res = pipe.edit(None, approve_edit=lambda plan: True, typer=typer, on_event=events.append)
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and [r.outcome.status for r in res.edits] == ["verified"]
     assert "asking Muse Glimmer what is wrong on the screen" in events
+    assert res.checks == 1 and res.summary == "The screen shows it fixed." and len(w.meta.requests) == 3
+    check = w.meta.requests[2][2]["messages"]                 # Spark's "done", then the screen read afresh
+    assert [m["role"] for m in check[-2:]] == ["assistant", "user"] and check[-1]["content"].startswith(E.CHECK_REQUEST)
+    assert FIX.strip() in check[-1]["content"] and "<screen_notes>" in check[-1]["content"]
+    assert "jane.doe" not in check[-1]["content"] and "[[EMAIL_1]]" in check[-1]["content"]
     user = w.meta.requests[0][2]["messages"][1]["content"]
     assert user.startswith(E.FIX_REQUEST)
     assert "<screen_notes>\nVS Code, sum.cpp\nRed squiggle under line 6; ask [[EMAIL_1]]\n</screen_notes>" in user
@@ -145,11 +150,29 @@ def test_cli_fix_auto_types_without_asking_but_only_on_stand_in_content(world, m
     monkeypatch.setattr(cli, "_console_yes", lambda q: pytest.fail(f"--auto asked: {q}"))
     monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the fake Meta API, never the real one
                         lambda cfg: SparkClient(cfg, base_url=f"http://127.0.0.1:{w.meta.port}"))
-    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6.")]
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6."),
+                  spark_stream("The screen shows it fixed.")]
     assert cli.main(["fix", "--stand-in", "--auto"]) == 0
     out = capsys.readouterr().out
     assert "--auto: typing it without asking." in out and "verified" in out
-    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and len(w.meta.requests) == 2
+    assert "reading the screen again with Muse Glimmer" in out and "1 fresh reading(s) of the screen" in out
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and len(w.meta.requests) == 3
+
+
+def test_fix_carries_on_when_the_fresh_screen_shows_more_to_fix(world):
+    w = world
+    INCLUDE = "#include <vector>  // std::vector"
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="loop bound"), spark_stream("Done."),
+                  _call(start_line=1, end_line=1, new_text=INCLUDE, note="say what it is for"),
+                  spark_stream("Done again."), spark_stream("Now it is fixed.")]
+    with w.make() as pipe:
+        pipe.open()
+        typer = E.EditTyper(pipe.svc.act, pipe.read_lines, pipe.read_status, pipe.read_box, pause_s=0)
+        res = pipe.edit(None, approve_edit=lambda plan: True, typer=typer)
+    assert w.ed.lines == [INCLUDE] + FILE[1:5] + [FIX] + FILE[6:]
+    assert [r.outcome.status for r in res.edits] == ["verified", "verified"]
+    assert res.checks == E.MAX_CHECKS == 2 and res.turns == 5 and res.summary == "Now it is fixed."
+    assert res.stopped is None
 
 
 def test_cli_fix_refuses_without_a_person_at_the_keyboard(world, monkeypatch, capsys):

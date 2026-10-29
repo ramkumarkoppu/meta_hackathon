@@ -518,7 +518,10 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   lines. `--stand-in` and `--approve` work as for `ask`.
 - **`fix`** is `edit` with no request. Glimmer also notes what is wrong on the screen (error messages,
   squiggles, the Problems panel, the status bar's counts), and Spark gets a built-in instruction, those
-  notes and every code line on the screen, untrimmed, so it can find the error itself.
+  notes and every code line on the screen, untrimmed, so it can find the error itself. When Spark says
+  it's done, Glimmer reads the screen afresh (the code and its notes again) and Spark checks the fix
+  there; if something is still wrong it carries on editing. That happens at most twice, within the
+  limits below.
 - **`--auto`** (for `edit` and `fix`, and only together with `--stand-in`) types each edit without
   asking, for toy files: each edit is still shown and checked before and after typing, and Ctrl+C stops
   it. The share prompt remains. Real work keeps the per-edit approval: Meta's usage policy asks for
@@ -803,7 +806,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        303 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        304 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
