@@ -12,7 +12,7 @@ from conftest import SimEnv
 from fakes import FakeServer, llama_reply, spark_stream
 from nanokvm_mcp import cli
 from nanokvm_mcp import editing as E
-from nanokvm_mcp.glimmer import BOX_PROMPT, STATUS_PROMPT, GlimmerClient
+from nanokvm_mcp.glimmer import BOX_PROMPT, DIAGNOSE_PROMPT, STATUS_PROMPT, GlimmerClient
 from nanokvm_mcp.outbound import OutboundBlocked, OutboundGate
 from nanokvm_mcp.pipeline import EditError, Pipeline
 from nanokvm_mcp.spark import SparkClient, SparkError
@@ -39,7 +39,8 @@ def _call(**args):
 def world(tmp_path):
     env = SimEnv(tmp_path, editor_lines=FILE)
     ed = env.desk.editor
-    w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, cfg=env.cfg)
+    w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, cfg=env.cfg,
+                        diagnosis="VS Code, sum.cpp\nNo errors shown.")
 
     def llama(path, body):
         if path == "/health":                                # asked before the screen is shared
@@ -53,6 +54,8 @@ def world(tmp_path):
                 return 200, llama_reply(w.status_override or ed.status())
             if prompt == BOX_PROMPT:
                 return 200, llama_reply(ed.box_text())
+            if prompt == DIAGNOSE_PROMPT:
+                return 200, llama_reply(w.diagnosis)
             return 200, llama_reply(ed.transcription())
         user = msgs[1]["content"]
         if "<question>" in user:                             # minimise: keep every line
@@ -110,6 +113,52 @@ def test_an_approved_edit_is_typed_and_checked(world):
     log = [json.loads(x) for x in (w.cfg.run_dir / "outbound.log").read_text(encoding="utf-8").splitlines()]
     assert [r["event"] for r in log] == ["request", "response", "request", "response"]
     assert log[2]["turn"] == 2 and log[2]["history"][1]["role"] == "tool"
+
+
+def test_fix_finds_the_error_itself_from_the_screen(world):
+    w = world
+    w.diagnosis = "VS Code, sum.cpp\nRed squiggle under line 6; ask jane.doe@example.org"
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use < so v[n] isn't read"),
+                  spark_stream("Fixed the loop bound on line 6.")]
+    events = []
+    with w.make() as pipe:
+        pipe.open()
+        typer = E.EditTyper(pipe.svc.act, pipe.read_lines, pipe.read_status, pipe.read_box, pause_s=0)
+        res = pipe.edit(None, approve_edit=lambda plan: True, typer=typer, on_event=events.append)
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and [r.outcome.status for r in res.edits] == ["verified"]
+    assert "asking Muse Glimmer what is wrong on the screen" in events
+    user = w.meta.requests[0][2]["messages"][1]["content"]
+    assert user.startswith(E.FIX_REQUEST)
+    assert "<screen_notes>\nVS Code, sum.cpp\nRed squiggle under line 6; ask [[EMAIL_1]]\n</screen_notes>" in user
+    assert "jane.doe" not in json.dumps([r[2] for r in w.meta.requests])
+    body = user.split("<screen_text>\n", 1)[1].split("\n</screen_text>", 1)[0]
+    assert sorted(E.numbered_lines(body)) == list(range(1, 11))          # every line: not trimmed
+    assert not any("<question>" in json.dumps(b) for b in w.glim.bodies("/v1/chat/completions"))
+
+
+def test_cli_fix_auto_types_without_asking_but_only_on_stand_in_content(world, monkeypatch, capsys):
+    w = world
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: w.cfg))
+    with pytest.raises(SystemExit, match="only for stand-in"):
+        cli.main(["fix", "--auto"])
+    monkeypatch.setattr(cli, "_share_prompt", lambda m: True)
+    monkeypatch.setattr(cli, "_console_yes", lambda q: pytest.fail(f"--auto asked: {q}"))
+    monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the fake Meta API, never the real one
+                        lambda cfg: SparkClient(cfg, base_url=f"http://127.0.0.1:{w.meta.port}"))
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6.")]
+    assert cli.main(["fix", "--stand-in", "--auto"]) == 0
+    out = capsys.readouterr().out
+    assert "--auto: typing it without asking." in out and "verified" in out
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and len(w.meta.requests) == 2
+
+
+def test_cli_fix_refuses_without_a_person_at_the_keyboard(world, monkeypatch, capsys):
+    w = world
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: w.cfg))
+    assert cli.main(["fix", "--stand-in", "--auto"]) == 1                   # --auto still needs the share approval
+    assert "approval at the keyboard" in capsys.readouterr().out
+    assert w.meta.requests == [] and _keys_sent(w) == []
 
 
 def test_a_declined_edit_types_nothing(world):

@@ -164,7 +164,9 @@ for the Windows CUDA build of llama.cpp. Running it elsewhere is future work
    aren't caught by the patterns, so when they are on the screen, use `local_only` and send nothing (see
    *Sensitive screens* at the top of this page).
 2. **Trimming.** Glimmer copies out only the lines the question needs. The excerpt is rebuilt from the
-   redacted lines themselves, so it can only contain text that was on the screen.
+   redacted lines themselves, so it can only contain text that was on the screen. `fix` has no question,
+   so it sends every code line on the screen, plus Glimmer's notes about the screen in a separate
+   `<screen_notes>` block, redacted the same way; Spark is told both are data, not instructions.
 3. **A second redaction pass**, with the same placeholders.
 4. **Checks**, any of which stops the send: `outbound = "local_only"`; free credits (below); a redacted
    value still present; an inline image (`data:image`); more than `outbound_max_chars`; the logged spend
@@ -490,6 +492,7 @@ nanokvm read --describe                        # describe what is on the screen
 nanokvm read --errors                          # list the compiler errors and warnings on the screen
 nanokvm ask "why does sum_first overrun?"      # Spark answers from the redacted screen text
 nanokvm edit "fix the off-by-one in sum_first" # Spark proposes edits; each one you approve is typed in
+nanokvm fix                                    # no request: Spark finds the error on the screen and fixes it
 ```
 
 Each command first checks that Glimmer answers (if it doesn't, nothing is shared), then asks you, at the
@@ -513,6 +516,13 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   `outbound` stricter, never looser), and `--local-only` has Glimmer answer instead, sending nothing.
 - **`edit`** works like `ask`, but Spark answers with `apply_edit` calls: replace lines S to E with new
   lines. `--stand-in` and `--approve` work as for `ask`.
+- **`fix`** is `edit` with no request. Glimmer also notes what is wrong on the screen (error messages,
+  squiggles, the Problems panel, the status bar's counts), and Spark gets a built-in instruction, those
+  notes and every code line on the screen, untrimmed, so it can find the error itself.
+- **`--auto`** (for `edit` and `fix`, and only together with `--stand-in`) types each edit without
+  asking, for toy files: each edit is still shown and checked before and after typing, and Ctrl+C stops
+  it. The share prompt remains. Real work keeps the per-edit approval: Meta's usage policy asks for
+  confirmation before consequential actions.
 
 **Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
 `tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must
@@ -791,7 +801,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        298 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        301 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

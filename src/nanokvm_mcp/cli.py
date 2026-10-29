@@ -9,6 +9,7 @@
     nanokvm read            read the screen with Muse Glimmer on this laptop (nothing leaves)
     nanokvm ask "QUESTION"  read locally, send only redacted text to Muse Spark, print its answer
     nanokvm edit "REQUEST"  as ask, then type each edit Spark proposes into VS Code once you approve it
+    nanokvm fix             as edit with no request: Spark finds the error on the screen itself
 """
 from __future__ import annotations
 
@@ -424,7 +425,7 @@ def cmd_ask(cl: ServiceClient, args) -> int:
     return 0
 
 
-def _approve_edit(plan) -> bool:
+def _show_edit(plan) -> None:
     _out(f"\n--- Muse Spark's edit: {plan.span()} ('-' lines go, '+' lines come in their place) ---")
     _out(plan.diff())
     _out("--- keys sent to the locked computer ---")
@@ -433,7 +434,18 @@ def _approve_edit(plan) -> bool:
     _out(f"Spark's note: {plan.note or '(none)'}")
     _out("VS Code on the locked computer must have the file focused, with its status bar showing. Don't use its "
          "keyboard or mouse while the edit is typed; Ctrl+C here stops it.")
+
+
+def _approve_edit(plan) -> bool:
+    _show_edit(plan)
     return _console_yes("Type this edit?")
+
+
+def _auto_edit(plan) -> bool:
+    """--auto: show the edit and type it without asking (stand-in content only, checked in cmd_edit)."""
+    _show_edit(plan)
+    _out("--auto: typing it without asking.")
+    return True
 
 
 def cmd_edit(cl: ServiceClient, args) -> int:
@@ -442,6 +454,8 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     from .pipeline import EditError, Pipeline
     from .spark import SparkError
     cfg = cl.cfg
+    if args.auto and not args.stand_in:
+        raise SystemExit("--auto types edits without asking, so it is only for stand-in (toy) content: add --stand-in")
     if args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
     try:
@@ -449,7 +463,7 @@ def cmd_edit(cl: ServiceClient, args) -> int:
             if not _glimmer_up(pipe):
                 return 2
             pipe.open(args.minutes)
-            res = pipe.edit(args.request, _region(args.region), approve_edit=_approve_edit,
+            res = pipe.edit(args.request, _region(args.region), approve_edit=_auto_edit if args.auto else _approve_edit,
                             on_event=lambda m: _out(f"... {m}"))
     except PermissionError:
         _out("Not shared: nothing was read, sent or typed.")
@@ -544,14 +558,22 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--approve", action="store_true", help="show the exact text and ask before sending")
     mode.add_argument("--local-only", action="store_true", help="answer with Glimmer on this laptop; send nothing")
     p.set_defaults(fn=cmd_ask)
-    p = sub.add_parser("edit", help="ask Muse Spark for code edits and type each one you approve into VS Code")
-    p.add_argument("request", help='what to change, for example "fix the off-by-one in sum_first"')
-    p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
-    p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")
-    p.add_argument("--stand-in", action="store_true",
-                   help="the screen shows stand-in or dummy content (required while Meta billing is on free credits)")
-    p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
-    p.set_defaults(fn=cmd_edit)
+    for name in ("edit", "fix"):
+        if name == "edit":
+            p = sub.add_parser("edit", help="ask Muse Spark for code edits and type each one you approve into VS Code")
+            p.add_argument("request", help='what to change, for example "fix the off-by-one in sum_first"')
+        else:
+            p = sub.add_parser("fix", help="as edit, with no request: Glimmer notes what is wrong on the screen, and "
+                                           "Muse Spark finds the error and fixes it")
+            p.set_defaults(request=None)
+        p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
+        p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")
+        p.add_argument("--stand-in", action="store_true",
+                       help="the screen shows stand-in or dummy content (required while Meta billing is on free credits)")
+        p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
+        p.add_argument("--auto", action="store_true",
+                       help="type each edit without asking (only with --stand-in: for toy files, never real work)")
+        p.set_defaults(fn=cmd_edit)
     args = ap.parse_args(argv)
     cl = ServiceClient(Config.load())
     try:   # delete expired screenshots even when the service (which normally does it) isn't running

@@ -28,6 +28,12 @@ DESCRIBE_PROMPT = ("Describe what is on this screen: the application, the file o
                    "or errors. Quote short on-screen text exactly. Be concise.")
 ERRORS_PROMPT = ("List every compiler error and warning line in this screenshot exactly as shown, one per line, "
                  "with nothing else. If there are none, output NONE.")
+DIAGNOSE_PROMPT = ("This screenshot is for someone fixing a problem on this computer. On the first line, name the "
+                   "application and the file or page shown. Then, one per line, every sign of an error or warning: "
+                   "messages in dialogs, notifications, a Problems panel or a terminal, quoted exactly; red or yellow "
+                   "squiggles under code, with their line numbers; and the error and warning counts in the status "
+                   "bar. If there is no sign of an error, write 'No errors shown.' on the second line. Output "
+                   "nothing else.")
 # No example readings in these two: a model that can't read the screen may copy an example, and these readings
 # decide whether keys are typed.
 STATUS_PROMPT = ("This is the bottom edge of a screen with a VS Code window. Copy the cursor position from VS Code's "
@@ -171,6 +177,10 @@ class GlimmerClient:
 
     def extract_errors(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         return self.read_image(image_b64, fmt, ERRORS_PROMPT)
+
+    def diagnose_screen(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
+        """The application and file shown, and every visible sign of an error (for nanokvm fix)."""
+        return self.read_image(image_b64, fmt, DIAGNOSE_PROMPT)
 
     def cursor_status(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         """VS Code's 'Ln N, Col M (k selected)' from a crop of the screen's bottom edge."""

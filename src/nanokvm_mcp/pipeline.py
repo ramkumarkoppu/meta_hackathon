@@ -29,7 +29,7 @@ ASK_SYSTEM = ("You help a developer with what is on their screen. The user's mes
 @dataclass
 class Reading:
     text: str
-    kind: str                         # code, describe or errors
+    kind: str                         # code, describe, errors or diagnose
     seconds: float
     frame: dict = field(default_factory=dict)   # metadata only: the image itself is never kept
 
@@ -117,7 +117,7 @@ class Pipeline:
 
     def read(self, kind: str = "code", rect: tuple[float, float, float, float] | None = None) -> Reading:
         readers = {"code": self.glimmer.transcribe_code, "describe": self.glimmer.describe_screen,
-                   "errors": self.glimmer.extract_errors}
+                   "errors": self.glimmer.extract_errors, "diagnose": self.glimmer.diagnose_screen}
         if kind not in readers:
             raise ValueError(f"kind must be one of {sorted(readers)}")
         frame = self._frame(rect)
@@ -175,13 +175,16 @@ class Pipeline:
         """VS Code's quick-input box (":" for Go to Line), read from the top quarter of the screen."""
         return self._read_crop(0.15, 0, 0.7, 0.25, self.glimmer.quick_input)
 
-    def edit(self, request: str, rect: tuple[float, float, float, float] | None = None, *,
+    def edit(self, request: str | None, rect: tuple[float, float, float, float] | None = None, *,
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
              on_event: Callable[[str], None] | None = None) -> EditResult:
         """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
         the person approves into VS Code, checking the screen before and after. Stops at the first edit
         whose checks fail. If a later request fails after an edit was typed, the session report is still
-        returned, with ``stopped`` saying why."""
+        returned, with ``stopped`` saying why.
+
+        With no ``request`` (nanokvm fix), Glimmer also notes what is wrong on the screen, and Spark gets
+        E.FIX_REQUEST, those notes and every code line on the screen (not trimmed), and finds the error itself."""
         say = on_event or (lambda _m: None)
         if self.cfg.outbound == "local_only":
             raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
@@ -191,12 +194,18 @@ class Pipeline:
         screen = E.numbered_lines(reading.text, strict=True)
         if not screen:
             raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
+        notes = None
+        if not (request or "").strip():
+            say("asking Muse Glimmer what is wrong on the screen")
+            notes = self.read("diagnose", rect).text
+            request = E.FIX_REQUEST
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l",
                                      chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len))
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
-        prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"))
+        prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"),
+                                notes=notes, trim=notes is None)
         result = EditResult(reading, prepared, "")
         history: list[dict] = []
         typed = 0

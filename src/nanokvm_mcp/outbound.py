@@ -124,23 +124,31 @@ class OutboundGate:
         return total
 
     # ---- preparing the text
-    def prepare(self, screen_text: str, question: str, frame_sha256: str | None = None) -> Prepared:
+    def prepare(self, screen_text: str, question: str, frame_sha256: str | None = None, *,
+                notes: str | None = None, trim: bool = True) -> Prepared:
+        """``notes``: Glimmer's own account of the screen (nanokvm fix), sent as a <screen_notes> block, redacted
+        but not trimmed. ``trim=False`` sends every redacted screen line: with no question, Glimmer can't know
+        which lines matter, and trimming could drop the one with the error."""
         terms = R.load_terms(self.cfg.run_dir / "redact_terms.txt")
         r1 = R.redact(screen_text, terms)
         q = R.redact(question, terms, mapping=r1.mapping)
+        n = R.redact(notes, terms, mapping=q.mapping) if notes else None
         findings = dict(r1.findings)
-        for k, v in q.findings.items():
-            findings[k] = findings.get(k, 0) + v
+        for part in (q, n):
+            for k, v in (part.findings if part else {}).items():
+                findings[k] = findings.get(k, 0) + v
         body, trimmed = r1.text, False
-        try:
-            picked = self.glimmer.minimise(r1.text, q.text).content
-            cut = excerpt(r1.text, picked)
-            if cut:
-                body, trimmed = cut, True
-        except GlimmerError:
-            pass                                  # sends the whole redacted text, which is still redacted
-        text = f"{q.text}\n\n<screen_text>\n{body}\n</screen_text>"
-        r2 = R.redact(text, terms, mapping=q.mapping)    # second pass: anything Glimmer let back through
+        if trim:
+            try:
+                picked = self.glimmer.minimise(r1.text, q.text).content
+                cut = excerpt(r1.text, picked)
+                if cut:
+                    body, trimmed = cut, True
+            except GlimmerError:
+                pass                              # sends the whole redacted text, which is still redacted
+        block = f"<screen_notes>\n{n.text}\n</screen_notes>\n\n" if n else ""
+        text = f"{q.text}\n\n{block}<screen_text>\n{body}\n</screen_text>"
+        r2 = R.redact(text, terms, mapping=(n or q).mapping)    # second pass: anything Glimmer let back through
         for k, v in r2.findings.items():
             findings[k] = findings.get(k, 0) + v
         return Prepared(r2.text, q.text, r2.mapping, findings, _sha(screen_text), frame_sha256, trimmed)
