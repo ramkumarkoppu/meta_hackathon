@@ -128,6 +128,9 @@ def test_fix_finds_the_error_itself_from_the_screen(world):
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and [r.outcome.status for r in res.edits] == ["verified"]
     assert "asking Muse Glimmer what is wrong on the screen" in events
     assert res.checks == 1 and res.summary == "The screen shows it fixed." and len(w.meta.requests) == 3
+    after = w.meta.requests[1][2]["messages"][3]["content"]   # the edit's result: the screen as it is now
+    assert after.startswith("Applied and checked") and "The screen, read again after this edit:" in after
+    assert f"6 {FIX}" in after and "[[EMAIL_1]]" in after and "jane.doe" not in after
     check = w.meta.requests[2][2]["messages"]                 # Spark's "done", then the screen read afresh
     assert [m["role"] for m in check[-2:]] == ["assistant", "user"] and check[-1]["content"].startswith(E.CHECK_REQUEST)
     assert FIX.strip() in check[-1]["content"] and "<screen_notes>" in check[-1]["content"]
@@ -265,7 +268,8 @@ def test_the_last_line_on_the_screen_is_never_edited(world):
     res = w.run()
     assert w.ed.lines == FILE and _keys_sent(w) == [] and res.edits[0].plan is None
     told = w.meta.requests[1][2]["messages"][3]["content"]
-    assert "line 10 isn't on the screen, or can't be read reliably there; lines 1-9 are" in told
+    assert "line 10 can't be edited from this reading" in told and "lines 1-9 can be edited" in told
+    assert "doesn't mean it is missing from the file, so don't add it again" in told   # seen live on 29 Oct
 
 
 def test_a_line_shown_with_other_indentation_is_unverified(world, monkeypatch):
@@ -303,7 +307,7 @@ def test_an_error_after_an_edit_was_typed_keeps_the_report(world):
 
 
 @pytest.mark.parametrize("args,reason", [
-    ({"start_line": 60, "end_line": 60, "new_text": "x"}, "isn't on the screen"),
+    ({"start_line": 60, "end_line": 60, "new_text": "x"}, "can't be edited from this reading"),
     ({"start_line": 6, "end_line": 10 ** 12, "new_text": "x"}, "too big"),
     ({"start_line": 0, "end_line": 0, "new_text": "x"}, "1 or more"),
     ({"start_line": 6, "end_line": 6, "new_text": "\tfor (;;) {"}, "tab"),

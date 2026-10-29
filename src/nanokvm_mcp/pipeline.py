@@ -80,6 +80,7 @@ class Pipeline:
         self.approve_send = approve_send
         self.stand_in = stand_in
         self._shared = False
+        self.last_code: Reading | None = None   # the latest code reading taken by read_lines
 
     # ---- screen share (approved by the person at the keyboard)
     def open(self, minutes: int = 5) -> None:
@@ -154,8 +155,10 @@ class Pipeline:
 
     # ---- editing (milestone 2)
     def read_lines(self, rect: tuple[float, float, float, float] | None = None) -> dict[int, str]:
-        """The numbered lines on the screen, leaving out any whose reading is ambiguous (strict)."""
-        return E.numbered_lines(self.read("code", rect).text, strict=True)
+        """The numbered lines on the screen, leaving out any whose reading is ambiguous (strict). The whole
+        reading is kept in ``last_code``: after a typed edit it is the screen as it is now."""
+        self.last_code = self.read("code", rect)
+        return E.numbered_lines(self.last_code.text, strict=True)
 
     def _read_crop(self, fx: float, fy: float, fw: float, fh: float, reader) -> str:
         """Glimmer's reading of a part of the screen given in fractions of its width and height."""
@@ -270,7 +273,12 @@ class Pipeline:
                     continue
                 record = self._one_edit(call, screen, prepared.mapping, approve_edit, typer,
                                         stop or typed >= E.MAX_EDITS, say)
-                history.append({"role": "tool", "tool_call_id": call["id"], "content": record.told_spark})
+                told = record.told_spark
+                if fix and record.outcome is not None and record.outcome.status == "verified" and self.last_code:
+                    # Spark's next step starts from the screen as it is now: the check's own reading, no extra read
+                    told += ("\n\nThe screen, read again after this edit:\n"
+                             + gate.screen_blocks(prepared, self.last_code.text))
+                history.append({"role": "tool", "tool_call_id": call["id"], "content": told})
                 result.edits.append(record)
                 if record.outcome is not None:
                     if record.outcome.status != "not_applied":
@@ -294,7 +302,10 @@ class Pipeline:
         try:
             plan = E.plan_edit(call["arguments"], screen, self.cfg.keyboard_layout, mapping)
         except E.EditRejected as e:
-            say(f"Spark's edit can't be typed: {e}")
+            args = call["arguments"] if isinstance(call["arguments"], dict) else {}
+            wanted = f"lines {args.get('start_line')}-{args.get('end_line')}"
+            note = E.safe_text(str(args.get("note") or ""))[:E.MAX_NOTE]
+            say(f"Spark's edit of {wanted}{f' ({note})' if note else ''} can't be typed: {e}")
             return EditRecord(None, False, None, f"Not applied: {e}.")
         plan.select_key = typer.select_line_key
         if not approve_edit(plan):

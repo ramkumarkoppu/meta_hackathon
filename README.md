@@ -518,10 +518,11 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   lines. `--stand-in` and `--approve` work as for `ask`.
 - **`fix`** is `edit` with no request. Glimmer also notes what is wrong on the screen (error messages,
   squiggles, the Problems panel, the status bar's counts), and Spark gets a built-in instruction, those
-  notes and every code line on the screen, untrimmed, so it can find the error itself. When Spark says
-  it's done, Glimmer reads the screen afresh (the code and its notes again) and Spark checks the fix
-  there; if something is still wrong it carries on editing. That happens at most twice, within the
-  limits below.
+  notes and every code line on the screen, untrimmed, so it can find the error itself. After each typed
+  edit, Spark also gets the screen as Glimmer read it to check that edit, so its next step starts from
+  the screen as it is now. When Spark says it's done, Glimmer reads the screen afresh (the code and its
+  notes again) and Spark checks every line for anything the edits broke; if something is still wrong it
+  carries on editing. That final check happens at most twice, within the limits below.
 - **`--auto`** (for `edit` and `fix`, and only together with `--stand-in`) types each edit without
   asking, for toy files: each edit is still shown and checked before and after typing, and Ctrl+C stops
   it. The share prompt remains. Real work keeps the per-edit approval: Meta's usage policy asks for
