@@ -408,7 +408,7 @@ class ViewerWindow:
         self.root.configure(bg=BG)
         self.root.minsize(320, 240)
         self.root.report_callback_exception = self._callback_error
-        bar = tk.Frame(self.root, bg=BAR_BG)
+        self.bar = bar = tk.Frame(self.root, bg=BAR_BG)
         bar.pack(side="bottom", fill="x")
         self.line1 = tk.Label(bar, anchor="w", bg=BAR_BG, fg=FG, font=("Segoe UI", 9), padx=8)
         self.line2 = tk.Label(bar, anchor="w", bg=BAR_BG, fg=FG, font=("Segoe UI", 9), padx=8)
@@ -470,6 +470,11 @@ class ViewerWindow:
             self.root.destroy()
         except self.tk.TclError:
             pass
+        # Break the root -> window reference cycle, so reference counting frees the Tk interpreter here, on
+        # its own thread. If garbage collection on another thread frees it, Tcl aborts the whole process
+        # ("async handler deleted by the wrong thread").
+        self.root.__dict__.pop("report_callback_exception", None)
+        self.photo = None
 
     def summary(self) -> str:
         text = self.stats.summary()
@@ -545,7 +550,13 @@ class ViewerWindow:
         self.canvas.configure(cursor="fleur" if self.mode == "actual" else "")
 
     def set_fullscreen(self, on: bool) -> None:
+        """Full screen shows the picture alone, so on a screen the size of the capture (1920x1080) it is
+        at actual size; the status lines come back when you leave full screen."""
         self.root.attributes("-fullscreen", on)
+        if on:
+            self.bar.pack_forget()
+        elif not self.bar.winfo_manager():
+            self.bar.pack(side="bottom", fill="x", before=self.canvas)
 
     def toggle_fullscreen(self) -> None:
         self.set_fullscreen(not bool(self.root.attributes("-fullscreen")))

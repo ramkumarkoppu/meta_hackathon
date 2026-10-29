@@ -447,9 +447,16 @@ open the keyboard/mouse link, and it saves nothing to disk. It's an ordinary win
 that captures the AI computer's screen (a screen share in a call, a screenshot tool, or a command an
 AI runs) captures the locked computer's screen too.
 
-Keys: **F11** or a double-click for full screen (**Esc** leaves it), **1** to switch between fitting
-the window and actual pixels (drag to pan), **R** to start the service if it has stopped, **Q** (or
-Ctrl+C in the terminal) to close. When it closes, it prints how many frames it showed and the delay.
+Keys: **F11** or a double-click for full screen, which hides the status lines so that a screen the size
+of the capture (1920x1080) shows the picture at actual size (**Esc** leaves it); **1** to switch
+between fitting the window and actual pixels (drag to pan); **R** to start the service if it has
+stopped; **Q** (or Ctrl+C in the terminal) to close. When it closes, it prints how many frames it
+showed and the delay.
+
+**Sharpness.** The NanoKVM delivers 1920x1080 (this unit's maximum), so the window can be no sharper
+than that. In a window smaller than the frame the picture is scaled down, which softens small text:
+use full screen, or press **1**. A snip of the viewer is only as sharp as what the window shows, and
+`nanokvm read` doesn't need one: it gives Glimmer the full-resolution frame directly.
 
 ### Inside VS Code instead
 

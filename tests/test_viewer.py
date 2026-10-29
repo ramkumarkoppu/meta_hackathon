@@ -1,5 +1,6 @@
 """The live view window (nanokvm viewer) and the stream it plays, against the simulated locked computer."""
 import argparse
+import gc
 import io
 import tempfile
 import threading
@@ -22,6 +23,13 @@ from nanokvm_mcp.pipeline import Pipeline
 from nanokvm_mcp.simulator import SimCapture, SimDesktop
 
 PICTURE_SUFFIXES = (".jpg", ".jpeg", ".png", ".ppm", ".bmp")
+
+
+@pytest.fixture(autouse=True)
+def _free_tk_on_the_main_thread():
+    """Collect any leftover Tk objects here: freed by garbage collection on another thread, Tcl aborts."""
+    yield
+    gc.collect()
 
 
 def _part(body, extra=b""):
@@ -377,6 +385,10 @@ def test_window_follows_resizing_and_actual_size(sim):
         _wait_picture(win.feed, (1920, 1080))
         win.toggle_actual_size()
         assert win.mode == "fit" and win.feed.view == ("fit",) + win.feed.view[1:]
+        win.set_fullscreen(True)                  # the picture alone: actual size on a 1920x1080 screen
+        assert win.bar.winfo_manager() == ""
+        win.set_fullscreen(False)                 # Esc: the status lines come back, under the picture
+        assert win.bar.winfo_manager() == "pack" and win.root.pack_slaves().index(win.bar) == 0
     finally:
         win.close()
         win.feed.stop(wait=2)
