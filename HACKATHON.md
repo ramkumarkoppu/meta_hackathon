@@ -83,4 +83,4 @@ So far:
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,
   with the DFlash drafter on (7.1 s and 13.5 s without it). For that, the NVIDIA GPU drives no
   display: Armoury Crate's GPU Mode is Standard, and my external monitor goes through a USB-C dock.
-  `ask` on a real capture and typing over cable 4 come next.
+  `ask` on a real capture comes next. README section 6a has the whole loop, step by step.

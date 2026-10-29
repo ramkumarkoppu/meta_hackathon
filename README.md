@@ -37,8 +37,9 @@ software and its errors; it doesn't interpret patient data or give clinical advi
 **Status (29 Oct).** All five steps are built and pass their tests on a simulated locked computer, with
 a fake Glimmer and a fake Meta API. With the real Glimmer and Spark, `read` and `ask` have run on
 simulated screens. On the real hardware, capture and the live view work, and on 29 Oct Glimmer read
-the real capture: a short C++ file transcribed exactly, and the screen described correctly. `ask` on a
-real capture and typing over cable 4 are the next tests ([section 12](#12-files-and-testing-without-hardware)).
+the real capture (a short C++ file transcribed exactly, the screen described correctly), and
+`nanokvm fix --auto` found a deliberate syntax error by itself, typed its fix over cable 4 and checked
+it on the screen. **The whole loop, step by step: [section 6a](#6a-the-whole-loop-step-by-step).**
 
 **Hackathon entry.** This repo is my solo entry in the Meta Global AI Developer Hackathon (Indie
 Developer track).
@@ -68,6 +69,7 @@ work computer.
    - [5a. Muse Glimmer on the AI computer's GPU (open weights)](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)
    - [5b. Muse Spark through Meta's Model API](#5b-muse-spark-through-metas-model-api)
 6. [Using it: read, ask and edit](#6-using-it-read-ask-and-edit)
+   - [6a. The whole loop, step by step](#6a-the-whole-loop-step-by-step)
 7. [Watching the screen yourself](#7-watching-the-screen-yourself)
 8. [First run with the hardware](#8-first-run-with-the-hardware)
 9. [Settings (nanokvm.toml)](#9-settings-nanokvmtoml)
@@ -591,6 +593,74 @@ it types, leave the locked computer's own keyboard and mouse alone: Windows shar
 between keyboards, and a click moves the focus. Keep Caps Lock off too; it is shared as well, and
 typing allows for it only when the NanoKVM reports it.
 
+### 6a. The whole loop, step by step
+
+This is how `nanokvm fix --auto` found and fixed a deliberate syntax error on the real locked computer
+on 29 Oct: Muse Glimmer reads and diagnoses the screen on the AI computer's GPU, Muse Spark gets only
+redacted text and proposes an edit, the NanoKVM-USB types it, Glimmer checks the result, and Spark
+looks at the screen again until the problem is fixed.
+
+**On the AI computer, once per session**
+
+1. **Power and GPU.** Plug in the 240 W barrel charger, choose Armoury Crate's **Turbo** mode (Fn+F5)
+   and **GPU Mode Standard**, and keep any external monitor off the NVIDIA GPU
+   ([section 3](#3-wiring-for-this-desk), setup step 5). Check:
+   `nvidia-smi --query-gpu=display_active --format=csv` says *Disabled*.
+2. **Keep the readings private.** Close other apps that can capture this screen (other AI assistants,
+   screen recorders), and run the commands below in PowerShell windows outside VS Code: the readings
+   print there.
+3. **Load Muse Glimmer on the GPU** in window 1, and keep that window open:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File E:\meta_hackathon\tools\run-glimmer.ps1
+   ```
+
+   It is ready when it shows `model loaded` and `listening on http://127.0.0.1:8001` (about 10–30 s
+   with the files cached, about 72 s from cold); `nvidia-smi` then shows `llama-server.exe` using about
+   21.7 GB. The launcher refuses to start a second server. `-NoDFlash` leaves out the drafter (2.4 GB
+   less, but slower long answers: [section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)).
+4. **Start the NanoKVM service** in window 2:
+
+   ```powershell
+   E:\meta_hackathon\.venv\Scripts\nanokvm.exe start
+   ```
+
+   The service opens the NanoKVM's capture device and hands frames to Glimmer only during a share that
+   you approve; it saves no picture. A few seconds later `nanokvm status` shows
+   `Video: streaming 1920x1080 MJPG ... 30 fps` and `Sharing: 0 ...`. With cable 4 plugged in,
+   `nanokvm keytest` checks that the locked computer takes the NanoKVM's keys (it presses Num Lock
+   twice and takes no picture).
+
+**On the locked computer**
+
+5. Show the file in VS Code in one editor group, with the typing helpers and auto-save off
+   ([section 4](#4-locked-computer-settings)), and save it. Turn on Do not disturb and keep Caps Lock
+   off; `keyboard_layout` in `nanokvm.toml` must match its keyboard layout. Click into the file so VS
+   Code has the focus, then leave the locked computer's keyboard and mouse alone.
+
+**Read, then fix** (in window 2; type `y` at the share prompt)
+
+6. **See what Glimmer reads:** `nanokvm read` transcribes the code with its line numbers, and
+   `nanokvm read --describe` describes the screen. Neither sends anything.
+7. **Let Spark fix it:**
+
+   ```powershell
+   E:\meta_hackathon\.venv\Scripts\nanokvm.exe fix --stand-in --auto   # dummy content, Meta billing on free credits
+   E:\meta_hackathon\.venv\Scripts\nanokvm.exe fix --auto              # real work: pay as you go and meta_billing = "paid"
+   ```
+
+   One `y` shares the screen and lets the edits be typed without asking for each one. Then, on its own:
+   Glimmer reads and diagnoses the screen → Spark proposes an edit → the NanoKVM types it, with
+   Glimmer checking the screen before and after → Spark sees the screen as it now is → when Spark says
+   it's done, Glimmer reads the screen afresh and Spark checks the fix there. It stops when the fix is
+   confirmed, at the first failed check, or at the limits (4 edits, 6 requests to Spark); Ctrl+C stops
+   it at once. Leave out `--auto` to approve each edit, or use `nanokvm edit "REQUEST"` to ask for a
+   particular change. With patient or confidential data on the screen, don't use `fix`: it sends
+   redacted text, and redaction can't catch those (*Sensitive screens* at the top of this page).
+8. **Review, then save.** nanokvm never saves: look at the change in VS Code, then save it, or undo it
+   with Ctrl+Z or *File: Revert File*.
+9. **Finish:** Ctrl+C in window 1 stops Glimmer, and `nanokvm stop` stops the service.
+
 ## 7. Watching the screen yourself
 
 ### In a window on the AI computer
@@ -862,7 +932,9 @@ computer's screen live (median delay from capture to window 37 ms), and the keyb
 answers at 57600 baud. On 29 Oct Glimmer read a real capture: a 9-line C++ file transcribed exactly
 in 6.1 s, and the screen described correctly in 6.7 s, with the drafter (7.1 s and 13.5 s without it;
 [section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)).
-`ask` on a real capture, and typing on the locked computer (cable 4), aren't tested yet.
+The same day `nanokvm fix --auto` found a deliberate syntax error, typed its fix over cable 4 and
+checked it on the screen ([section 6a](#6a-the-whole-loop-step-by-step)); `ask` on a real capture isn't
+tested yet.
 
 ## 13. Licence
 
