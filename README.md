@@ -61,7 +61,7 @@ work computer.
 12. [Files and testing without hardware](#12-files-and-testing-without-hardware)
 
 **Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
-[Hackathon plan (written before the event; statuses as of 24 Oct)](docs/hackathon-plan.md) ·
+[Hackathon plan (a record from before the event, not kept up to date)](docs/hackathon-plan.md) ·
 [Claude Code bridge (built before the event)](docs/claude-code.md)
 
 ---
@@ -669,8 +669,9 @@ needed.
   `127.0.0.1`, rejects foreign Host headers, and requires the random token in `.run\token`, so web
   pages can't read the screen or type. Glimmer's server also listens only on `127.0.0.1` and needs its
   own key. Neither is locked down against programs on this laptop yet: any program that can read the
-  token can use the service. To replace the token, run `nanokvm stop` and delete `.run\token`; the
-  next start makes a new one.
+  token can use the service. Claude Code in this folder is kept out of `.run\`, where the token and
+  keys are ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)).
+  To replace the token, run `nanokvm stop` and delete `.run\token`; the next start makes a new one.
 
 ## 11. Troubleshooting
 
@@ -710,7 +711,7 @@ E:\meta_hackathon
 ├── docs\
 │   ├── wiring.svg                wiring diagram used in this README
 │   ├── claude-code.md            the Claude Code bridge, built before the event (new page)
-│   └── hackathon-plan.md         hackathon plan and measurements (written before the event)
+│   └── hackathon-plan.md         hackathon plan and measurements (a record from before the event)
 ├── nanokvm.toml                  settings
 ├── .mcp.json, .claude\           the Claude Code bridge's registration and permissions
 ├── pyproject.toml, uv.lock, uv.toml
@@ -732,13 +733,14 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        250 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        266 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
 │   ├── spark_smoke.py            Meta Model API smoke test with dummy text (key: .run\meta_api_key)
 │   ├── capture_frame.py          saves full-resolution NanoKVM frames for the A/B (dummy content only)
 │   ├── glimmer_ab.py             scores Glimmer's reading of those frames against ab_screens\
+│   ├── guard_run_dir.py          Claude Code hook: refuses shell commands that name .run\ (new)
 │   ├── ab_screens\               dummy C++ files and build errors to show for the A/B, and
 │   │                             live_check.cpp for `nanokvm read --check` (new)
 │   ├── downloads\                the two llama.cpp zips that llama.cpp\ was unpacked from (not in the repo)

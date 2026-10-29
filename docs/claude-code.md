@@ -37,13 +37,48 @@ gets as close as Claude Code allows:
 
 **What leaves for Anthropic:** every image Claude gets is sent to Anthropic as part of the
 conversation. While sharing is on, that means screenshots, zooms, `wait_for_change` results and the
-screenshot after each action. Claude can also open the screenshots that the `nanokvm` command saves
-in `.run\` at any time, so delete them when you're done. It can read the other files in `.run\` too,
-and whatever it reads goes to Anthropic: the audit log of what was sent to Muse Spark
-(`outbound.log`, with redacted screen text and Spark's replies), your redaction terms
-(`redact_terms.txt`) and the API keys (`meta_api_key`, `llama_api_key`). `.claude\settings.local.json`
-has no rules that deny reading them yet. Keep anything you may not share off Monitor A while sharing
-is on. Use this bridge only with the approval of whoever owns the locked computer and its data.
+screenshot after each action. Keep anything you may not share off Monitor A while sharing is on. Use
+this bridge only with the approval of whoever owns the locked computer and its data.
+
+**Keeping Claude out of `.run\`.** That folder holds what Claude must not see: the screenshots the
+`nanokvm` command saves, the audit log of what was sent to Muse Spark (`outbound.log`, with redacted
+screen text and Spark's replies), your redaction terms (`redact_terms.txt`), the API keys and the
+service token. Anything Claude reads goes to Anthropic, so since 29 Oct Claude Code in this folder
+can't open them:
+
+- deny rules keep its file tools (Read, Edit, Write, Grep and Glob) out of `.run\`;
+- a hook, `tools\guard_run_dir.py`, refuses any Bash or PowerShell command that names the `.run`
+  folder, in every permission mode (those deny rules don't cover shell commands while the Bash
+  sandbox is off).
+
+Programs Claude runs still read the files they need, such as the `nanokvm` command and git's
+pre-commit check, and a command that builds the path some other way isn't caught. So this prevents
+mistakes; it isn't a barrier against a determined program. `screen_status` still puts the token in
+the live-view URL it returns ([section 5](#5-tools-claude-gets)).
+
+The rules live in `.claude\settings.local.json`, which isn't in the repo. To use them in your copy,
+add this to that file (the last two deny rules name this folder, so change them if yours is
+elsewhere). The hook needs Git Bash and the project's `.venv`, and Claude Code 2.1.295 or later for
+`onFailure`: if the hook itself fails, every shell command is refused until it's fixed.
+
+```json
+"permissions": {
+  "deny": [
+    "Read(/.run)", "Read(/.run/**)", "Edit(/.run)", "Edit(/.run/**)",
+    "Read(//e/meta_hackathon/.run/**)", "Edit(//e/meta_hackathon/.run/**)"
+  ]
+},
+"hooks": {
+  "PreToolUse": [{
+    "matcher": "Bash|PowerShell",
+    "hooks": [{
+      "type": "command",
+      "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -I -S \"$CLAUDE_PROJECT_DIR/tools/guard_run_dir.py\"",
+      "shell": "bash", "timeout": 30, "onFailure": "block"
+    }]
+  }]
+}
+```
 
 ## 4. Asking Claude
 

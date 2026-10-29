@@ -57,5 +57,8 @@ So far:
   on the locked computer only after I say yes, keyboard only through the NanoKVM, and checked by Muse
   Glimmer on the screen before and after (`editing.py`). So far it has run only on the simulator,
   with a fake Glimmer and a fake Meta API: not yet with the real models or on a real computer.
+- **Secrets kept from Claude Code (29 Oct).** Deny rules and a hook (`tools/guard_run_dir.py`) stop
+  Claude Code in this folder from reading `.run\`, where the Meta API key, the service token and the
+  audit log of what was sent to Spark live.
 - **The README rewritten around the Meta-model pipeline (29 Oct).** The Claude Code bridge, built before
   the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).
