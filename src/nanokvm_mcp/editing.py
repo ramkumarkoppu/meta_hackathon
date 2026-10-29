@@ -162,11 +162,18 @@ def parse_status(text: str) -> tuple[int, int, int] | None:
 
 
 def is_goto_box(text: str) -> bool:
-    """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line: VS Code opens it with ':'
-    already typed ('::' is a different mode, and Go to Recent Directory has no ':')."""
-    lines = (text or "").strip().splitlines()
-    first = lines[0].strip().strip("'\"`").strip() if lines else ""
-    return first.startswith(":") and not first.startswith("::")
+    """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line. VS Code opens it with ':' already
+    typed ('::' is a different mode), and its hint says "Current Line: L, Character: C. Type a line number between
+    1 and N to navigate to." Glimmer can miss the small ':' or give the hint first (seen on the real screen), so
+    the hint counts too: Go to Recent Directory (Ctrl+G in VS Code's terminal), Quick Open and the command
+    palette never show it."""
+    lines = [ln.strip().strip("'\"`").strip() for ln in (text or "").strip().splitlines()]
+    if not lines or lines[0].startswith("::"):
+        return False
+    if lines[0].startswith(":"):
+        return True
+    hint = " ".join(lines[:3]).lower()
+    return "line number" in hint and ("navigate" in hint or "current line" in hint)
 
 
 def lines_match(screen: dict[int, str], start: int, expected: list[str]) -> bool:

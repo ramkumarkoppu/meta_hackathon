@@ -172,8 +172,9 @@ class Pipeline:
         return self._read_crop(0, 0.9, 1, 0.1, self.glimmer.cursor_status)
 
     def read_box(self) -> str:
-        """VS Code's quick-input box (":" for Go to Line), read from the top quarter of the screen."""
-        return self._read_crop(0.15, 0, 0.7, 0.25, self.glimmer.quick_input)
+        """VS Code's quick-input box (":" for Go to Line), read from the top quarter of the screen, full width: in a
+        window that isn't maximised the box sits off-centre, and a narrower crop can cut off its ':'."""
+        return self._read_crop(0, 0, 1, 0.25, self.glimmer.quick_input)
 
     def edit(self, request: str | None, rect: tuple[float, float, float, float] | None = None, *,
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,

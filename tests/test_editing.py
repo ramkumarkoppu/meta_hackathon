@@ -385,6 +385,16 @@ def test_numbered_lines_follow_wrapping_and_sticky_scroll():
     assert E.parse_status("Ln 6, Col 1") == (6, 1, 0) and E.parse_status("NONE") is None
 
 
+def test_the_go_to_line_box_is_known_by_its_colon_or_its_hint():
+    hint = "Current Line: 9, Character: 1. Type a line number between 1 and 9 to navigate to."
+    for seen in (":", ":7\n" + hint, "`:`\n" + hint, "EMPTY\n" + hint, hint,      # Glimmer missed the ':'
+                 "Type a line number between 1 and 9 to navigate to."):
+        assert E.is_goto_box(seen), seen
+    for seen in ("NONE", "", "::\n" + hint, ">\nShow All Commands", "EMPTY\nSelect a directory to go to",
+                 "hello.cpp\nrecently opened", "EMPTY\nSearch files by name"):
+        assert not E.is_goto_box(seen), seen
+
+
 def test_strict_reading_leaves_out_every_line_that_may_be_read_wrong():
     phantom = "5 int a;\n6 int x = f(a,\n7 b);\n7 int y;\n8 int z;\n9 }"   # line 6's second row reads as line 7
     assert sorted(E.numbered_lines(phantom)) == [5, 6, 7, 8, 9]
