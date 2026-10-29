@@ -42,6 +42,8 @@ def world(tmp_path):
     w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, cfg=env.cfg)
 
     def llama(path, body):
+        if path == "/health":                                # asked before the screen is shared
+            return 200, {"status": "ok"}
         if body.get("max_tokens") == 1:                      # the slot flush after every image
             return 200, llama_reply("ok")
         msgs = body["messages"]
@@ -328,6 +330,8 @@ def test_numbered_lines_follow_wrapping_and_sticky_scroll():
     text = "3 int f() {\n10 a long line that word wrap\nshows on two rows\n11     return 1;\n3 int f() {"
     assert E.numbered_lines(text) == {3: "int f() {", 10: "a long line that word wrap shows on two rows",
                                       11: "    return 1;"}
+    assert E.numbers_read(text) == [3, 10, 11, 3]
+    assert E.numbered_lines("```cpp\n1 int a;\n2 }\n```") == {1: "int a;", 2: "}"}    # a fence isn't a row
     assert E.parse_status("Ln 25, Col 1 (1,061 selected)  Spaces: 4") == (25, 1, 1061)
     assert E.parse_status("Ln 6, Col 1") == (6, 1, 0) and E.parse_status("NONE") is None
 

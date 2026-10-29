@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from fakes import FakeServer, llama_reply, spark_stream
+from fakes import FakeServer, free_port, llama_reply, spark_stream
 from nanokvm_mcp import cli
 from nanokvm_mcp.client import ServiceClient, ServiceError
 from nanokvm_mcp.glimmer import GlimmerClient
@@ -66,6 +66,22 @@ def test_read_needs_approval_and_closes_its_share(world):
     assert meta.requests == []
 
 
+def test_an_old_frame_is_refused_before_glimmer_sees_it(world, monkeypatch):
+    make, glim, meta, cfg = world
+    frame = ServiceClient.frame
+
+    def old(self, rect=None, fmt="png", max_tokens=4096):     # the video stopped: the service's last frame
+        f = frame(self, rect, fmt, max_tokens)
+        f["age_ms"], f["warnings"] = 5000, ["frame is 5.0s old - capture state 'error': no frames"]
+        return f
+    monkeypatch.setattr(ServiceClient, "frame", old)
+    with make() as pipe:
+        pipe.open()
+        with pytest.raises(ServiceError, match="no fresh video.*5.0s old"):
+            pipe.read()
+    assert glim.bodies("/v1/chat/completions") == []
+
+
 def test_ask_with_stand_in_sends_only_redacted_trimmed_text(world):
     make, glim, meta, cfg = world
     with make(stand_in=True) as pipe:
@@ -109,11 +125,28 @@ def test_read_summarises_line_numbers_and_checks_a_dummy_file(tmp_path):
     ref = tmp_path / "ref.cpp"
     ref.write_text("// live check\n#include <vector>\n\nint sum_first(const std::vector<int>& v, int n) {\n"
                    "    int total  = 0;\n", encoding="utf-8")
-    assert cli._check_against(text, ref) == ("check against ref.cpp (lines 1-5 of 5 on the screen): "
-                                             "3/4 exact, 4/4 equal apart from spacing")
-    ref.write_text("// live check\n#include <vector>\n\nint sum(int n) {\n    int total = 0;\n", encoding="utf-8")
     out = cli._check_against(text, ref)
-    assert "3/4 exact" in out and "line 4: read" in out
+    assert out.splitlines()[1:] == [
+        "  read exactly: 3 of 5; as nanokvm edit compares lines (same indentation, runs of spaces ignored): 4 of 5",
+        "  same apart from spaces inside the line: 5", "  different indentation: none", "  different text: none",
+        "  not read: 3 (empty in the file: 3)"]
+    full = ("1 // live check\n2 #include <vector>\n3\n4 int sum_first(const std::vector<int>& v, int n) {\n"
+            "5     int total  = 0;\n")
+    for tail in ("```", "main*  Ln 5, Col 2  UTF-8"):             # a closing fence, the status bar: not line 5
+        assert "read exactly: 5 of 5" in cli._check_against(full + tail, ref)
+
+
+def test_the_check_never_repeats_the_text_read(tmp_path):
+    ref = tmp_path / "ref.cpp"
+    ref.write_text("// live check\n#include <vector>\n\nint f(int n) {\n    int total = 0;\n", encoding="utf-8")
+    read = ("```cpp\n1 // live check\n2 #include <vector>\n3\n4 int g(int n) { // TOKEN_abc\n5 int total = 0;\n"
+            "5     int total = 0;\n12 hunter2\n```")
+    out = cli._check_against(read + "\nmain*  Ln 5, Col 2", ref)
+    assert "read exactly: 3 of 5" in out and "different text: 4" in out
+    assert "different indentation: 5 (read 0 spaces, file 4)" in out
+    assert ("also read twice: 5; 1 numbered line(s) past line 5; 1 row(s) without a line number, "
+            "not compared") in out
+    assert not any(s in out for s in ("TOKEN_abc", "hunter2", "g(int", "total"))
 
 
 def test_cli_read_refuses_without_a_person_at_the_keyboard(world, monkeypatch, capsys):
@@ -122,4 +155,41 @@ def test_cli_read_refuses_without_a_person_at_the_keyboard(world, monkeypatch, c
     monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: cfg))
     assert cli.main(["read"]) == 1
     assert "approval at the keyboard" in capsys.readouterr().out
-    assert glim.requests == []
+    assert [p for p, _h, _b in glim.requests if p != "/health"] == []
+
+
+def test_cli_read_shares_nothing_if_glimmer_is_down_or_the_check_file_is_missing(world, monkeypatch, capsys):
+    make, glim, meta, cfg = world
+    asked = []
+    monkeypatch.setattr(cli, "_share_prompt", lambda m: asked.append(m) or True)
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: cfg))
+    with pytest.raises(SystemExit, match="no file"):
+        cli.main(["read", "--check", "no_such_file.cpp"])
+    with pytest.raises(SystemExit, match="code reading"):
+        cli.main(["read", "--describe", "--check", "no_such_file.cpp"])
+    port, cfg.glimmer_port = cfg.glimmer_port, free_port()     # nothing listens there
+    for argv in (["read"], ["ask", "why?", "--local-only"], ["edit", "fix it"]):
+        assert cli.main(argv) == 2
+        assert "Nothing was shared" in capsys.readouterr().out
+    cfg.glimmer_port = port
+    assert asked == [] and glim.requests == [] and meta.requests == []
+
+
+def test_cli_read_prints_the_frame_warnings_and_finds_the_check_file(world, monkeypatch, capsys, tmp_path):
+    make, glim, meta, cfg = world
+    monkeypatch.setattr(cli, "_share_prompt", lambda m: True)
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: cfg))
+    read = Pipeline.read
+
+    def uniform(self, kind="code", rect=None):
+        r = read(self, kind, rect)
+        r.frame["warnings"] = ["the picture is uniform (black) - no HDMI signal"]
+        return r
+    monkeypatch.setattr(Pipeline, "read", uniform)
+    (cfg.home / "dummy.cpp").write_text("x\n" * 25, encoding="utf-8")
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.chdir(tmp_path / "elsewhere")                    # found in the project folder, not here
+    assert cli.main(["read", "--check", "dummy.cpp"]) == 0
+    out = capsys.readouterr().out
+    assert "WARNING: the picture is uniform (black)" in out
+    assert "check against dummy.cpp (25 lines" in out and "different text: 19, 21, 23, 24" in out

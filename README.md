@@ -406,7 +406,7 @@ their sources:
 | Weights | Unsloth's [unsloth/Muse-Glimmer-30B-GGUF](https://huggingface.co/unsloth/Muse-Glimmer-30B-GGUF) | `models\unsloth\Muse-Glimmer-30B-UD-Q4_K_XL.gguf`, 15,878,222,368 bytes, SHA-256 `82bece304887a313ece08400bc030f6066c7bff5b906b0cd40308ec8a409fd38` |
 | Vision projector | the same Unsloth repo | `models\unsloth\mmproj-Muse-Glimmer-30B-BF16.gguf`, 3,849,173,728 bytes, SHA-256 `d08cdcfa0b41d8e20554b52df404ba4f7b440d0bc502a90038508b6407df8ee1` |
 | DFlash drafter (speeds up generation) | Meta's [meta-models/Muse-Glimmer-30B-GGUF](https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF) | `models\dflash-Muse-Glimmer-30B-Q4_K_M.gguf`, 1,631,208,128 bytes, SHA-256 `b2e808bf656086fe86bd0d0bd990f01d33e377537a07c02d45371517c8b264ef` |
-| Launcher | this repo | `tools\run-glimmer.ps1`: one slot, 32K context, all layers on the GPU, images up to 4,096 tokens, DFlash at draft length 15, no web UI, no prompt logging |
+| Launcher | this repo | `tools\run-glimmer.ps1`: one slot, 32K context, all layers on the GPU, images up to 4,096 tokens, DFlash at draft length 15, no web UI, no prompt logging (but an answer that fails to parse is printed in its window, so treat that window like a reading) |
 | NVIDIA's compiled-kernel cache | made on first run | `.cache\nv\` |
 
 Start the server, then check it from a second terminal:
@@ -455,8 +455,9 @@ nanokvm ask "why does sum_first overrun?"      # Spark answers from the redacted
 nanokvm edit "fix the off-by-one in sum_first" # Spark proposes edits; each one you approve is typed in
 ```
 
-Each command first asks you, at the keyboard, to share the screen with Muse Glimmer for a few minutes
-(`--minutes`: 5 by default, 10 for `edit`). There is deliberately no `--yes`, and nothing is approved
+Each command first checks that Glimmer answers (if it doesn't, nothing is shared), then asks you, at the
+keyboard, to share the screen with Muse Glimmer for a few minutes (`--minutes`: 5 by default, 10 for
+`edit`; the share ends as soon as the command does). There is deliberately no `--yes`, and nothing is approved
 without a terminal, so a script, or an AI running commands without one (such as Claude Code's shell
 tool), can't approve. This guards against mistakes, not against programs on this computer: anything
 that can type into the terminal running `nanokvm` can answer its prompts, and a program that can read
@@ -464,8 +465,10 @@ that can type into the terminal running `nanokvm` can answer its prompts, and a 
 an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in the pixels of a
 `nanokvm screenshot`).
 
-- **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took; for
-  code, it also says which line numbers it read and whether any are missing (numbers only).
+- **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took, and a
+  warning if the picture was uniform (no signal, a sleeping display); for code, it also says which line
+  numbers it read and whether any are missing (numbers only). Like `ask` and `edit`, it refuses a frame
+  more than 2 s old: when the video stops, the service's last frame may show what is no longer there.
 - **`ask`** reads, sends only the redacted, trimmed text to Spark, and prints its answer with the
   placeholders restored. It also says what was redacted, whether Glimmer trimmed the text, what the
   request cost and where it is logged. `--stand-in` marks the screen as dummy content (required while
@@ -474,10 +477,17 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
 - **`edit`** works like `ask`, but Spark answers with `apply_edit` calls: replace lines S to E with new
   lines. `--stand-in` and `--approve` work as for `ask`.
 
-**Checking what Glimmer reads.** To measure its accuracy on the live screen, type the dummy file
-`tools\ab_screens\live_check.cpp` (10 lines) into a new VS Code tab on the locked computer, then run
-`nanokvm read --check tools\ab_screens\live_check.cpp`. It prints how many lines match the file
-exactly, and lists any that differ.
+**Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
+`tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must
+match the file exactly, so first switch off the typing helpers (the settings for typed edits in
+[section 4](#4-locked-computer-settings)). Then open a new empty window (Ctrl+Shift+N) so no work is on
+the screen, press Ctrl+N, set the language to C++ (Ctrl+K M) so it is coloured like real code, and type
+it, making the spaces with the space bar and pressing no Enter after the last `}`. Home on each line should
+show *Col 5* on lines 5, 6, 8 and 9 and *Col 9* on line 7 in the status bar. Then run
+`nanokvm read --check tools\ab_screens\live_check.cpp` (it finds the file from any folder). It lists by
+line number which lines Glimmer read exactly, which differ only in spaces, indentation or text, and
+which it missed. It never repeats the text read, so those lines can be shared; the transcription
+printed above them can't.
 
 **How `nanokvm edit` types an edit.** For each `apply_edit` call:
 
@@ -579,7 +589,9 @@ E:\meta_hackathon\.venv\Scripts\nanokvm.exe diag --mouse-test # also moves the l
   shows `'target_usb_connected': True` if the NanoKVM reports cable 4 as connected.
 
 It ends with `RESULT: OK` or a list of problems with fixes. Then run `nanokvm viewer` and check the
-picture by eye ([section 7](#7-watching-the-screen-yourself)).
+picture by eye ([section 7](#7-watching-the-screen-yourself)). When the locked computer shows real
+work, check without a picture instead: `nanokvm start`, then `nanokvm status --json` (video state,
+`frame_size`, `blank`) save nothing, while `diag` always saves a screenshot.
 
 Other commands (prefix with `E:\meta_hackathon\.venv\Scripts\`):
 
@@ -680,13 +692,13 @@ needed.
 
 | Symptom | Fix |
 |---------|-----|
-| No signal / black picture (`nanokvm status` says *blank* or *no_frames*) | Check that the locked computer HDMI goes into the **TARGET** end. Wake the locked computer. Check Monitor A is enabled in the locked computer's display settings ([section 4](#4-locked-computer-settings)). |
+| No signal / black picture (`nanokvm status` says *no_frames*, or `nanokvm status --json` shows `"blank": true`) | Check that the locked computer HDMI goes into the **TARGET** end. Wake the locked computer. Check Monitor A is enabled in the locked computer's display settings ([section 4](#4-locked-computer-settings)). |
 | Monitor A is black but capture works, or the other way round | Set Monitor A's input to **DVI**. Check Monitor A runs at its native resolution at 60 Hz ([section 4](#4-locked-computer-settings)). |
 | `NanoKVM capture device not found` | Check cable 3, then run `nanokvm diag`. If the NanoKVM gets no power over USB-C to USB-C, use USB-A to USB-C into the AI computer. |
 | `video capture needs Windows on the AI computer` | The bridge runs only on a Windows AI computer, for now. This limit doesn't apply to the locked computer ([section 1a](#1a-operating-systems)). |
 | `COM port not found` (video works) | Run `nanokvm diag`; it lists every COM port. This unit's chip is a CH343 (`1A86:55D3`, shown as *USB-Enhanced-SERIAL CH343*, COM5 so far) and needs no extra driver. Check that `serial_ids` in `nanokvm.toml` still includes `1A86:55D3` (the built-in default looks only for `1A86:7523`), then reseat cable 3 or try another USB-C port: video and the serial chip use different wires in the cable. Also look for a disabled or yellow-flagged entry under *Ports (COM & LPT)* in Device Manager. |
 | `COMx is in use` or `no video` | Close the official NanoKVM-USB app or the `usbkvm.sipeed.com` browser tab; only one program can hold the device. Use `nanokvm stop` before opening the official app. |
-| `Glimmer isn't answering at http://127.0.0.1:8001` | Start `tools\run-glimmer.ps1` and wait until it says the server is ready (a cold start from the exFAT drive can take about 2 minutes). |
+| `Muse Glimmer isn't ready at http://127.0.0.1:8001` or `Glimmer isn't answering` | Start `tools\run-glimmer.ps1` and wait until its window shows `model loaded` and `listening on http://127.0.0.1:8001` (about 6 s with the model files cached, about 72 s from cold). |
 | `no Meta API key` | Save the key as the only line of `.run\meta_api_key` ([section 5b](#5b-muse-spark-through-metas-model-api)). |
 | `the Meta account is on free credits` | Use `--stand-in` with dummy content, or switch Billing to pay as you go and set `meta_billing = "paid"` ([section 2](#2-what-leaves-the-ai-computer)). |
 | `no numbered code lines on the screen` | Show the file in VS Code with line numbers on, maximised on Monitor A. |
@@ -737,7 +749,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        293 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        297 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

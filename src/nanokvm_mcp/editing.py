@@ -101,10 +101,13 @@ def same_line(read: str, expected: str) -> bool:
     return _indent(read) == _indent(expected) and _norm(read) == _norm(expected)
 
 
-def numbered_lines(transcription: str, strict: bool = False) -> dict[int, str]:
+def numbered_lines(transcription: str, strict: bool = False, wrapped: bool = True) -> dict[int, str]:
     """{line number: text} from Glimmer's transcription (each line starts with its number and a space, as
     glimmer.CODE_PROMPT asks). A row without a number continues the line before it: word wrap is on, so VS Code
-    shows a long line as several rows, and only the first has a number.
+    shows a long line as several rows, and only the first has a number. A Markdown code fence that Glimmer puts
+    around its answer is not a row of the screen and is skipped. ``wrapped=False`` ignores every row without a
+    number instead, for a file whose lines are too short to wrap (the --check dummy file): there such a row can
+    only be other text on the screen, such as the status bar.
 
     ``strict`` (used for editing) leaves out every line whose reading may be incomplete or wrong: a wrapped row
     that happens to start with a number looks like a new line, and the line it belongs to then looks shorter
@@ -124,7 +127,7 @@ def numbered_lines(transcription: str, strict: bool = False) -> dict[int, str]:
                 continue
             out[n] = text
             last = n
-        elif last is not None and raw.strip():
+        elif wrapped and last is not None and raw.strip() and not raw.lstrip().startswith("```"):
             out[last] = out[last].rstrip() + " " + raw.strip()
     if not strict:
         return out
@@ -137,6 +140,11 @@ def numbered_lines(transcription: str, strict: bool = False) -> dict[int, str]:
             if i:
                 doubtful.add(order[i - 1])
     return {n: t for n, t in out.items() if n not in doubtful}
+
+
+def numbers_read(transcription: str) -> list[int]:
+    """The line numbers in Glimmer's transcription, in the order read, repeats included."""
+    return [int(m.group(1)) for raw in transcription.splitlines() if (m := _NUMBERED_RE.match(raw))]
 
 
 def parse_status(text: str) -> tuple[int, int, int] | None:

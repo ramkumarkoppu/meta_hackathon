@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from . import editing as E
-from .client import ServiceClient
+from .client import ServiceClient, ServiceError
 from .config import Config
 from .glimmer import SYSTEM, GlimmerClient, GlimmerError
 from .outbound import Answer, OutboundBlocked, OutboundGate, Prepared
@@ -103,12 +103,24 @@ class Pipeline:
         self.close()
 
     # ---- reading (local only)
+    MAX_FRAME_AGE_MS = 2000           # the service warns about older frames too
+
+    def _frame(self, rect: tuple[float, float, float, float] | None) -> dict:
+        """A frame for Glimmer, refused if it is old: when the video stops, the service hands over its last
+        frame however old it is, and that may show something no longer on the screen."""
+        frame = self.svc.frame(rect)
+        if frame.get("age_ms", 0) > self.MAX_FRAME_AGE_MS:
+            frame["image_b64"] = None
+            raise ServiceError("no fresh video from the locked computer, so nothing was read: " + "; ".join(
+                frame.get("warnings") or [f"the frame is {frame['age_ms'] / 1000:.1f} s old"]))
+        return frame
+
     def read(self, kind: str = "code", rect: tuple[float, float, float, float] | None = None) -> Reading:
         readers = {"code": self.glimmer.transcribe_code, "describe": self.glimmer.describe_screen,
                    "errors": self.glimmer.extract_errors}
         if kind not in readers:
             raise ValueError(f"kind must be one of {sorted(readers)}")
-        frame = self.svc.frame(rect)
+        frame = self._frame(rect)
         meta = {k: v for k, v in frame.items() if k != "image_b64"}
         t0 = time.monotonic()
         try:
@@ -148,7 +160,7 @@ class Pipeline:
         """Glimmer's reading of a part of the screen given in fractions of its width and height."""
         screen = self.svc.status()["screen"]
         w, h = screen["width"], screen["height"]
-        frame = self.svc.frame((w * fx, h * fy, w * fw, h * fh))
+        frame = self._frame((w * fx, h * fy, w * fw, h * fh))
         try:
             return reader(frame["image_b64"], frame["format"]).content
         finally:

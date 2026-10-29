@@ -66,3 +66,7 @@ So far:
   the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).
 - **MIT licence (29 Oct).** The repo is now under the MIT licence ([LICENSE](LICENSE)), and it covers
   the pre-event groundwork too.
+- **Ready to read the real screen (29 Oct).** Before Glimmer's first read of the real locked computer,
+  `nanokvm read --check` now reports line numbers only, never the text read, so I can share its result.
+  `read`, `ask` and `edit` check that Glimmer is up before asking to share the screen, refuse a frame
+  more than 2 s old, and print the service's warnings about the picture.

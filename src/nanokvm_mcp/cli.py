@@ -280,26 +280,84 @@ def _line_summary(text: str) -> str:
 
 
 def _check_against(text: str, path: Path) -> str:
-    """Compare a code reading with the file shown on the screen (a dummy file), line by line."""
-    from .editing import numbered_lines
+    """Compare a code reading with the dummy file shown on the screen, line by line. Only line numbers and
+    counts are printed, never the text read, so the result can't carry anything else that was on the screen."""
+    from .editing import numbered_lines, numbers_read, same_line
     truth = path.read_text(encoding="utf-8").splitlines()
-    got = numbered_lines(text)
-    nums = [n for n in sorted(got) if 1 <= n <= len(truth)]
-    if not nums:
-        return f"check against {path.name}: none of its line numbers were read"
-    exact = sum(1 for n in nums if got[n].rstrip() == truth[n - 1].rstrip())
-    loose = [n for n in nums if " ".join(got[n].split()) == " ".join(truth[n - 1].split())]
-    out = [f"check against {path.name} (lines {nums[0]}-{nums[-1]} of {len(truth)} on the screen): "
-           f"{exact}/{len(nums)} exact, {len(loose)}/{len(nums)} equal apart from spacing"]
-    out += [f"  line {n}: read {got[n]!r}, file has {truth[n - 1]!r}" for n in nums if n not in loose]
+    got, order = numbered_lines(text, wrapped=False), numbers_read(text)
+    exact, spaces, indent, differ, missing = [], [], [], [], []
+    for n, want in enumerate(truth, 1):
+        if n not in got:
+            missing.append(n)
+        elif got[n].rstrip() == want.rstrip():
+            exact.append(n)
+        elif same_line(got[n], want):
+            spaces.append(n)
+        elif " ".join(got[n].split()) == " ".join(want.split()):
+            indent.append(n)
+        else:
+            differ.append(n)
+
+    def nums(ns: list[int]) -> str:
+        return ", ".join(map(str, ns)) or "none"
+
+    def spaces_before(s: str) -> int:
+        return len(s) - len(s.lstrip(" "))
+    blank = [n for n in missing if not truth[n - 1].strip()]
+    out = [f"check against {path.name} ({len(truth)} lines; line numbers only, not the text read):",
+           f"  read exactly: {len(exact)} of {len(truth)}; as nanokvm edit compares lines (same indentation, "
+           f"runs of spaces ignored): {len(exact) + len(spaces)} of {len(truth)}",
+           f"  same apart from spaces inside the line: {nums(spaces)}",
+           "  different indentation: " + (", ".join(f"{n} (read {spaces_before(got[n])} spaces, file "
+                                                     f"{spaces_before(truth[n - 1])})" for n in indent) or "none"),
+           f"  different text: {nums(differ)}",
+           f"  not read: {nums(missing)}" + (f" (empty in the file: {nums(blank)})" if blank else "")]
+    twice = sorted({n for n in order if order.count(n) > 1})
+    beyond = sorted({n for n in order if n > len(truth)})
+    rows = [r for r in text.splitlines() if r.strip() and not r.lstrip().startswith("```")]
+    unnumbered = len(rows) - len(order)       # other screen text, or a wrapped row: not compared
+    extra = ([f"read twice: {nums(twice)}"] if twice else []) + \
+            ([f"{len(beyond)} numbered line(s) past line {len(truth)}"] if beyond else []) + \
+            ([f"{unnumbered} row(s) without a line number, not compared"] if unnumbered else [])
+    if extra:
+        out.append("  also " + "; ".join(extra))
     return "\n".join(out)
+
+
+def _check_file(name: str, cfg: Config) -> Path:
+    """The --check file, as given or relative to the project folder (so the README's
+    tools\\ab_screens\\live_check.cpp works from any folder). Checked before anything is shared."""
+    for path in (Path(name), cfg.home / name):
+        if path.is_file():
+            return path
+    raise SystemExit(f"--check: no file {name} (looked here and in {cfg.home}); nothing was shared")
+
+
+def _glimmer_up(pipe) -> bool:
+    """Whether the local Glimmer server answers, asked before the screen is shared."""
+    if pipe.glimmer.health():
+        return True
+    _out(f"error: Muse Glimmer isn't ready at {pipe.glimmer.url}: start tools\\run-glimmer.ps1 and wait until it "
+         "has loaded. Nothing was shared.")
+    return False
+
+
+def _frame_warnings(frame: dict) -> None:
+    """The service's warnings about the frame Glimmer read (a uniform picture, an old frame): no screen text."""
+    for w in frame.get("warnings") or []:
+        _out("WARNING: " + w)
 
 
 def cmd_read(cl: ServiceClient, args) -> int:
     from .glimmer import GlimmerError
     from .pipeline import Pipeline
+    if args.check and args.kind != "code":
+        raise SystemExit("--check compares a code reading: leave out --describe and --errors")
+    check = _check_file(args.check, cl.cfg) if args.check else None
     try:
         with Pipeline(cl.cfg, approve_share=_share_prompt) as pipe:
+            if not _glimmer_up(pipe):
+                return 2
             pipe.open(args.minutes)
             r = pipe.read(args.kind, _region(args.region))
     except PermissionError:
@@ -312,10 +370,11 @@ def cmd_read(cl: ServiceClient, args) -> int:
     f = r.frame
     _out(f"\n(read by Muse Glimmer on this laptop in {r.seconds:.1f} s from a {f['width']}x{f['height']} frame, "
          f"{f['visual_tokens']} image tokens; nothing left this laptop and the frame wasn't saved)")
+    _frame_warnings(f)
     if args.kind == "code":
         _out(_line_summary(r.text))
-        if args.check:
-            _out(_check_against(r.text, Path(args.check)))
+        if check:
+            _out(_check_against(r.text, check))
     return 0
 
 
@@ -331,6 +390,8 @@ def cmd_ask(cl: ServiceClient, args) -> int:
         cfg.outbound = "approve"
     try:
         with Pipeline(cfg, approve_share=_share_prompt, approve_send=_approve_send, stand_in=args.stand_in) as pipe:
+            if not _glimmer_up(pipe):
+                return 2
             pipe.open(args.minutes)
             res = pipe.ask(args.question, _region(args.region))
     except PermissionError:
@@ -343,6 +404,7 @@ def cmd_ask(cl: ServiceClient, args) -> int:
         _out(f"error: {e}")
         return 2
     _out(_shown(res.answer))
+    _frame_warnings(res.reading.frame)
     if res.local_only:
         _out("\n(answered by Muse Glimmer on this laptop; nothing was sent)")
     else:
@@ -376,6 +438,8 @@ def cmd_edit(cl: ServiceClient, args) -> int:
         cfg.outbound = "approve"
     try:
         with Pipeline(cfg, approve_share=_share_prompt, approve_send=_approve_send, stand_in=args.stand_in) as pipe:
+            if not _glimmer_up(pipe):
+                return 2
             pipe.open(args.minutes)
             res = pipe.edit(args.request, _region(args.region), approve_edit=_approve_edit,
                             on_event=lambda m: _out(f"... {m}"))
@@ -394,6 +458,7 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     except KeyboardInterrupt:
         _out("\nStopped (Ctrl+C): every key was released. Check the file on the locked computer.")
         return 130
+    _frame_warnings(res.reading.frame)
     for rec in res.edits:
         if rec.plan is None:
             _out(f"- not shown: {rec.told_spark}")
@@ -457,8 +522,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
     p.add_argument("--minutes", type=int, default=5, help="length of the screen share (default 5)")
     p.add_argument("--check", metavar="FILE",
-                   help="compare the code read with FILE, a dummy file shown on the screen (for example "
-                        "tools\\ab_screens\\live_check.cpp): prints how many lines match")
+                   help="compare the code read with FILE, a dummy file that fits on the screen (for example "
+                        "tools\\ab_screens\\live_check.cpp, found from any folder): prints which lines match, "
+                        "as line numbers only")
     p.set_defaults(fn=cmd_read)
     p = sub.add_parser("ask", help="ask about the screen: read it locally, send only redacted text to Muse Spark")
     p.add_argument("question")
