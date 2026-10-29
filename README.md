@@ -421,7 +421,8 @@ Each command first asks you, at the keyboard, to share the screen with Muse Glim
 running commands, can't approve. `--region x,y,w,h` reads only part of the screen (in the pixels of a
 `nanokvm screenshot`).
 
-- **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took.
+- **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took; for
+  code, it also says which line numbers it read and whether any are missing (numbers only).
 - **`ask`** reads, sends only the redacted, trimmed text to Spark, and prints its answer with the
   placeholders restored. It also says what was redacted, whether Glimmer trimmed the text, what the
   request cost and where it is logged. `--stand-in` marks the screen as dummy content (required while
@@ -429,6 +430,11 @@ running commands, can't approve. `--region x,y,w,h` reads only part of the scree
   `--local-only` has Glimmer answer instead, sending nothing.
 - **`edit`** works like `ask`, but Spark answers with `apply_edit` calls: replace lines S to E with new
   lines. `--stand-in` and `--approve` work as for `ask`.
+
+**Checking what Glimmer reads.** To measure its accuracy on the live screen, type the dummy file
+`tools\ab_screens\live_check.cpp` (10 lines) into a new VS Code tab on the locked computer, then run
+`nanokvm read --check tools\ab_screens\live_check.cpp`. It prints how many lines match the file
+exactly, and lists any that differ.
 
 **How `nanokvm edit` types an edit.** For each `apply_edit` call:
 

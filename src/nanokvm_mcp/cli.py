@@ -238,6 +238,35 @@ def _share_prompt(minutes: int) -> bool:
     return _console_yes(f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min?")
 
 
+def _line_summary(text: str) -> str:
+    """Which line numbers Glimmer read, and any gaps: numbers only, no screen text."""
+    from .editing import numbered_lines
+    lines = numbered_lines(text)
+    if not lines:
+        return "(no numbered lines: is a file shown in VS Code, with line numbers on?)"
+    nums = sorted(lines)
+    missing = [n for n in range(nums[0], nums[-1] + 1) if n not in lines]
+    gaps = ("none missing" if not missing else
+            f"{len(missing)} missing: " + ", ".join(map(str, missing[:10])) + (" ..." if len(missing) > 10 else ""))
+    return f"({len(nums)} numbered lines read, {nums[0]}-{nums[-1]}, {gaps})"
+
+
+def _check_against(text: str, path: Path) -> str:
+    """Compare a code reading with the file shown on the screen (a dummy file), line by line."""
+    from .editing import numbered_lines
+    truth = path.read_text(encoding="utf-8").splitlines()
+    got = numbered_lines(text)
+    nums = [n for n in sorted(got) if 1 <= n <= len(truth)]
+    if not nums:
+        return f"check against {path.name}: none of its line numbers were read"
+    exact = sum(1 for n in nums if got[n].rstrip() == truth[n - 1].rstrip())
+    loose = [n for n in nums if " ".join(got[n].split()) == " ".join(truth[n - 1].split())]
+    out = [f"check against {path.name} (lines {nums[0]}-{nums[-1]} of {len(truth)} on the screen): "
+           f"{exact}/{len(nums)} exact, {len(loose)}/{len(nums)} equal apart from spacing"]
+    out += [f"  line {n}: read {got[n]!r}, file has {truth[n - 1]!r}" for n in nums if n not in loose]
+    return "\n".join(out)
+
+
 def cmd_read(cl: ServiceClient, args) -> int:
     from .glimmer import GlimmerError
     from .pipeline import Pipeline
@@ -255,6 +284,10 @@ def cmd_read(cl: ServiceClient, args) -> int:
     f = r.frame
     _out(f"\n(read by Muse Glimmer on this laptop in {r.seconds:.1f} s from a {f['width']}x{f['height']} frame, "
          f"{f['visual_tokens']} image tokens; nothing left this laptop and the frame wasn't saved)")
+    if args.kind == "code":
+        _out(_line_summary(r.text))
+        if args.check:
+            _out(_check_against(r.text, Path(args.check)))
     return 0
 
 
@@ -403,6 +436,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="list compiler errors and warnings shown on the screen")
     p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
     p.add_argument("--minutes", type=int, default=5, help="length of the screen share (default 5)")
+    p.add_argument("--check", metavar="FILE",
+                   help="compare the code read with FILE, a dummy file shown on the screen (for example "
+                        "tools\\ab_screens\\live_check.cpp): prints how many lines match")
     p.set_defaults(fn=cmd_read)
     p = sub.add_parser("ask", help="ask about the screen: read it locally, send only redacted text to Muse Spark")
     p.add_argument("question")

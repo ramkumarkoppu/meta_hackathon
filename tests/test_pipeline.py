@@ -101,6 +101,21 @@ def test_no_files_written_except_the_audit_log(world):
     assert {p.name for p in new} == {"outbound.log"}
 
 
+def test_read_summarises_line_numbers_and_checks_a_dummy_file(tmp_path):
+    text = ("1 // live check\n2 #include <vector>\n4 int sum_first(const std::vector<int>& v, int n) {\n"
+            "5     int total = 0;")
+    assert cli._line_summary(text) == "(4 numbered lines read, 1-5, 1 missing: 3)"
+    assert cli._line_summary("no numbers here").startswith("(no numbered lines")
+    ref = tmp_path / "ref.cpp"
+    ref.write_text("// live check\n#include <vector>\n\nint sum_first(const std::vector<int>& v, int n) {\n"
+                   "    int total  = 0;\n", encoding="utf-8")
+    assert cli._check_against(text, ref) == ("check against ref.cpp (lines 1-5 of 5 on the screen): "
+                                             "3/4 exact, 4/4 equal apart from spacing")
+    ref.write_text("// live check\n#include <vector>\n\nint sum(int n) {\n    int total = 0;\n", encoding="utf-8")
+    out = cli._check_against(text, ref)
+    assert "3/4 exact" in out and "line 4: read" in out
+
+
 def test_cli_read_refuses_without_a_person_at_the_keyboard(world, monkeypatch, capsys):
     make, glim, meta, cfg = world
     monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
