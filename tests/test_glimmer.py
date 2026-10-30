@@ -43,6 +43,15 @@ def test_read_sends_reasoning_cap_and_data_uri_then_flushes(setup):
     assert all(h.get("Authorization") == f"Bearer {KEY}" for _p, h, _b in fake.requests)
 
 
+def test_planning_leaves_room_for_the_answer_after_thinking(setup):
+    client, fake, _ = setup                         # seen live on 30 Oct: thinking ate max_tokens, every plan cut off
+    client.plan_step("QUJD", "png", "plan the next step")
+    plan, _flush = fake.bodies(CHAT)
+    assert plan["reasoning_budget_tokens"] == client.PLAN_THINK_TOKENS
+    assert plan["max_tokens"] - plan["reasoning_budget_tokens"] >= 512
+    assert plan["chat_template_kwargs"] == {"reasoning_strength": "medium"} and plan["temperature"] == 0.0
+
+
 def test_images_only_as_data_uris(setup):
     client, fake, _ = setup
     msg = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "http://example.com/a.png"}}]}]
