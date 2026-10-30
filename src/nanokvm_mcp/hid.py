@@ -7,7 +7,11 @@ Safety rules:
     ``busy_timeout`` fails with HidBusy instead of queueing (a queued action would run later,
     after the caller already gave up);
   * ``release_all`` bumps a generation counter: running actions stop between keystrokes and
-    actions that were already waiting are cancelled (HidAborted).
+    actions that were already waiting are cancelled (HidAborted);
+  * before the first key or click after the link opened, or after ``wake_after_s`` without any, the locked
+    computer is woken and checked: Scroll Lock is tapped until its light (which the target's operating system
+    reports back to the chip) follows, then tapped back. Seen live: the first Ctrl+G after a fresh start, or
+    after an idle hour, did nothing, every time.
 """
 from __future__ import annotations
 
@@ -22,6 +26,10 @@ from . import protocol as P
 from .keys import Combo, text_to_keystrokes
 
 log = logging.getLogger(__name__)
+
+SCROLL_LOCK = 0x47             # HID usage; changes nothing in VS Code or in typing (Num Lock would, on a laptop)
+WAKE_TAPS = 4                  # even: if the light never reports, Scroll Lock still ends as it started
+WAKE_WAIT_S = 1.5              # per tap: how long the light may take to follow
 
 
 class HidError(RuntimeError):
@@ -191,12 +199,13 @@ class SerialLink:
 # ---------------------------------------------------------------- controller
 class Hid:
     def __init__(self, link: Link, key_hold_ms: int = 25, key_gap_ms: int = 15,
-                 click_hold_ms: int = 60, busy_timeout: float = 3.0):
+                 click_hold_ms: int = 60, busy_timeout: float = 3.0, wake_after_s: float = 0.0):
         self.link = link
         self.hold = key_hold_ms / 1000.0
         self.gap = key_gap_ms / 1000.0
         self.click_hold = click_hold_ms / 1000.0
         self.busy_timeout = busy_timeout
+        self.wake_after_s = wake_after_s
         self._lock = threading.RLock()
         self._gen = 0                      # bumped by release_all
         self._gen_lock = threading.Lock()
@@ -204,6 +213,8 @@ class Hid:
         self._buttons = 0
         self._info: P.DeviceInfo | None = None
         self._info_t = float("-inf")
+        self._last_input = float("-inf")   # when the last key or mouse report went out
+        self.wake_note: str | None = None  # set when a wake-up couldn't confirm the keys get through
 
     # ---- locking / cancellation
     @contextlib.contextmanager
@@ -225,6 +236,55 @@ class Hid:
     # ---- low level
     def _send(self, frame: bytes) -> None:
         self.link.write(frame)
+        self._last_input = time.monotonic()
+
+    def _scroll_lock(self) -> bool | None:
+        """The locked computer's Scroll Lock light, as its operating system last reported it to the chip."""
+        try:
+            info = self.info(max_age=0.0)
+        except HidError:
+            return None
+        return None if info is None else info.scroll_lock
+
+    def _wait_for(self, condition, gen: int) -> bool:
+        deadline = time.monotonic() + WAKE_WAIT_S
+        while True:
+            if self._stopped(gen):
+                raise HidAborted("stopped by release_all")
+            if condition():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+    def _wake(self, gen: int) -> None:
+        """Wake the locked computer's view of the keyboard, and check that keys get through, before the first key
+        or click after the link opened or a quiet spell (see the module docstring). Without a light to watch (no
+        GET_INFO answer), it does nothing."""
+        if not self.wake_after_s or time.monotonic() - self._last_input < self.wake_after_s:
+            return
+        start = self._scroll_lock()
+        if start is None:
+            return
+        for _ in range(WAKE_TAPS):
+            self._kb(0, (SCROLL_LOCK,))
+            self._sleep(self.hold)
+            self._kb(0, ())
+            if self._wait_for(lambda: self._scroll_lock() not in (None, start), gen):
+                break
+        else:
+            self.wake_note = ("the locked computer's Scroll Lock light didn't follow the NanoKVM's taps, so its keys "
+                              "may not be getting through: check cable 4, or run 'nanokvm keytest'")
+            log.warning("wake-up: %s", self.wake_note)
+            return
+        for _ in range(WAKE_TAPS):                       # put the light back as it was
+            self._kb(0, (SCROLL_LOCK,))
+            self._sleep(self.hold)
+            self._kb(0, ())
+            if self._wait_for(lambda: self._scroll_lock() == start, gen):
+                return
+        self.wake_note = "Scroll Lock was left switched on the locked computer: press Scroll Lock there to undo it"
+        log.warning("wake-up: %s", self.wake_note)
 
     def _kb(self, mods: int = 0, keys: tuple[int, ...] | list[int] = ()) -> None:
         self._send(P.keyboard_frame(mods, keys))
@@ -291,6 +351,7 @@ class Hid:
         sent = 0
         with self._acquire(gen):
             try:
+                self._wake(gen)
                 for _ in range(max(1, repeat)):
                     for c in combos:
                         if self._stopped(gen):
@@ -315,6 +376,11 @@ class Hid:
         gen = self._gen
         typed = 0
         with self._acquire(gen):
+            try:
+                self._wake(gen)
+            except HidAborted:
+                self._release()
+                return 0, [], True
             info = None
             try:
                 info = self.info()
@@ -344,6 +410,7 @@ class Hid:
         gen = self._gen
         with self._acquire(gen):
             try:
+                self._wake(gen)
                 self._mouse(0, (ax, ay))
             finally:
                 self._release()
@@ -355,6 +422,7 @@ class Hid:
         gen = self._gen
         with self._acquire(gen):
             try:
+                self._wake(gen)
                 self._mouse(0, (ax, ay))
                 self._sleep(0.03)                   # let hover state settle
                 if modifiers:
@@ -379,6 +447,7 @@ class Hid:
         gen = self._gen
         with self._acquire(gen):
             try:
+                self._wake(gen)
                 self._mouse(0, start)
                 self._sleep(0.05)
                 if self._stopped(gen):
@@ -402,6 +471,7 @@ class Hid:
         gen = self._gen
         with self._acquire(gen):
             try:
+                self._wake(gen)
                 self._mouse(0, (ax, ay))
                 self._sleep(0.03)
                 if horizontal:

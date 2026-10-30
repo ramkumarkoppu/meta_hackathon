@@ -217,3 +217,93 @@ def test_release_all_interrupts_typing():
 def test_unknown_button():
     with pytest.raises(HidError):
         fast(RecordingLink()).click(0, 0, "fourth")
+
+
+# ---------------------------------------------------------------- waking the locked computer before the first keys
+class LossyLink:
+    """The simulated locked computer, but the first ``lose`` keyboard reports never arrive: as seen live, the
+    first Ctrl+G after the link opened (or after an idle hour) did nothing."""
+    def __init__(self, lose=0, leds_follow=True):
+        from nanokvm_mcp.simulator import SimDesktop, SimLink
+        self.desk = SimDesktop()
+        self.sim = SimLink(self.desk)
+        self.lose, self.leds_follow = lose, leds_follow
+
+    def write(self, frame):
+        if frame[3] == P.CMD_KEYBOARD and self.lose > 0:
+            self.lose -= 1
+            return
+        self.sim.write(frame)
+
+    def transact(self, frame, timeout=0.5):
+        return self.sim.transact(frame) if self.leds_follow else P.info_reply_frame(leds=0)
+
+    def describe(self):
+        return "lossy"
+
+    def close(self):
+        pass
+
+
+def _new_keys(desk):
+    return [keys for _mods, keys in desk.combos]
+
+
+@pytest.fixture
+def quick_wake(monkeypatch):
+    from nanokvm_mcp import hid as H
+    monkeypatch.setattr(H, "WAKE_WAIT_S", 0.2)
+    return H
+
+
+def test_the_first_keys_wake_the_target_and_scroll_lock_ends_as_it_was(quick_wake):
+    link = LossyLink()
+    h = Hid(link, key_hold_ms=0, key_gap_ms=0, click_hold_ms=0, wake_after_s=60)
+    h.press(parse_sequence("ctrl+g"))
+    assert _new_keys(link.desk) == [(quick_wake.SCROLL_LOCK,), (quick_wake.SCROLL_LOCK,), (0x0A,)]   # then Ctrl+G
+    assert link.desk.locks[quick_wake.SCROLL_LOCK] is False and h.wake_note is None
+    h.press(parse_sequence("escape"))                         # keys a moment ago: no wake-up
+    assert _new_keys(link.desk)[-1] == (0x29,) and len(link.desk.combos) == 4
+    h._last_input -= 61                                       # a quiet minute: wake again
+    h.type_text("a")
+    assert _new_keys(link.desk)[-3:] == [(quick_wake.SCROLL_LOCK,), (quick_wake.SCROLL_LOCK,), (0x04,)]
+
+
+def test_lost_first_keys_are_tried_again_until_the_light_follows(quick_wake):
+    link = LossyLink(lose=2)                                  # the first Scroll Lock tap (down and up) is lost
+    h = Hid(link, key_hold_ms=0, key_gap_ms=0, click_hold_ms=0, wake_after_s=60)
+    h.press(parse_sequence("ctrl+g"))
+    assert _new_keys(link.desk) == [(quick_wake.SCROLL_LOCK,), (quick_wake.SCROLL_LOCK,), (0x0A,)]
+    assert link.desk.locks[quick_wake.SCROLL_LOCK] is False and h.wake_note is None
+
+
+def test_a_light_that_never_follows_is_reported_and_left_as_it_was(quick_wake):
+    link = LossyLink(leds_follow=False)                      # keys arrive, but no light comes back
+    h = Hid(link, key_hold_ms=0, key_gap_ms=0, click_hold_ms=0, wake_after_s=60)
+    h.press(parse_sequence("escape"))
+    taps = [k for k in _new_keys(link.desk) if k == (quick_wake.SCROLL_LOCK,)]
+    assert len(taps) == quick_wake.WAKE_TAPS and quick_wake.WAKE_TAPS % 2 == 0
+    assert link.desk.locks[quick_wake.SCROLL_LOCK] is False   # an even number of taps: as it started
+    assert "Scroll Lock light didn't follow" in h.wake_note and _new_keys(link.desk)[-1] == (0x29,)
+    silent = RecordingLink(info=None)                         # no GET_INFO answer: nothing to check, no wake-up
+    Hid(silent, key_hold_ms=0, key_gap_ms=0, click_hold_ms=0, wake_after_s=60).press(parse_sequence("escape"))
+    assert P.keyboard_frame(0, (quick_wake.SCROLL_LOCK,)) not in silent.frames
+
+
+def test_release_all_stops_a_wake_up_and_every_key_ends_up(quick_wake):
+    link = LossyLink(leds_follow=False)
+    h = Hid(link, key_hold_ms=0, key_gap_ms=0, click_hold_ms=0, wake_after_s=60)
+    threading.Timer(0.1, h.release_all).start()
+    with pytest.raises(HidAborted):
+        h.press(parse_sequence("ctrl+g"))
+    assert (0x0A,) not in _new_keys(link.desk) and link.desk.keys_down == ()
+
+
+def test_the_service_passes_on_a_failed_wake_up(sim_factory, quick_wake):
+    env = sim_factory(wake_after_s=60)
+    env.link.transact = lambda frame, timeout=0.5: P.info_reply_frame(leds=0)   # the light never follows
+    reply = env.client.act({"action": "keys", "keys": "escape"})
+    assert "pressed escape" in reply["summary"] and "(note: the locked computer's Scroll Lock light" in reply["summary"]
+    assert "stopped after" not in reply["summary"]           # the typer reads that as keys lost
+    reply = env.client.act({"action": "keys", "keys": "escape"})
+    assert "note" not in reply["summary"]                     # keys a moment ago: no wake-up, no note

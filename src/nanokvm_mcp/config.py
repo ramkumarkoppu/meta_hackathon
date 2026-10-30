@@ -77,6 +77,9 @@ class Config:
     key_hold_ms: int = 25
     key_gap_ms: int = 15
     click_hold_ms: int = 60
+    wake_after_s: float = 60.0           # before the first key or click after this long without any (or after the
+                                         # link opens), tap Scroll Lock until the locked computer's light follows,
+                                         # then tap it back: keys can be lost until then (0 = off)
     post_action_ms: int = 1500           # max wait for the screen to react after an action
     max_text_len: int = 1500
 

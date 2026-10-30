@@ -19,6 +19,7 @@ def free_port() -> int:
 
 class SimEnv:
     def __init__(self, tmp_path, bars=(0, 0), caps_lock=False, port=None, editor_lines=None, **cfg_overrides):
+        cfg_overrides.setdefault("wake_after_s", 0)      # off: most tests count the exact keys sent (test_hid has it on)
         self.cfg = Config(home=tmp_path, port=port or free_port(), simulate=True, idle_exit_min=0,
                           key_hold_ms=1, key_gap_ms=1, click_hold_ms=5, post_action_ms=600,
                           **cfg_overrides)

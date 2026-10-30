@@ -423,7 +423,7 @@ class Service:
         with self._hid_lock:
             if self._hid is None:
                 self._hid = Hid(self._link_factory(), self.cfg.key_hold_ms, self.cfg.key_gap_ms,
-                                self.cfg.click_hold_ms)
+                                self.cfg.click_hold_ms, wake_after_s=self.cfg.wake_after_s)
             return self._hid
 
     def act(self, body: dict, client: str | None = None) -> dict:
@@ -525,6 +525,9 @@ class Service:
             raise ServiceError(str(e), 409) from None
         except HidError as e:
             raise ServiceError(str(e), 503) from None
+        note, hid.wake_note = hid.wake_note, None
+        if note:                                     # the wake-up before this action couldn't confirm the keys
+            summary += f" (note: {note})"
         result: dict = {"action": action, "summary": summary}
         if body.get("screenshot_after") and not self.share_active(client):
             result["note"] = "screen sharing is off, so no screenshot was taken"

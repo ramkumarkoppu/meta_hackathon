@@ -189,6 +189,7 @@ class SimDesktop:
         self.scroll_total = 0
         self.keys_down: tuple[int, ...] = ()
         self.combos: list[tuple[int, tuple[int, ...]]] = []
+        self.locks = {0x53: False, 0x39: False, 0x47: False}   # Num, Caps and Scroll Lock, as the OS would set them
         self.version = 0
         self.editor = SimEditor(editor_lines) if editor_lines is not None else None   # VS Code instead of Notepad
 
@@ -208,6 +209,8 @@ class SimDesktop:
                 shift = bool(mods & (P.MOD_LSHIFT | P.MOD_RSHIFT))
                 plain = not (mods & ~(P.MOD_LSHIFT | P.MOD_RSHIFT))
                 for k in new:
+                    if k in self.locks:                     # the OS toggles the lock and reports its light back
+                        self.locks[k] = not self.locks[k]
                     if self.editor is not None:
                         self.editor.key(mods, k)
                     elif k == 0x2A and plain:
@@ -287,6 +290,7 @@ class SimLink:
     def __init__(self, desktop: SimDesktop, caps_lock: bool = False) -> None:
         self.desktop = desktop
         self.caps_lock = caps_lock
+        desktop.locks[0x39] = caps_lock
         self.frames: list[bytes] = []
 
     def write(self, frame: bytes) -> None:
@@ -296,7 +300,9 @@ class SimLink:
     def transact(self, frame: bytes, timeout: float = 0.5) -> bytes | None:
         self.frames.append(frame)
         if frame[3] == P.CMD_GET_INFO:
-            return P.info_reply_frame(leds=0x02 if self.caps_lock else 0)
+            locks = self.desktop.locks
+            return P.info_reply_frame(leds=(0x01 if locks[0x53] else 0) | (0x02 if locks[0x39] else 0)
+                                      | (0x04 if locks[0x47] else 0))
         return None
 
     def describe(self) -> str:
