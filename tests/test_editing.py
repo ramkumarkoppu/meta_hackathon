@@ -65,8 +65,8 @@ def world(tmp_path):
                 return 200, llama_reply(w.tab_override or ed.tab_text())
             if prompt.startswith("You operate the computer"):
                 return 200, llama_reply(w.plans.pop(0) if w.plans else "ACTION: done\nWHY: nothing left to do")
-            if prompt.startswith("Find ") and "bounding box" in prompt:
-                return 200, llama_reply(w.locate(prompt.split("Find ", 1)[1].split(" in this screenshot", 1)[0]))
+            if prompt.startswith("Find ") and "bounding box" in prompt:   # GROUND_PROMPT quotes the target
+                return 200, llama_reply(w.locate(prompt.split('instructions): "', 1)[1].split('". Give its', 1)[0]))
             if prompt == UI_PROMPT:
                 return 200, llama_reply(w.ui_text)
             return 200, llama_reply(ed.transcription())

@@ -84,6 +84,7 @@ class Pipeline:
         self.stand_in = stand_in
         self._shared = False
         self.last_code: Reading | None = None   # the latest code reading taken by read_lines
+        self.last_look: dict | None = None      # the latest look's frame, without the image (which part of the capture)
 
     # ---- screen share (approved by the person at the keyboard)
     def open(self, minutes: int = 5) -> None:
@@ -156,6 +157,7 @@ class Pipeline:
         """``fn(image_b64, fmt)`` on one fresh frame of the whole screen, for several of Glimmer's answers about the
         same picture (Do it: plan the step, then find its target). The image is dropped afterwards, as in read."""
         frame = self._frame(None)
+        self.last_look = {k: v for k, v in frame.items() if k != "image_b64"}
         try:
             return fn(frame["image_b64"], frame["format"])
         finally:

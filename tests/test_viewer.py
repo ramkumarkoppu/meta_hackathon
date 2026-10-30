@@ -596,9 +596,24 @@ def test_the_prompt_box_follows_stricter_settings(sim, monkeypatch):
         p = win.panel
         assert p.local_var.get() and p.local_box["state"] == "disabled"
         assert p.fix_btn["state"] == "disabled" and "Fix code is off" in p.status["text"]
+        assert p.spark_box["state"] == "disabled" and p.do_btn["state"] == "normal"   # Do it: planned here only
     finally:
         win.close()
         sim.client.cfg.outbound = "auto"
+    win = _window(sim)
+    try:                                                     # while work runs, its choices are fixed
+        p = win.panel
+        p.session = _FakeSession(p.cfg, p.events.put)
+        p.session.busy = True
+        p.refresh()
+        assert p.local_box["state"] == p.show_box["state"] == p.spark_box["state"] == "disabled"
+        p.session.busy = False
+        p.refresh()
+        assert p.local_box["state"] == p.show_box["state"] == p.spark_box["state"] == "normal"
+        p.submit_do()                                        # nothing typed: a hint, not the last question
+        assert p.session.calls == [] and "Type the task in the box first" in p.log.get("1.0", "end")
+    finally:
+        win.close()
     sim.client.cfg.control = False
     win = _window(sim)
     try:

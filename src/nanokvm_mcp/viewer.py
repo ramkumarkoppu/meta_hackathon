@@ -386,7 +386,8 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
                  else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
         if status.get("local_shares_active"):
             share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask/edit)"
-    keys = ("the picture is view-only; only Fix it types, after your yes · F11 full screen, F2 prompt box, "
+    keys = ("the picture is view-only; only Do it and Fix code click or type, after your yes (with Auto, one yes for "
+            "the task) · F11 full screen, F2 prompt box, "
             "1 actual pixels, Q quit (click the picture first)")
     return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
 
@@ -558,12 +559,15 @@ class AskPanel:
         self.refresh()
 
     def submit_do(self) -> None:
-        """Do it: the task typed in the prompt box (or the last question that went to Spark)."""
+        """Do it: the task typed in the prompt box, only (a question asked earlier isn't turned into actions)."""
         if self.busy or self.do_blocked() or not self.shown:
             return
-        task = self._text() or self.last_question
+        task = self._text()
+        if not task:
+            self._write("Type the task in the box first, then press Do it.", "say")
+            return
         spark = self.spark_var.get() and not self.local_var.get()     # Local only keeps the planning here too
-        if task and self._session().do(task, self.auto_var.get(), spark, self.show_var.get()):
+        if self._session().do(task, self.auto_var.get(), spark, self.show_var.get()):
             self.prompt.delete("1.0", "end")
         self.refresh()
 
@@ -610,7 +614,10 @@ class AskPanel:
         self.fix_btn.configure(state="disabled" if busy or no_fix else "normal")
         self.stop_btn.configure(state="normal" if busy else "disabled")
         local = self.local_var.get() or self.cfg.outbound == "local_only"
-        self.spark_box.configure(state="disabled" if local else "normal")   # Local only: Do it plans here
+        # While work runs its choices are fixed: ticking Local only part-way would look as if it stopped sending
+        self.spark_box.configure(state="disabled" if local or busy else "normal")   # Local only: Do it plans here
+        self.local_box.configure(state="disabled" if busy or self.cfg.outbound == "local_only" else "normal")
+        self.show_box.configure(state="disabled" if busy or self.cfg.outbound == "approve" else "normal")
         s = self.session
         shared = s.shared_minutes_left() if s else 0
         parts = ["Waiting for your answer above." if waiting else "Working… (Stop ends it)" if busy else "Ready."]
@@ -840,9 +847,18 @@ class ViewerWindow:
         self._draw_target()
 
     def show_target(self, box: tuple[int, int, int, int] | None) -> None:
-        """Outline a Do it step's target (a box per mille of the screen) on the picture, or clear it."""
+        """Outline a Do it step's target (a box per mille of the whole picture) on it, or clear it. In actual-pixel
+        mode the view scrolls so that the outline can be seen."""
         self.target = box
         self._draw_target()
+        if box is not None and self.mode == "actual" and self.photo is not None:
+            pw, ph = self.photo.width(), self.photo.height()
+            cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+            mx, my = (box[0] + box[2]) / 2000 * pw, (box[1] + box[3]) / 2000 * ph
+            if pw > cw:
+                self.canvas.xview_moveto(max(0.0, mx - cw / 2) / pw)
+            if ph > ch:
+                self.canvas.yview_moveto(max(0.0, my - ch / 2) / ph)
 
     def _draw_target(self) -> None:
         if self.target is None or self.photo is None:

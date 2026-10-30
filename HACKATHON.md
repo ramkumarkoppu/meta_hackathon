@@ -105,9 +105,14 @@ So far:
   Glimmer, on my GPU, looks at the screen, plans the next step and finds its target, so by default
   nothing leaves the laptop; Spark can plan instead, from the redacted description, but Glimmer still
   finds every target locally. A test on a synthetic screen first showed Glimmer points accurately on
-  its own 0-1000 scale (8 of 8 targets, and *NONE* for one that wasn't there). Each step is outlined on
-  the live picture and allowed by a click, or by one yes with Auto, except steps that change
-  something. Not yet run on the real locked computer.
+  its own 0-1000 scale (8 of 8 targets, and *NONE* for one that wasn't there; `tools/glimmer_point.py`
+  repeats it). Each step is outlined on the live picture and allowed by a click, or by one yes with
+  Auto, except steps that change something. Its first live run stopped at once: Glimmer's thinking
+  used up the whole answer budget, now fixed. An independent review (3 reviewers, each checked by a
+  skeptic; 43 findings, none refuted) then hardened it: keys are judged by what they are, not how
+  they are spelt (every name of the Windows key is refused; Enter, Delete, Ctrl+V and the rest always
+  ask), anything but a plain "no" counts as a change, a box must be just four numbers, the outline is
+  drawn where the click goes, and under Auto each step is shown before it is done.
 - **Indentation from VS Code, not the picture (30 Oct).** After a fix, the code wasn't always tidy:
   Glimmer can read a line's indentation a few spaces off, and Spark copies it. Now the indentation of
   every line an edit replaces, and of every line it types, is measured in VS Code itself (End, then

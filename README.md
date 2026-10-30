@@ -26,7 +26,7 @@ of its software tools, often locked-down legacy tools nothing else can help with
 Glimmer reads all of these on the AI computer (`read --describe` names the application and quotes its
 messages and errors). In `nanokvm viewer`'s prompt box, a question about any program is answered from
 Glimmer's reading of the window in front, and **Do it** carries out a task in any program one step at
-a time, planned by Glimmer on the AI computer and each step allowed by you
+a time, planned by Glimmer on the AI computer (or by Spark, if you tick it), each step shown to you
 ([section 7](#do-it)). `edit` and `fix` work on code in VS Code.
 
 **Sensitive screens.** The locked computer may show patient records or company-confidential data. Its
@@ -157,6 +157,7 @@ for the Windows CUDA build of llama.cpp. Running it elsewhere is future work
 | The screen picture | **Nowhere**, with `read`, `ask` and `edit`: Muse Glimmer reads it on the AI computer's GPU. The pipeline never writes a frame to disk: each frame is dropped as soon as Glimmer has read it, the service zeroes its pixel copies, Glimmer's thinking text is discarded, and its server is flushed after every image. |
 | Redacted text | To Muse Spark through Meta's Model API, only through the outbound gate below. |
 | Spark's answer and edits | Back to the AI computer, where placeholders are restored. Edits are typed only after you approve them: each one, or a whole run's once with `--auto` ([section 6](#6-using-it-read-ask-and-edit)). |
+| Do it, in the viewer | **Nothing**, by default: Glimmer plans each step and finds its target on the AI computer. With *plan with Spark* ticked, Spark gets Glimmer's redacted description of the window in front, through the outbound gate, and names each step's target in words; the picture and the screen positions stay on the AI computer either way. Each step is done only after you allow it ([section 7](#do-it)). |
 | A record of both | `.run\outbound.log` on the AI computer: exactly what was sent and received. It holds redacted screen text, so treat it as sensitive. |
 | Screenshots, with the Claude Code bridge | To Anthropic, but only once you approve sharing in a Claude Code conversation. The bridge was built before the event and isn't part of the entry ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)). Don't share a real locked computer with it unless its owner has approved Anthropic too. |
 
@@ -775,21 +776,26 @@ has the focus, keys such as Ctrl+C or Enter, or a scroll.
    leaves it, not even text. Tick **Do it: plan with Spark** (with Local only unticked) to let Muse
    Spark plan instead, from Glimmer's redacted description of the window in front, through the
    outbound gate; Spark names targets in words.
-2. **Glimmer finds the step's target on the screen**, here (on its own 0-1000 scale: 8 of 8 targets
-   on a synthetic screen, 30 Oct; it answers *NONE* for one that isn't there, and the step isn't done),
-   and the viewer outlines it in orange on the live picture. Pictures and screen positions never leave
-   this laptop.
+2. **Glimmer finds the step's target on the screen**, here, on its own 0-1000 scale, and the viewer
+   outlines it in orange on the live picture. `tools\glimmer_point.py` checks this on a synthetic
+   screen with dummy names: on 30 Oct it found 8 of 8 targets, and answered *NONE* for one that wasn't
+   there. With *NONE*, or an answer that isn't just a box, nothing is clicked and the planner is told.
+   Pictures and screen positions never leave this laptop.
 3. **You allow the step** (*Do this step*, or *Stop here*), and the NanoKVM does it. With **Auto**
-   ticked, one question at the start names the task and covers its steps, except a step that changes
-   something (the planner says so, or it presses Delete, Backspace, Ctrl+X, Ctrl+V, Ctrl+S, Alt+F4 or
-   similar, or types a line break): that one still asks.
+   ticked, one question at the start names the task and covers its steps: each is shown, its target
+   outlined, 1.5 s before it is done, so Stop still catches it. A step that changes something always
+   asks: the planner says so (anything but a plain "no" counts), or its keys are Enter, Delete,
+   Backspace, Ctrl with X, V, S, Z, Y, D or W, Alt+F4 or Shift+Insert (whatever the planner calls them),
+   or it types a line break.
 4. **Glimmer looks again**, and the next step starts from the screen as it is now. It ends when the
    planner says the task is done (check it on the screen) or it is stuck, after 20 steps, or at Stop.
+   Do it asks for the share again when fewer than 10 minutes are left, as Fix code does.
 
-A step that would use the Windows key, type a character the keyboard layout can't type, or click a
-box covering most of the screen is refused. Text on the screen is data, never instructions, but a
+Refused outright: keys that reach outside the program (the Windows key by any name, Ctrl+Esc, Alt+Tab,
+Alt+Esc, Ctrl+Alt+Delete; Cmd stays allowed on a Mac), a character the keyboard layout can't type, and
+a target box bigger than half the screen. Text on the screen is data, never instructions, but a
 planner can still be misled by it, so read each step before you allow it, above all in tools that
-change shared data: try a task on test data first.
+change shared data: try a task on test data first. Do it takes its task only from the prompt box.
 
 **Fix code** runs `nanokvm fix`'s loop ([section 6](#6-using-it-read-ask-and-edit)) on a file in VS
 Code, with what is in the prompt box (or your last question) as a hint for Spark. Each edit appears in
@@ -1018,13 +1024,14 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        349 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        354 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
 │   ├── spark_smoke.py            Meta Model API smoke test with dummy text (key: .run\meta_api_key)
 │   ├── capture_frame.py          saves full-resolution NanoKVM frames for the A/B (dummy content only)
 │   ├── glimmer_ab.py             scores Glimmer's reading of those frames against ab_screens\
+│   ├── glimmer_point.py          Do it: does Glimmer point at the right thing? (a synthetic screen, dummy names)
 │   ├── guard_run_dir.py          Claude Code hook: refuses shell commands that would reach .run\ (new)
 │   ├── ab_screens\               dummy C++ files and build errors to show for the A/B, and
 │   │                             live_check.cpp for `nanokvm read --check` (new)

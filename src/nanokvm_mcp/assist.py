@@ -121,6 +121,8 @@ class AssistSession:
         self.test_confirmed = False          # free credits: confirmed with the current share
         self.used_keys = False               # typing was approved at some point: release every key on close
         self.job_typed = False               # this job's typing was approved: Stop says to check the file
+        self.stop_note = ""                  # what Stop says once keys went out (each job sets its own)
+        self.steps_done = 0                  # Do it: steps actually done in this task
         self.stop_event = threading.Event()
         self.closed = False
         self.pending: Approval | None = None
@@ -199,6 +201,8 @@ class AssistSession:
                 return False
             self.stop_event.clear()
             self.job_typed = False
+            self.stop_note = "Stopped: every key was released. Check the file on the locked computer."
+            self.steps_done = 0
             self._worker = threading.Thread(target=self._run, args=(job,), name="viewer-assist", daemon=True)
             self._worker.start()
             return True
@@ -209,8 +213,7 @@ class AssistSession:
         except NotApproved:
             self.post(("info", "Not approved: nothing was read, sent or typed."))
         except KeyboardInterrupt:
-            self.post(("info", "Stopped: every key was released. Check the file on the locked computer."
-                       if self.job_typed else "Stopped."))
+            self.post(("info", self.stop_note if self.job_typed else "Stopped."))
         except EditError as e:
             self.post(("error", f"Nothing was sent or typed: {e}"))
         except OutboundBlocked as e:
@@ -351,19 +354,25 @@ class AssistSession:
                    "Muse Glimmer plans on this laptop; nothing leaves it")
         self.post(("question", f"Do it: {E.safe_text(task, multiline=True)}\n({planner}"
                                + ("; Auto: steps that change nothing run without asking" if auto else "") + ")"))
+        self.stop_note = "Stopped: every key was released. Check what the last step did on the locked computer."
         extra = ([f"Do this task on the locked computer without asking for each step: {E.safe_text(task)!r}. Each step "
-                  "is still shown, with its target outlined on the picture; a step that changes something still asks; "
-                  "Stop ends it."] if auto else [])
-        pipe = self._prepare(cfg, extra)
+                  "is still shown, with its target outlined on the picture, a moment before it is done; a step that "
+                  "changes something still asks; Stop ends it."] if auto else [])
+        pipe = self._prepare(cfg, extra, margin_s=FIX_MARGIN_S)      # a task takes minutes, like a fix
         width, height = pipe.screen_size()
+        self.steps_done = 0
         if use_spark:
             self._do_with_spark(pipe, cfg, task, auto, width, height)
         else:
             self._do_locally(pipe, task, auto, width, height)
 
+    def _steps_line(self, sent: str) -> tuple[str, str]:
+        return (f"({self.steps_done} step(s) done; {sent})", "")
+
     def _do_locally(self, pipe: Pipeline, task: str, auto: bool, width: int, height: int) -> None:
         """Glimmer looks at the screen, plans the next step and finds its target: nothing leaves this laptop."""
         history: list[str] = []
+        nothing = "planned on this laptop, nothing was sent"
         for n in range(1, A.MAX_STEPS + 1):
             self._say(f"Muse Glimmer looks at the screen and plans step {n}")
 
@@ -372,109 +381,136 @@ class AssistSession:
                     task=task, history="\n".join(history) or "none yet"))
                 kind, step = A.parse_plan(reply.content)
                 if kind == "step" and step.action in A.POINTED and step.target:
-                    step.box = A.parse_box(pipe.glimmer.locate(b64, fmt, A.GROUND_PROMPT.format(
+                    step.box, step.missing = A.parse_box(pipe.glimmer.locate(b64, fmt, A.GROUND_PROMPT.format(
                         target=step.target)).content)
                 return kind, step
-            kind, step = pipe.look(plan_and_find)
+            try:
+                kind, step = pipe.look(plan_and_find)
+            except (GlimmerError, ServiceError) as e:
+                if not self.steps_done:
+                    raise
+                self.post(("report", [(f"Stopped early: {type(e).__name__}: {e}", "err"), self._steps_line(nothing)]))
+                return
             if kind in ("done", "stuck"):
                 verdict = ("Muse Glimmer says the task is done: check it on the screen." if kind == "done" else
                            "Muse Glimmer is stuck: it can't see how to go on from this screen.")
                 self.post(("report", [(verdict, "ok" if kind == "done" else "err"),
-                                      (E.safe_text(step) or "(no reason given)", ""),
-                                      (f"({n - 1} step(s) done; planned on this laptop, nothing was sent)", "")]))
+                                      (E.safe_text(step) or "(no reason given)", ""), self._steps_line(nothing)]))
                 return
             result = self._one_step(pipe, step, auto, n, width, height)
             history.append(A.history_line(n, step, result))
             if result == "declined":
-                self.post(("report", [(f"Stopped: you said no to step {n}.", ""),
-                                      (f"({n - 1} step(s) done; nothing was sent)", "")]))
+                self.post(("report", [(f"Stopped: you said no to step {n}.", ""), self._steps_line(nothing)]))
                 return
-        self.post(("report", [(f"Stopped after {A.MAX_STEPS} steps: the task isn't done yet.", "err")]))
+        self.post(("report", [(f"Stopped after {A.MAX_STEPS} steps: the task isn't done yet.", "err"),
+                              self._steps_line(nothing)]))
 
     def _do_with_spark(self, pipe: Pipeline, cfg: Config, task: str, auto: bool, width: int, height: int) -> None:
         """Spark plans from Glimmer's redacted description of the window; Glimmer still finds every target here."""
         self._say("Muse Glimmer describes the window in front")
         reading = pipe.read("ui")
-        gate = OutboundGate(cfg, pipe.glimmer, pipe.spark(), approve=self._approve_send, stand_in=pipe.stand_in)
+        gate = OutboundGate(cfg, pipe.glimmer, pipe.spark(), approve=self._approve_send, stand_in=pipe.stand_in,
+                            trusted=A.TOLD_TRUSTED)
         prepared = gate.prepare(reading.text, task, reading.frame.get("image_sha256"), trim=False)
         history: list[dict] = []
         cost, turns, n = 0.0, 0, 0
 
         def report(*first: tuple[str, str]) -> None:
-            self.post(("report", [*first, (f"({n} step(s) done; {turns} request(s) to {cfg.spark_model}, store=false, "
-                                           f"cost ${cost:.4f}; logged in {cfg.run_dir / 'outbound.log'})", "")]))
-        while turns < A.MAX_ACT_TURNS:
-            self._say("asking Muse Spark for the next step")
-            answer = gate.ask(prepared, A.ACT_SYSTEM, tools=[A.UI_STEP], parallel_tool_calls=False, history=history)
-            turns += 1
-            cost += answer.reply.cost_usd
-            if not answer.tool_calls:
-                text = E.safe_text(answer.content or "", multiline=True).strip()
-                if text.upper().startswith("DONE"):            # nanokvm's own line gets the colour, never Spark's text
-                    report(("Muse Spark says the task is done: check it on the screen.", "ok"), (text, ""))
-                else:
-                    report((text or "Muse Spark sent an empty reply", ""))
-                return
-            history.append({"role": "assistant", "content": answer.reply.content or None,
-                            "tool_calls": [{"id": c["id"], "type": "function",
-                                            "function": {"name": c["name"], "arguments": c["arguments"]}}
-                                           for c in answer.reply.tool_calls]})
-            call = answer.tool_calls[0]
-            told = "Unknown tool; only ui_step exists."
-            if call["name"] == "ui_step":
-                try:
-                    step = A.step_from_args(call["arguments"])
-                except A.StepRejected as e:
-                    told = f"Not done: {e}."
-                else:
-                    if step.action in A.POINTED and step.target:
-                        step.box = A.parse_box(pipe.look(lambda b64, fmt: pipe.glimmer.locate(
-                            b64, fmt, A.GROUND_PROMPT.format(target=step.target))).content)
-                    n += 1
-                    result = self._one_step(pipe, step, auto, n, width, height)
-                    if result == "declined":
-                        report((f"Stopped: you said no to step {n}.", ""))
-                        return
-                    told = "Done." if result == "done" else f"Not done: {result.removeprefix('not done: ')}."
-                    self._say("Muse Glimmer describes the window in front again")
-                    told += "\n\nThe window in front, read again:\n" + gate.screen_blocks(prepared, pipe.read("ui").text)
-            history.append({"role": "tool", "tool_call_id": call["id"], "content": told})
-            for other in answer.tool_calls[1:]:
-                history.append({"role": "tool", "tool_call_id": other["id"], "content": "Not done: one step per reply."})
-            if n >= A.MAX_STEPS:
-                report((f"Stopped after {A.MAX_STEPS} steps: the task isn't done yet.", "err"))
-                return
-        report((f"Stopped after {A.MAX_ACT_TURNS} requests to Spark.", "err"))
+            self.post(("report", [*first, self._steps_line(f"{turns} request(s) to {cfg.spark_model}, store=false, "
+                                                           f"cost ${cost:.4f}; logged in {cfg.run_dir / 'outbound.log'}")]))
+        try:
+            while turns < A.MAX_ACT_TURNS:
+                self._say("asking Muse Spark for the next step")
+                answer = gate.ask(prepared, A.ACT_SYSTEM, tools=[A.UI_STEP], parallel_tool_calls=False,
+                                  history=A.keep_newest_reading(history))
+                turns += 1
+                cost += answer.reply.cost_usd
+                if not answer.tool_calls:
+                    text = E.safe_text(answer.content or "", multiline=True).strip()
+                    reply = answer.reply
+                    if reply.refusal:
+                        report((f"Muse Spark refused: {E.safe_text(reply.refusal)}", "err"))
+                    elif reply.finish_reason in ("length", "content_filter"):
+                        report((f"Muse Spark's reply was cut off (finish_reason {reply.finish_reason!r})", "err"))
+                    elif text.upper().startswith("DONE"):         # nanokvm's own line gets the colour, never Spark's
+                        report(("Muse Spark says the task is done: check it on the screen.", "ok"), (text, ""))
+                    else:
+                        report((text or "Muse Spark sent an empty reply", ""))
+                    return
+                history.append({"role": "assistant", "content": answer.reply.content or None,
+                                "tool_calls": [{"id": c["id"], "type": "function",
+                                                "function": {"name": c["name"], "arguments": c["arguments"]}}
+                                               for c in answer.reply.tool_calls]})
+                call = answer.tool_calls[0]
+                told = A.TOLD_UNKNOWN_TOOL
+                if call["name"] == "ui_step":
+                    try:
+                        step = A.step_from_args(call["arguments"])
+                    except A.StepRejected as e:
+                        told = f"{A.TOLD_NOT_DONE}{e}."
+                    else:
+                        if step.action in A.POINTED and step.target:
+                            step.box, step.missing = A.parse_box(pipe.look(lambda b64, fmt: pipe.glimmer.locate(
+                                b64, fmt, A.GROUND_PROMPT.format(target=step.target))).content)
+                        n += 1
+                        result = self._one_step(pipe, step, auto, n, width, height)
+                        if result == "declined":
+                            report((f"Stopped: you said no to step {n}.", ""))
+                            return
+                        told = A.TOLD_DONE if result == "done" else f"{A.TOLD_NOT_DONE}{result.removeprefix('not done: ')}."
+                        self._say("Muse Glimmer describes the window in front again")
+                        told += A.TOLD_READ_AGAIN + gate.screen_blocks(prepared, pipe.read("ui").text)
+                history.append({"role": "tool", "tool_call_id": call["id"], "content": told})
+                for other in answer.tool_calls[1:]:
+                    history.append({"role": "tool", "tool_call_id": other["id"], "content": A.TOLD_ONE_STEP})
+                if n >= A.MAX_STEPS:
+                    report((f"Stopped after {A.MAX_STEPS} steps: the task isn't done yet.", "err"))
+                    return
+            report((f"Stopped after {A.MAX_ACT_TURNS} requests to Spark.", "err"))
+        except (OutboundBlocked, SparkError, GlimmerError, ServiceError) as e:
+            if not self.steps_done:
+                raise                                        # nothing was done: the usual error line
+            report((f"Stopped early: {type(e).__name__}: {e}", "err"))
 
     def _one_step(self, pipe: Pipeline, step: A.Step, auto: bool, n: int, width: int, height: int) -> str:
         """Check one step, show it (its target outlined on the picture), get the yes (Auto: only for a step that
-        changes something) and do it. What happened, in words without screen text: done, declined, or not done."""
+        changes something; the others are shown AUTO_SHOW_S before they are done) and do it. What happened, in words
+        without screen text: done, declined, or not done."""
+        mac = (self.base_cfg.locked_os or "").strip().lower() == "macos"
         try:
-            A.check_step(step, self.base_cfg.keyboard_layout)
+            A.check_step(step, self.base_cfg.keyboard_layout, mac)
         except A.StepRejected as e:
             self._say(f"step {n} can't be done: {e}")
             return f"not done: {e}"
         if step.action in A.POINTED and step.box is None:
-            self._say(f"step {n}: Muse Glimmer couldn't find {E.safe_text(step.target)} on the screen")
-            return "not done: the screen reader couldn't find that on the screen"
-        shown = E.safe_text(step.describe(), multiline=True) + (" (outlined in orange on the picture)" if step.box else "")
+            self._say(f"step {n}: {E.safe_text(step.describe())}: {step.missing or 'no target found'}")
+            return f"not done: {step.missing or 'the screen reader could not find that on the screen'}"
+        shown = E.safe_text(step.describe()) + (" (outlined in orange on the picture)" if step.box else "")
         if step.why:
             shown += f"\nWhy: {E.safe_text(step.why)}"
         if step.risky:
             shown += "\nThis step changes something."
         if step.box:
-            self.post(("target", step.box))
+            look = pipe.last_look or {}
+            outline = (A.frame_box(step.box, look["capture_rect"], look["frame_size"])
+                       if look.get("capture_rect") and look.get("frame_size") else step.box)
+            self.post(("target", outline))
         try:
             if auto and not step.risky:
                 self._say(f"Auto: step {n}: {E.safe_text(step.describe())}")
-                ok = True
-            else:
-                ok = self._confirm(Approval("step", f"Step {n}: do this?", shown, "Do this step", "Stop here"))
-            if not ok:
+                if self.stop_event.wait(A.AUTO_SHOW_S):      # seen before it is done; Stop still works
+                    raise KeyboardInterrupt
+            elif not self._confirm(Approval("step", f"Step {n}: do this?", shown, "Do this step", "Stop here")):
                 return "declined"
             self.used_keys = self.job_typed = True
-            self._act(pipe, A.act_body(step, width, height))
-            time.sleep(1.0)                                  # let the screen settle before the next look
+            reply = self._act(pipe, A.act_body(step, width, height))
+            summary = str(reply.get("summary", ""))
+            if "(note:" in summary:                          # the keyboard wake-up couldn't confirm the keys
+                self._say(summary[summary.index("(note:"):])
+            time.sleep(1.5)                                  # let the screen settle before the next look
+            if "STOPPED" in summary or "stopped after" in summary:
+                return "not done: the keys didn't all go through"
+            self.steps_done += 1
             return "done"
         finally:
             if step.box:
