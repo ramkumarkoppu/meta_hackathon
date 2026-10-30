@@ -13,18 +13,28 @@ each irreversible step:
   2. check: VS Code's Go to Line box (":") is open; digits and Enter typed anywhere else could do harm
      (in VS Code's terminal, Ctrl+G is Go to Recent Directory and Enter runs a cd)
   3. the start line's digits, Enter     VS Code puts the cursor at column 1 (checked against its source)
-  4. check: the status bar says "Ln S, Col 1" with nothing selected, and the lines there are the ones
-     Spark changed
+  4. check: the status bar says "Ln S, Col 1" with nothing selected, and the lines there read as the ones
+     Spark changed (indentation aside: that is what a re-read gets wrong most, and whole lines are replaced)
   5. Ctrl+L once per line               select the whole lines (file lines, even with word wrap); check
-                                        the status bar again: the selection must end exactly after them
+                                        the status bar again: the selection must end exactly after them,
+                                        or, for an edit that ends on the last line shown, at the end of the
+                                        file (a last line shown that isn't the file's may go on below the
+                                        screen, unread)
   6. Backspace, then type the new lines delete first, so editor.autoSurround can't wrap the selection
   7. check: the new lines are on the screen, indentation included, followed by the line that came
-     after the old ones
+     after the old ones (at the end of the file: the empty line the typing leaves there)
 
-If a check before step 6 fails, only navigation keys were sent and the file is unchanged; the session stops.
-Messages sent back to Spark say what happened in words and line numbers only, never screen text. Every
-request to the service runs on a worker thread, so Ctrl+C in the terminal is seen at once (Windows delivers it
-only between Python bytecodes) and releases every key while the service is still typing.
+If a check before step 6 fails, only navigation keys were sent and the file is unchanged; the session stops,
+except that nanokvm fix shows Spark the screen as read now when it no longer reads as Spark's lines, so Spark
+can try again from that reading. Messages sent back to Spark say what happened in words and line numbers only,
+never screen text. Every request to the service runs on a worker thread, so Ctrl+C in the terminal is seen at
+once (Windows delivers it only between Python bytecodes) and releases every key while the service is still
+typing.
+
+nanokvm fix then saves the file, if the person allowed it, once Spark has answered FIXED on a fresh reading of
+the screen: a read of the selected tab (the file Glimmer named, with VS Code's unsaved-changes dot), the Go to
+Line check of steps 1-2 (so the keys go to VS Code: Ctrl+S elsewhere could save something else), Escape, Ctrl+S,
+and a read of the tab again: the dot must have gone.
 """
 from __future__ import annotations
 
@@ -44,6 +54,7 @@ MAX_TURNS = 6                  # requests to Spark per session
 MAX_CHECKS = 2                 # nanokvm fix: fresh readings of the screen sent back to Spark after it says it's done
 TYPE_CHUNK = 1500              # characters per type action (at most the service's max_text_len)
 MAX_NOTE = 200                 # characters of Spark's note shown at the approval prompt
+LAST_LINE_SLACK = 3            # characters the file's last line may be longer than read (spaces miscounted)
 
 PLACEHOLDER_RE = re.compile(r"\[\[[A-Z]+_\d+\]\]")
 _NUMBERED_RE = re.compile(r"^\s*(\d{1,6})(?: (.*))?$")
@@ -78,13 +89,22 @@ EDIT_SYSTEM = ("You fix code for a developer. The user's message has their reque
 # nanokvm fix: the request when the user gives none. Spark works out the error itself.
 FIX_REQUEST = ("Find what is wrong in this file and fix it: errors that stop it compiling or running first, then "
                "obvious bugs. <screen_notes> says what the screen reader noticed, but it can be incomplete or wrong, "
-               "so check the code itself. If nothing needs fixing, say so without calling the tool.")
+               "so check the code itself. Fix the cause itself: don't comment code out or hide it with a trick such "
+               "as a line continuation, and if a line that needs changing can't be edited, say so instead. If "
+               "nothing needs fixing, say so without calling the tool.")
 # nanokvm fix: sent with a fresh reading of the screen once Spark says it's done, so the fix is checked on the screen.
+# FIXED is the word nanokvm looks for before it saves the file (confirms_fix).
 CHECK_REQUEST = ("Here is the screen again, read after your edits. Check every line shown, the last ones too: would "
                  "this file now compile and do what it should? Look especially for anything the edits broke, such "
-                 "as a brace, bracket or line that is now doubled or missing. If it is fixed, say so in one sentence "
-                 "without calling the tool. If something is still wrong, fix it with apply_edit, using these line "
-                 "numbers.")
+                 "as a brace, bracket or line that is now doubled or missing. If it is fixed, reply FIXED and one "
+                 "sentence, without calling the tool. If something is still wrong, fix it with apply_edit, using "
+                 "these line numbers, or say why it can't be fixed from these lines.")
+_FIXED_RE = re.compile(r"[\W_]*fixed\b", re.I)
+
+
+def confirms_fix(reply: str | None) -> bool:
+    """Whether Spark's answer to CHECK_REQUEST says the file is fixed: it starts with the word FIXED."""
+    return bool(_FIXED_RE.match(reply or ""))
 
 
 class EditRejected(ValueError):
@@ -128,8 +148,9 @@ def numbered_lines(transcription: str, strict: bool = False, wrapped: bool = Tru
     ``strict`` (used for editing) leaves out every line whose reading may be incomplete or wrong: a wrapped row
     that happens to start with a number looks like a new line, and the line it belongs to then looks shorter
     than it is. So it drops the line before any jump in the numbering (sticky-scroll and folded lines jump
-    too), every number read twice and the line before each reading of it (a phantom row numbered like the
-    next line, or a split or diff view), and the last line, whose wrapped rows may go on below the screen."""
+    too), and every number read twice and the line before each reading of it (a phantom row numbered like the
+    next line, or a split or diff view). The last line shown stays: its wrapped rows may go on below the screen,
+    so plan_edit marks an edit that ends on it, and the typer replaces it only if it is the file's last line."""
     out: dict[int, str] = {}
     order: list[int] = []
     last = None
@@ -147,7 +168,7 @@ def numbered_lines(transcription: str, strict: bool = False, wrapped: bool = Tru
             out[last] = out[last].rstrip() + " " + raw.strip()
     if not strict:
         return out
-    doubtful = {order[-1]} if order else set()
+    doubtful = set()
     for i, n in enumerate(order):
         if i + 1 < len(order) and order[i + 1] != n + 1:
             doubtful.add(n)
@@ -187,18 +208,20 @@ def is_goto_box(text: str) -> bool:
     return "type a line number" in " ".join(lines[:3]).lower()
 
 
-def lines_match(screen: dict[int, str], start: int, expected: list[str]) -> bool:
-    """Whether the screen shows ``expected`` from line ``start`` on, indentation included."""
-    return all(start + i in screen and same_line(screen[start + i], line) for i, line in enumerate(expected))
+def lines_match(screen: dict[int, str], start: int, expected: list[str], indent: bool = True) -> bool:
+    """Whether the screen shows ``expected`` from line ``start`` on, indentation included unless ``indent`` is
+    False (then only the text counts)."""
+    return all(start + i in screen and (same_line(screen[start + i], line) if indent else
+                                        _norm(screen[start + i]) == _norm(line)) for i, line in enumerate(expected))
 
 
-def mismatch(screen: dict[int, str], start: int, expected: list[str]) -> str:
+def mismatch(screen: dict[int, str], start: int, expected: list[str], indent: bool = True) -> str:
     """Why lines_match failed, for the first line that differs, in numbers only (no screen text)."""
     for i, want in enumerate(expected):
         n = start + i
         if n not in screen:
             return f"line {n} couldn't be read reliably"
-        if _indent(screen[n]) != _indent(want):
+        if indent and _indent(screen[n]) != _indent(want):
             return f"line {n} reads with {_indent(screen[n])} spaces of indentation, not {_indent(want)}"
         if _norm(screen[n]) != _norm(want):
             return f"line {n}'s text reads differently"
@@ -214,6 +237,7 @@ class EditPlan:
     note: str                     # Spark's note: one line, control characters shown as escapes
     after: str | None = None      # the line that followed the old ones (checks nothing extra was deleted)
     select_key: str = "ctrl+l"    # VS Code's Expand Line Selection (cmd+l on a Mac)
+    at_bottom: bool = False       # the old lines end on the last line shown, which may go on below the screen
 
     @property
     def text(self) -> str:
@@ -228,7 +252,8 @@ class EditPlan:
              f"type {self.start}, Enter (go to line {self.start}), then check the status bar and the lines"]
         if self.replaced:
             key = "+".join(k.capitalize() for k in self.select_key.split("+"))
-            s.append(f"{key} x{self.replaced} (select {self.span()}), check the status bar, then Backspace "
+            last = f" (line {self.end} must be the file's last line)" if self.at_bottom else ""
+            s.append(f"{key} x{self.replaced} (select {self.span()}), check the status bar{last}, then Backspace "
                      f"(delete {'them' if self.replaced > 1 else 'it'})")
         if self.new:
             s.append(f"type {len(self.new)} line{'s' if len(self.new) != 1 else ''} ({len(self.text)} characters)")
@@ -281,9 +306,9 @@ def plan_edit(args: dict, screen: dict[int, str], layout: str, mapping: dict[str
     for n in range(start, max(start, end) + 1):
         if n not in screen:
             shown = f"lines {min(screen)}-{max(screen)} can be edited" if screen else "no lines can be edited"
-            raise EditRejected(f"line {n} can't be edited from this reading: it may be off the screen, or it is the "
-                               f"last line shown or its number was read twice, so its text may be incomplete. That "
-                               f"doesn't mean it is missing from the file, so don't add it again; {shown}")
+            raise EditRejected(f"line {n} can't be edited from this reading: it may be off the screen, or its number "
+                               f"was read twice or out of order, so its text may be incomplete. That doesn't mean it "
+                               f"is missing from the file, so don't add it again; {shown}")
     new_text = new_text.replace("\r\n", "\n")
     if "\r" in new_text or "\t" in new_text:
         raise EditRejected("new_text contains a tab or carriage return; indent with spaces")
@@ -304,7 +329,7 @@ def plan_edit(args: dict, screen: dict[int, str], layout: str, mapping: dict[str
         raise EditRejected(why)
     note = " ".join((note if isinstance(note, str) else "").split())
     note = safe_text(note[:MAX_NOTE] + ("..." if len(note) > MAX_NOTE else ""))
-    return EditPlan(start, end, old, new, note, screen.get(end + 1))
+    return EditPlan(start, end, old, new, note, screen.get(end + 1), at_bottom=end >= start and end == max(screen))
 
 
 @dataclass
@@ -312,17 +337,53 @@ class EditOutcome:
     status: str                   # verified, not_applied (only navigation keys were sent) or unverified
     detail: str                   # for the person at the keyboard; words and numbers only
     screen: dict[int, str] = field(default_factory=dict)   # the lines read after the edit (local only)
+    retry: bool = False           # not_applied because of what the screen shows now: Spark may try again from it
+    file_end: bool = False        # the edit replaced the file's last lines (it now ends with an empty line)
 
     def for_spark(self, plan: EditPlan) -> str:
         """What Spark is told: words and line numbers only, never screen text."""
         if self.status == "verified":
+            if self.file_end:
+                last = plan.start + len(plan.new)
+                where = (f"{len(plan.new)} new line(s) are now at line {plan.start}, and " if plan.new else "") + \
+                        f"line {last}, the file's last line, is now empty"
+                return f"Applied and checked on the screen ({plan.span()}): {where}."
             moved = len(plan.new) - plan.replaced
             shift = (f"; lines after it moved {'down' if moved > 0 else 'up'} by {abs(moved)}" if moved else "")
             where = f"{len(plan.new)} new line(s) are now at line {plan.start}" if plan.new else "the lines were deleted"
             return f"Applied and checked on the screen ({plan.span()}): {where}{shift}."
         if self.status == "not_applied":
-            return f"Not applied: {self.detail}. Only navigation keys were sent; the file wasn't changed. Stop editing."
+            done = "Only navigation keys were sent; the file wasn't changed."
+            return f"Not applied: {self.detail}. {done}" + ("" if self.retry else " Stop editing.")
         return "Typed, but the screen doesn't show the expected result. Stop editing; the user will check the file."
+
+
+@dataclass
+class SaveOutcome:
+    status: str       # saved (checked on the screen), unchecked (Ctrl+S sent, not checkable), failed (Ctrl+S sent,
+                      # still unsaved), not_saved (a check before Ctrl+S failed), declined, or skipped (no checked fix)
+    detail: str       # for the person at the keyboard
+
+
+TAB_STATES = ("UNSAVED", "SAVED")
+
+
+def file_key(name: str | None) -> str:
+    """A file name as Glimmer read it, for comparing two readings: the last part of any path, without quotes or
+    the tab's marks, in lower case. Empty if nothing like a name is left."""
+    s = (name or "").strip().strip("'\"`*").strip().rstrip("●•○◯×✕✖ ").strip()
+    return re.split(r"[\\/]|,\s*|\s+[-–—]\s+", s)[-1].strip().strip("'\"`*").casefold() if s else ""
+
+
+def parse_tab(text: str | None) -> tuple[str, str | None] | None:
+    """(file name, "UNSAVED", "SAVED" or None if unclear) from Glimmer's reading of the selected editor tab, or
+    None if it saw no tab."""
+    lines = [ln.strip() for ln in (text or "").strip().splitlines() if ln.strip()]
+    if not lines or lines[0].strip("'\"`*.").upper() == "NONE":
+        return None
+    words = {re.sub(r"[^A-Z]", "", ln.upper()) for ln in lines[1:]}
+    state = next((s for s in TAB_STATES if s in words), None)
+    return lines[0], state
 
 
 class EditTyper:
@@ -332,9 +393,10 @@ class EditTyper:
 
     def __init__(self, act: Callable[[dict], dict], read_lines: Callable[[], dict[int, str]],
                  read_status: Callable[[], str], read_box: Callable[[], str], pause_s: float = 0.4,
-                 select_line_key: str = "ctrl+l", chunk: int = TYPE_CHUNK) -> None:
+                 select_line_key: str = "ctrl+l", chunk: int = TYPE_CHUNK, save_key: str = "ctrl+s") -> None:
         self.act, self.read_lines, self.read_status, self.read_box = act, read_lines, read_status, read_box
         self.pause_s, self.select_line_key, self.chunk = pause_s, select_line_key, max(1, chunk)
+        self.save_key = save_key
 
     def _call(self, body: dict) -> dict:
         """One service request on a worker thread. The main thread waits in short steps, so Ctrl+C reaches it
@@ -379,8 +441,9 @@ class EditTyper:
             self.act({"action": "release_all"})        # stops typing between keystrokes, every key up
             raise
 
-    def _apply(self, plan: EditPlan) -> EditOutcome:
-        # 1-2. open Go to Line, and type nothing more until it is seen open: elsewhere digits and Enter could act
+    def _open_goto(self) -> str | None:
+        """Escape, Ctrl+G, and Glimmer's check that VS Code's Go to Line box opened. None once it is open;
+        otherwise why not, after an Escape that closes whatever did open."""
         self._keys("escape")                         # closes an open widget and cancels a pending chord
         self._pause(0.5)
         self._keys("ctrl+g")
@@ -394,17 +457,22 @@ class EditTyper:
             self._keys("ctrl+g")
             self._pause(3)                          # three times the usual wait: 1.2 s at the default pause
             box = self.read_box()
-        if not is_goto_box(box):
-            self._keys("escape")
-            first = ((box or "").strip().splitlines() or [""])[0].strip().strip("'\"`").strip().upper()
-            if first in ("", "NONE"):
-                seen = ("Glimmer saw no box at the top of the screen, so VS Code's Go to Line box didn't open: is the "
-                        "file focused in VS Code, and does the locked computer take the NanoKVM's keys (try "
-                        "'nanokvm keytest')?")
-            else:
-                seen = ("Glimmer saw a box at the top of the screen, but not VS Code's Go to Line box (':'): is "
-                        "another panel or app focused?")
-            return EditOutcome("not_applied", f"after Ctrl+G, {seen}")
+        if is_goto_box(box):
+            return None
+        self._keys("escape")
+        first = ((box or "").strip().splitlines() or [""])[0].strip().strip("'\"`").strip().upper()
+        if first in ("", "NONE"):
+            return ("Glimmer saw no box at the top of the screen, so VS Code's Go to Line box didn't open: is the "
+                    "file focused in VS Code, and does the locked computer take the NanoKVM's keys (try "
+                    "'nanokvm keytest')?")
+        return ("Glimmer saw a box at the top of the screen, but not VS Code's Go to Line box (':'): is another "
+                "panel or app focused?")
+
+    def _apply(self, plan: EditPlan) -> EditOutcome:
+        # 1-2. open Go to Line, and type nothing more until it is seen open: elsewhere digits and Enter could act
+        why = self._open_goto()
+        if why:
+            return EditOutcome("not_applied", f"after Ctrl+G, {why}")
         # 3. go to the line; nothing is changed yet
         self._type(str(plan.start))
         self._pause(0.25)
@@ -418,36 +486,104 @@ class EditTyper:
                                               "Col 1 (is the file focused in VS Code, with the status bar on?)")
         screen = self.read_lines()
         expected = plan.old if plan.replaced else ([plan.after] if plan.after is not None else [])
-        if not lines_match(screen, plan.start, expected):
+        # Indentation aside: a re-read gets it wrong more than anything (seen live on 30 Oct: 4 spaces, then 0), and
+        # whole lines are replaced whatever their indentation. Any other difference: Spark gets the screen again.
+        if not lines_match(screen, plan.start, expected, indent=False):
             return EditOutcome("not_applied", f"the screen no longer shows the expected lines at line {plan.start}: "
-                                              + mismatch(screen, plan.start, expected))
+                                              + mismatch(screen, plan.start, expected, indent=False), screen, retry=True)
         # 5. select the whole lines; the selection must end at column 1 of the line after them before anything is
-        #    deleted (the file's last line is never edited: the strict reading leaves out the last line shown)
+        #    deleted, or, when they end on the last line shown, at the end of the file: VS Code's own count, so a
+        #    last line that goes on below the screen, unread, is never deleted
+        file_end = False
         if plan.replaced:
             self._keys(self.select_line_key, plan.replaced)
             self._pause()
             st = self._status()
             want = plan.start + plan.replaced
-            if st is None or st[2] == 0 or st[:2] != (want, 1):
+            if plan.at_bottom and st is not None and st[0] == plan.end:
+                # the selection stopped on line E, so it is the file's last line, and Col shows how long it really is:
+                # no longer than it reads (a part off the screen would be deleted unread), and not 1 unless it reads
+                # empty (a lost Ctrl+L also stops at Col 1). Ctrl+L selects nothing on an empty last line.
+                n = len(plan.old[-1])
+                file_end = (st[1] == 1 if n == 0 else 2 <= st[1] <= n + 1 + LAST_LINE_SLACK) and \
+                    (st[2] == 0 if plan.replaced == 1 and n == 0 else st[2] > 0)
+                if not file_end:
+                    self._keys("escape")
+                    return EditOutcome("not_applied", f"after selecting, the status bar shows Ln {plan.end}, Col "
+                                       f"{st[1]}, {st[2]} selected: line {plan.end} is the file's last line, but that "
+                                       f"doesn't fit the {n} characters it reads as (part of it may be off the screen, "
+                                       "or a key was lost)")
+            elif st is None or st[2] == 0 or st[:2] != (want, 1):
                 self._keys("escape")                    # drop the selection; nothing was deleted
                 seen = ("nothing readable" if st is None
                         else f"Ln {st[0]}, Col {st[1]}, {st[2]} selected")
                 return EditOutcome("not_applied", f"after selecting, the status bar shows {seen}, not Ln {want}, "
                                                   f"Col 1 (the end of {plan.span()})")
+            elif plan.at_bottom:
+                self._keys("escape")                    # line E goes on: the file doesn't end there
+                return EditOutcome("not_applied", f"line {plan.end} is the last line on the screen and the file goes on "
+                                                  "below it, so its text may be cut off: it can't be edited from this "
+                                                  "screen", screen, retry=True)
             # 6. delete them, then type the new lines
-            self._keys("backspace")
+            if st[2]:
+                self._keys("backspace")
         if plan.new:
             self._type(plan.text)
         self._pause(1.5)
         # 7. check the result
         screen = self.read_lines()
-        expected = plan.new + ([plan.after] if plan.after is not None else [])
+        expected = plan.new + ([""] if file_end else [plan.after] if plan.after is not None else [])
         if not expected:
             return EditOutcome("unverified", "deleted, but the line after the deleted ones isn't on the screen to "
                                              "check against", screen)
         if lines_match(screen, plan.start, expected):
             what = (f"{plan.span()} replaced" if plan.replaced and plan.new else
                     f"{plan.span()} deleted" if plan.replaced else f"{len(plan.new)} line(s) inserted {plan.span()}")
-            return EditOutcome("verified", f"{what} and checked on the screen", screen)
+            ends = f"; the file now ends with an empty line {plan.start + len(plan.new)}" if file_end else ""
+            return EditOutcome("verified", f"{what} and checked on the screen{ends}", screen, file_end=file_end)
         return EditOutcome("unverified", "typed, but the screen doesn't show the expected lines: check the file on "
                                          "the locked computer (File: Revert File returns to the saved version)", screen)
+
+    # ---- saving (nanokvm fix, once Spark has checked the fix)
+    def save(self, name: str, read_tab: Callable[[], str]) -> SaveOutcome:
+        """Save the file Glimmer named, with VS Code's save key, and check on the screen that it saved.
+        ``read_tab`` reads the selected editor tab: its file name and whether it shows unsaved changes."""
+        try:
+            return self._save(name, read_tab)
+        except KeyboardInterrupt:
+            self.act({"action": "release_all"})
+            raise
+
+    def _save(self, name: str, read_tab: Callable[[], str]) -> SaveOutcome:
+        want = file_key(name)
+        if not want:
+            return SaveOutcome("not_saved", "Glimmer's notes don't name the file")
+        if want.startswith("untitled-"):
+            return SaveOutcome("not_saved", "the file is untitled, so Ctrl+S would ask where to save it")
+        before = parse_tab(read_tab())
+        if before is None:
+            return SaveOutcome("not_saved", "Glimmer saw no VS Code editor tab at the top of the screen")
+        if file_key(before[0]) != want:
+            return SaveOutcome("not_saved", f"the selected tab reads as {safe_text(before[0])!r}, not the file Glimmer "
+                                            f"noted ({safe_text(name)!r})")
+        why = self._open_goto()                      # VS Code has the keys: Ctrl+S elsewhere could save something else
+        if why:
+            return SaveOutcome("not_saved", f"after Ctrl+G, {why}")
+        self._keys("escape")
+        self._pause(0.5)
+        self._keys(self.save_key)
+        self._pause(2)
+        after = parse_tab(read_tab())
+        key = "+".join(k.capitalize() for k in self.save_key.split("+"))
+        if after is not None and after[1] == "SAVED":
+            if before[1] == "UNSAVED":
+                return SaveOutcome("saved", f"{key} sent, and Glimmer saw the tab's unsaved-changes dot go")
+            return SaveOutcome("unchecked", f"{key} sent, but Glimmer saw no unsaved-changes dot on the tab before it "
+                                            "either (is auto-save on?), so the save can't be checked on the screen")
+        if after is not None and after[1] == "UNSAVED":
+            self._keys("escape")                     # cancels a Save As dialog, if one opened
+            return SaveOutcome("failed", f"{key} sent, but the tab still shows unsaved changes: check VS Code on the "
+                                         "locked computer for a message (Escape was sent, in case a Save As dialog "
+                                         "opened)")
+        return SaveOutcome("unchecked", f"{key} sent, but Glimmer couldn't read the tab afterwards, so the save can't "
+                                        "be checked on the screen")

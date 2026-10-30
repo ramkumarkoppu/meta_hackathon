@@ -19,6 +19,7 @@ computer, the **AI computer**:
    (`store: false`). Spark answers, or proposes code edits as function calls.
 5. **Act, with your approval.** You approve each edit at the keyboard, or once per run with `--auto`. It is typed into VS Code on the
    locked computer through the NanoKVM-USB's keyboard, and Glimmer reads the screen again to check it.
+   `fix` then saves the file, once Spark has checked the fix on a fresh reading and you have allowed it.
 
 **Not just code.** The aim is to help with whatever the locked computer shows: the errors and messages
 of its software tools, often locked-down legacy tools nothing else can help with, as well as code.
@@ -194,7 +195,7 @@ switch Billing to pay as you go and set `meta_billing = "paid"`.
 *out*; the only thing that goes back is the monitor identification (EDID) every monitor sends.
 Cable 4 carries only keyboard and mouse input; the NanoKVM can send keystrokes but never read them.
 `nanokvm edit` and `fix` type only edits you approve at their prompt (each one, or once per run with
-`--auto`). The service itself accepts keystrokes from
+`--auto`), and `fix` saves only with the same approval. The service itself accepts keystrokes from
 any program that can read `.run\token` ([section 10](#10-safety-details)), including the Claude Code
 bridge, which asks you in Claude Code before each action.
 **Physical switches:** unplug cable 4 and nothing can be typed; unplug cable 3 and the AI computer can
@@ -344,8 +345,9 @@ they close brackets, quotes, `/*` comments and HTML or JSX tags, add indentation
 instead of replacing it, generate Doxygen comments, and let Enter, Tab or punctuation accept a
 suggestion. Before you run
 `nanokvm edit` or `fix`, switch them off in the same settings file, and keep VS Code from saving or
-reformatting by itself (`files.autoSave` off, `editor.formatOnSave` false): nanokvm never saves, so
-nothing it types is saved until you have looked at it. The C/C++ extension's own `[cpp]` defaults
+reformatting by itself (`files.autoSave` off, `editor.formatOnSave` false): `edit` never saves, and
+`fix` saves only once Spark has checked the fix on the screen and you have allowed it, checking the
+save by the tab's unsaved-changes dot, which auto-save would hide. The C/C++ extension's own `[cpp]` defaults
 win over global settings, so the main ones are repeated in a `[cpp]` block. (These were checked
 against VS Code 1.144's source on 29 Oct.)
 
@@ -531,18 +533,24 @@ an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in 
   the system's notifications), shows you those notes, and Spark gets a built-in instruction, the notes
   and every code line on the screen, untrimmed, so it can find the error itself. After each typed
   edit, Spark also gets the screen as Glimmer read it to check that edit, so its next step starts from
-  the screen as it is now. When Spark says it's done, Glimmer reads the screen afresh (the code and its
-  notes again) and Spark checks every line for anything the edits broke; if something is still wrong it
-  carries on editing. That final check happens at most twice, within the limits below.
+  the screen as it is now. If the screen no longer reads as the lines Spark changed when an edit is about
+  to be typed (Glimmer can read a line differently the second time), nothing is typed and Spark gets
+  the screen as read then, to try again from it. When Spark says it's done, Glimmer reads the screen
+  afresh (the code and its notes again) and Spark checks every line for anything the edits broke; if
+  something is still wrong it carries on editing. That final check happens at most twice, within the
+  limits below. Once Spark answers it with *FIXED*, `fix` asks *Save … in VS Code on the locked
+  computer?* and saves the file ([how it saves](#saving-after-the-fix)).
 - **`--auto`** (for `edit` and `fix`) types Spark's edits without asking for each one. You allow it once
   per run, at the keyboard: the share prompt then asks to share the screen *and* to type without
-  asking. Each edit is still shown, the screen is checked before and after typing, the first failed
-  check stops the run, Ctrl+C stops it at once, and nothing is saved: review the changes before you save
-  (Ctrl+Z or *File: Revert File* undoes them). Meta's usage policy asks for authorization, oversight,
-  review and confirmation before consequential actions; the once-per-run yes, the checks and leaving the
-  saving to you are how this mode provides them. Check that the locked computer's owner is happy with
-  edits typed this way. While Meta billing is on free credits, the same yes also confirms that the
-  screen shows only test or dummy content.
+  asking, and for `fix` also to save the file once Spark has checked the fix on the screen. Each edit
+  is still shown, the screen is checked before and after typing, the first failed check stops the run,
+  and Ctrl+C stops it at once. `edit` never saves; `fix` saves only after Spark's check on a fresh
+  reading, and checks the save on the screen. Ctrl+Z in VS Code still undoes the edits after a save.
+  Meta's usage policy asks for authorization, oversight, review and confirmation before consequential
+  actions; the once-per-run yes, which names the save, and the checks before and after every step are
+  how this mode provides them. Check that the locked computer's owner is happy with edits typed and
+  saved this way. While Meta billing is on free credits, the same yes also confirms that the screen
+  shows only test or dummy content.
 
 **Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
 `tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must
@@ -565,9 +573,9 @@ printed above them can't.
 1. **Checks on the AI computer.** Placeholders are restored; no placeholder or tab may be left; every
    character must be typeable on the keyboard layout; at most 40 lines and 2,000 characters per edit;
    and the lines must be on the screen and read unambiguously. Lines whose numbering looks wrong (a
-   wrapped row read as a new line, a sticky-scroll header, a number read twice) are left out, and so
-   is the last line shown, whose wrapped rows may go on below the screen. Only the first edit in each
-   reply from Spark is used.
+   wrapped row read as a new line, a sticky-scroll header, a number read twice) are left out. The last
+   line shown may go on below the screen, so an edit that ends on it is typed only if it is the file's
+   last line (step 3). Only the first edit in each reply from Spark is used.
 2. **Your approval.** It shows the change as a diff with the file's line numbers, the exact keys it
    will press and Spark's note, then asks *Type this edit? [y/N]*.
 3. **Typing, keyboard only.** Escape, then Ctrl+G. Glimmer checks that VS Code's Go to Line box opened
@@ -576,18 +584,36 @@ printed above them can't.
    typed: elsewhere, digits and Enter could act (in VS Code's terminal,
    Ctrl+G is *Go to Recent Directory*, and Enter would run a `cd`). Then the line number and Enter go to
    the line. Glimmer reads the status bar (it must say *Ln S, Col 1*, with nothing selected) and the
-   lines there (they must be the ones Spark changed). Ctrl+L once per line selects them, checked on
-   the status bar again (the selection must end at column 1 of the next line), Backspace deletes
-   them, and the new lines are typed.
+   lines there (they must read as the ones Spark changed; indentation isn't compared here, since it is
+   what a second reading gets wrong most, and the whole lines are replaced anyway). Ctrl+L once per
+   line selects them, checked on the status bar again: the selection must end at column 1 of the next
+   line, or, for an edit that ends on the last line shown, on that line, which shows that it is the
+   file's last line, at the column that fits its length as read (one that goes on below the screen,
+   unread, is never deleted). Backspace deletes them, and the new lines are typed.
 4. **The result is checked.** Glimmer reads the screen again: the new lines must be there, followed by
-   the line that came after the old ones. Each line must have the same indentation; runs of spaces
+   the line that came after the old ones (at the end of the file, the empty last line the typing leaves:
+   each typed line ends with a line break). Each line must have the same indentation; runs of spaces
    inside a line aren't compared, since Glimmer can't count them reliably.
 
 If an edit fails step 1, or you decline it, nothing is typed: Spark is told why, in words and line
 numbers, and may propose another. A failed check in step 3 or 4 stops the session and nothing more is
-typed. Before Backspace, only navigation keys have been sent and the file is unchanged; after it,
-check the file. At most 4 edits and 6 requests to Spark per session. **Ctrl+C** in the terminal stops
-the typing within about a quarter of a second and releases every key.
+typed, except in `fix` when the lines no longer read as Spark's: Spark then gets the screen as read
+and may try again. Before Backspace, only navigation keys have been sent and the file is unchanged;
+after it, check the file. At most 4 edits and 6 requests to Spark per session. **Ctrl+C** in the
+terminal stops the typing within about a quarter of a second and releases every key.
+
+<a id="saving-after-the-fix"></a>**Saving after the fix (`fix` only).** Once Spark answers the fresh
+check with *FIXED*, and you allow it (asked then, or with `--auto` at the share prompt):
+
+1. Glimmer reads VS Code's selected tab: it must be the file Glimmer named in its notes, and should
+   show the unsaved-changes dot (an untitled file isn't saved: Ctrl+S would ask where to save it).
+2. Escape, Ctrl+G and Glimmer's check of the Go to Line box, as in step 3 above, so the keys go to VS
+   Code: Ctrl+S in another app could save something else there. Then Escape closes the box.
+3. Ctrl+S (Cmd+S on a Mac), then Glimmer reads the tab again: the dot must have gone. If it still
+   shows, nanokvm says so and sends Escape, in case a *Save As* dialog opened.
+
+If Spark doesn't answer *FIXED*, or its last edit wasn't checked on a fresh reading, the file isn't
+saved and the run says why. Ctrl+Z in VS Code still undoes the edits after the save; save again after.
 
 Before running `edit`: plug in cable 4, show the file in VS Code on the locked computer in a single
 editor group (no split editor or diff view) with its editor focused, switch the typing helpers off
@@ -653,18 +679,20 @@ looks at the screen again until the problem is fixed.
    E:\meta_hackathon\.venv\Scripts\nanokvm.exe fix --auto
    ```
 
-   One `y` shares the screen and lets the edits be typed without asking for each one. While Meta billing
-   is on free credits, the same question asks you to confirm the screen shows only test or dummy content;
-   real work needs pay as you go and `meta_billing = "paid"`. Then, on its own:
+   One `y` shares the screen, lets the edits be typed without asking for each one, and lets the file be
+   saved once Spark has checked the fix. While Meta billing is on free credits, the same question asks
+   you to confirm the screen shows only test or dummy content; real work needs pay as you go and
+   `meta_billing = "paid"`. Then, on its own:
    Glimmer reads and diagnoses the screen → Spark proposes an edit → the NanoKVM types it, with
    Glimmer checking the screen before and after → Spark sees the screen as it now is → when Spark says
-   it's done, Glimmer reads the screen afresh and Spark checks the fix there. It stops when the fix is
-   confirmed, at the first failed check, or at the limits (4 edits, 6 requests to Spark); Ctrl+C stops
-   it at once. Leave out `--auto` to approve each edit, or use `nanokvm edit "REQUEST"` to ask for a
-   particular change. With patient or confidential data on the screen, don't use `fix`: it sends
-   redacted text, and redaction can't catch those (*Sensitive screens* at the top of this page).
-8. **Review, then save.** nanokvm never saves: look at the change in VS Code, then save it, or undo it
-   with Ctrl+Z or *File: Revert File*.
+   it's done, Glimmer reads the screen afresh and Spark checks the fix there → on *FIXED*, Ctrl+S, with
+   Glimmer checking the file's tab before and after. It stops when the fix is saved, at the first
+   failed check, or at the limits (4 edits, 6 requests to Spark); Ctrl+C stops it at once. Leave out
+   `--auto` to approve each edit and the save, or use `nanokvm edit "REQUEST"` to ask for a particular
+   change (`edit` never saves). With patient or confidential data on the screen, don't use `fix`: it
+   sends redacted text, and redaction can't catch those (*Sensitive screens* at the top of this page).
+8. **Review.** The last lines say whether the file was saved and how that was checked. Look at the
+   change in VS Code; Ctrl+Z still undoes it (then save again).
 9. **Finish:** Ctrl+C in window 1 stops Glimmer, and `nanokvm stop` stops the service.
 
 ## 7. Watching the screen yourself
@@ -805,7 +833,9 @@ needed.
 
 - **Edits are typed only after your yes** (for each edit, or once per run with `--auto`), keyboard only, with Glimmer checking the screen before each
   irreversible step and after the typing ([section 6](#6-using-it-read-ask-and-edit)). Spark can only
-  propose edits; it never types anything itself.
+  propose edits; it never types anything itself. `fix` saves the file only after Spark has answered
+  *FIXED* on a fresh reading, with the same yes, once Glimmer has checked that VS Code has the keys
+  and the right file's tab is selected.
 - **No stuck keys.** Every action ends with all keys and buttons up, even when something fails, and
   Ctrl+C during `nanokvm edit` stops the typing within about a quarter of a second and releases them.
   Releasing never moves the pointer.
@@ -848,7 +878,10 @@ needed.
 | `Not applied: after Ctrl+G, VS Code's Go to Line box isn't on the screen` | Only Escape, Ctrl+G and Escape were sent. Click into the file in VS Code on the locked computer (not its terminal or another app) and try again. |
 | `Not applied: after Go to Line the status bar shows …` | Nothing was typed except Go to Line. Check that the status bar is on (*View > Appearance > Status Bar*) and try again. |
 | `Not applied: after selecting, the status bar shows …` | Nothing was deleted: Escape dropped the selection. Check that folding is off ([section 4](#4-locked-computer-settings)) and that nothing else has the keyboard, then try again. |
-| `Spark's edit can't be typed: line N isn't on the screen, or can't be read reliably there` | Glimmer didn't read that line cleanly: it is off the screen, it's the last line shown, or its numbering looked wrong. Spark is told and may try again. If it keeps happening, scroll so the lines sit mid-screen and ask again. |
+| `Spark's edit … can't be typed: line N can't be edited from this reading` | Glimmer didn't read that line cleanly: it is off the screen, or its numbering looked wrong. Spark is told and may try again. If it keeps happening, scroll so the lines sit mid-screen and ask again. |
+| `line N is the last line on the screen and the file goes on below it` | Nothing was deleted: Escape dropped the selection. Scroll so that line sits higher on the screen and run it again. |
+| `the screen no longer shows the expected lines at line N` | Nothing was typed but Go to Line. With `fix`, Spark gets the screen as read then and tries again; with `edit`, run it again. |
+| `Not saved (…)` or `Not saved: Ctrl+S sent, but …` | The run says why: Spark didn't answer *FIXED*, the selected tab isn't the file Glimmer named, VS Code didn't have the keys, or the tab still showed unsaved changes after Ctrl+S (look for a message in VS Code). Check the change and save it yourself. `Probably saved` means Glimmer saw no unsaved-changes dot even before Ctrl+S (is auto-save on?). |
 | `typed, but the screen doesn't show the expected lines` | Check the file on the locked computer. *File: Revert File* returns to the last saved version; Ctrl+Z undoes typing only in small steps. Check that the typing helpers are off ([section 4](#4-locked-computer-settings)) and that `keyboard_layout` matches. |
 | Wrong characters typed (for example `"` and `@` swapped) | `keyboard_layout` doesn't match the locked computer's keyboard layout (on a Mac, see [section 1a](#1a-operating-systems)). Fix it and run `nanokvm stop`. |
 | Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Run `nanokvm keytest`: it presses Num Lock twice and checks that the locked computer's Num Lock follows, with no picture taken. If it says *Keyboard OK*, the keys arrive, and an edit that stops at *Go to Line* means VS Code didn't have the focus: click into the file first. Otherwise check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
@@ -893,7 +926,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        307 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        317 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

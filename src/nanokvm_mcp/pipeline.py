@@ -1,7 +1,8 @@
 """Local reading and the cloud coder: the locked computer's screen is read by Muse Glimmer on this laptop,
 and only redacted text goes to Muse Spark, through the outbound gate. Spark's code edits are typed back
 into VS Code only after the person at the keyboard approves them: each one, or with --auto all of a run's at
-once, at the share prompt (editing.py, cli.py).
+once, at the share prompt (editing.py, cli.py). nanokvm fix saves the file only after Spark has checked the fix
+on a fresh reading of the screen, and only with the same approval: asked then, or given with --auto.
 
 The pipeline uses its own client id and screen share, approved by the person at the keyboard, and closes
 the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
@@ -66,6 +67,7 @@ class EditResult:
     stopped: str | None = None        # why the session ended early, or None
     cost_usd: float = 0.0
     checks: int = 0                   # nanokvm fix: fresh readings of the screen Spark checked its fix against
+    save: E.SaveOutcome | None = None   # nanokvm fix, once edits were typed: whether the file was saved, and why
 
 
 class Pipeline:
@@ -182,9 +184,14 @@ class Pipeline:
         narrower crop can cut off its ':'."""
         return self._read_crop(0, 0, 1, 0.4, self.glimmer.quick_input)
 
+    def read_tab(self) -> str:
+        """VS Code's selected editor tab (file name, unsaved-changes dot), from the same crop as read_box."""
+        return self._read_crop(0, 0, 1, 0.4, self.glimmer.editor_tab)
+
     def edit(self, request: str | None, rect: tuple[float, float, float, float] | None = None, *,
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
-             on_event: Callable[[str], None] | None = None) -> EditResult:
+             on_event: Callable[[str], None] | None = None,
+             approve_save: Callable[[str], bool] | None = None) -> EditResult:
         """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
         the person approves into VS Code, checking the screen before and after. Stops at the first edit
         whose checks fail. If a later request fails after an edit was typed, the session report is still
@@ -193,7 +200,10 @@ class Pipeline:
         With no ``request`` (nanokvm fix), Glimmer also notes what is wrong on the screen, and Spark gets
         E.FIX_REQUEST, those notes and every code line on the screen (not trimmed), and finds the error itself.
         When Spark then says it's done, Glimmer reads the screen afresh and Spark checks the fix there; if
-        something is still wrong it carries on editing (at most E.MAX_CHECKS times, within the usual limits)."""
+        something is still wrong it carries on editing (at most E.MAX_CHECKS times, within the usual limits).
+        An edit that wasn't typed because the screen no longer reads as Spark's lines doesn't end the run: Spark
+        gets the screen as read then, and tries again from it. Once Spark answers a fresh check with FIXED, the
+        file is saved if ``approve_save`` (given the file name from Glimmer's notes) says yes."""
         say = on_event or (lambda _m: None)
         if self.cfg.outbound == "local_only":
             raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
@@ -213,7 +223,8 @@ class Pipeline:
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l",
-                                     chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len))
+                                     chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len),
+                                     save_key="cmd+s" if mac else "ctrl+s")
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in,
                             trusted=(E.FIX_REQUEST, E.CHECK_REQUEST))
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"),
@@ -223,6 +234,7 @@ class Pipeline:
         typed = 0
         typed_at_check = 0                              # typed edits when the screen was last read afresh
         checking = False
+        confirmed = False                               # Spark's last word, with nothing typed since a fresh check: FIXED
         while True:
             if result.turns >= E.MAX_TURNS:
                 result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
@@ -249,6 +261,7 @@ class Pipeline:
                 if why:                                 # not "nothing to fix": say why it ended
                     result.stopped = why
                     break
+                confirmed = result.checks > 0 and typed == typed_at_check and E.confirms_fix(answer.content)
                 if not fix or typed == typed_at_check or result.checks >= E.MAX_CHECKS:
                     break                               # nothing typed since the screen was last checked
                 # Spark says it's done: read the screen afresh, and let Spark check the fix there
@@ -264,6 +277,7 @@ class Pipeline:
                     result.stopped = "after the edits, no numbered code lines could be read to check the fix"
                     break
                 screen = now
+                notes = fresh_notes
                 result.checks += 1
                 typed_at_check = typed
                 history.append({"role": "assistant", "content": answer.reply.content or ""})
@@ -284,24 +298,46 @@ class Pipeline:
                     continue
                 record = self._one_edit(call, screen, prepared.mapping, approve_edit, typer,
                                         stop or typed >= E.MAX_EDITS, say)
-                told = record.told_spark
-                if fix and record.outcome is not None and record.outcome.status == "verified" and self.last_code:
+                told, out = record.told_spark, record.outcome
+                retry = fix and out is not None and out.retry
+                if fix and out is not None and (out.status == "verified" or retry) and out.screen and self.last_code:
                     # Spark's next step starts from the screen as it is now: the check's own reading, no extra read
-                    told += ("\n\nThe screen, read again after this edit:\n"
-                             + gate.screen_blocks(prepared, self.last_code.text))
+                    told += (f"\n\nThe screen, read again {'after this edit' if out.status == 'verified' else 'just now'}"
+                             ":\n" + gate.screen_blocks(prepared, self.last_code.text))
                 history.append({"role": "tool", "tool_call_id": call["id"], "content": told})
                 result.edits.append(record)
-                if record.outcome is not None:
-                    if record.outcome.status != "not_applied":
+                if out is not None:
+                    if out.status != "not_applied":
                         typed += 1
-                    if record.outcome.status == "verified":
-                        screen = record.outcome.screen or screen
+                    if out.status == "verified" or retry:
+                        screen = out.screen or screen
                     else:
                         stop = True
-                        result.stopped = record.outcome.detail
+                        result.stopped = out.detail
             if stop:
                 break
+        if fix and typed and not result.stopped and approve_save is not None:
+            checked = result.checks > 0 and typed == typed_at_check
+            result.save = self._save(confirmed, checked, notes or "", approve_save, typer, say)
         return result
+
+    def _save(self, confirmed: bool, checked: bool, notes: str, approve_save: Callable[[str], bool],
+              typer: E.EditTyper, say: Callable[[str], None]) -> E.SaveOutcome:
+        """nanokvm fix's last step: save the file, once Spark has answered FIXED with nothing typed since its last
+        fresh check of the screen."""
+        if not confirmed:
+            return E.SaveOutcome("skipped", "Spark didn't answer FIXED on the fresh reading of the screen"
+                                 if checked else f"Spark's last edit wasn't checked on a fresh reading of the "
+                                                 f"screen (at most {E.MAX_CHECKS} checks a run)")
+        name = next((ln.strip() for ln in notes.splitlines() if ln.strip()), "")
+        if not approve_save(E.safe_text(name)):
+            return E.SaveOutcome("declined", "you said no")
+        say(f"saving {E.safe_text(name)} in VS Code, then checking its tab with Muse Glimmer")
+        try:
+            return typer.save(name, self.read_tab)
+        except Exception as e:  # noqa: BLE001  (service, HID or Glimmer error part-way: the save state is unknown)
+            return E.SaveOutcome("failed", f"saving stopped part-way ({type(e).__name__}: {e}); check the file's tab "
+                                           "in VS Code on the locked computer")
 
     def _one_edit(self, call: dict, screen: dict[int, str], mapping: dict[str, str] | None,
                   approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper, skip: bool,

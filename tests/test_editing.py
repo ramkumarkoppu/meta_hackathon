@@ -12,7 +12,7 @@ from conftest import SimEnv
 from fakes import FakeServer, llama_reply, spark_stream
 from nanokvm_mcp import cli
 from nanokvm_mcp import editing as E
-from nanokvm_mcp.glimmer import BOX_PROMPT, DIAGNOSE_PROMPT, STATUS_PROMPT, GlimmerClient
+from nanokvm_mcp.glimmer import BOX_PROMPT, DIAGNOSE_PROMPT, STATUS_PROMPT, TAB_PROMPT, GlimmerClient
 from nanokvm_mcp.outbound import OutboundBlocked, OutboundGate
 from nanokvm_mcp.pipeline import EditError, Pipeline
 from nanokvm_mcp.spark import SparkClient, SparkError
@@ -39,7 +39,8 @@ def _call(**args):
 def world(tmp_path):
     env = SimEnv(tmp_path, editor_lines=FILE)
     ed = env.desk.editor
-    w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, cfg=env.cfg,
+    ed.name = "sum.cpp"
+    w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, tab_override=None, cfg=env.cfg,
                         diagnosis="VS Code, sum.cpp\nNo errors shown.")
 
     def llama(path, body):
@@ -56,6 +57,8 @@ def world(tmp_path):
                 return 200, llama_reply(ed.box_text())
             if prompt == DIAGNOSE_PROMPT:
                 return 200, llama_reply(w.diagnosis)
+            if prompt == TAB_PROMPT:
+                return 200, llama_reply(w.tab_override or ed.tab_text())
             return 200, llama_reply(ed.transcription())
         user = msgs[1]["content"]
         if "<question>" in user:                             # minimise: keep every line
@@ -75,11 +78,11 @@ def world(tmp_path):
         return Pipeline(w.cfg, glimmer=GlimmerClient(w.cfg), approve_share=lambda m: True, stand_in=True,
                         spark=SparkClient(w.cfg, base_url=f"http://127.0.0.1:{w.meta.port}"), **kw)
 
-    def run(request="fix the off-by-one", approve=lambda plan: True):
+    def run(request="fix the off-by-one", approve=lambda plan: True, **kw):
         with make() as pipe:
             pipe.open()
             typer = E.EditTyper(pipe.svc.act, pipe.read_lines, pipe.read_status, pipe.read_box, pause_s=0)
-            return pipe.edit(request, approve_edit=approve, typer=typer)
+            return pipe.edit(request, approve_edit=approve, typer=typer, **kw)
     w.make, w.run = make, run
     yield w
     for _p, _h, body in w.meta.requests:                     # no image ever reached "Meta"
@@ -177,16 +180,21 @@ def test_cli_fix_auto_asks_once_then_types_without_asking(world, monkeypatch, ca
     monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the fake Meta API, never the real one
                         lambda cfg: SparkClient(cfg, base_url=f"http://127.0.0.1:{w.meta.port}"))
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6."),
-                  spark_stream("The screen shows it fixed.")]
+                  spark_stream("FIXED: the loop no longer reads v[n].")]
     assert cli.main(["fix", "--auto"]) == 0                    # free credits, no --stand-in: the one yes covers it
     assert len(asked) == 1 and "without asking for each one" in asked[0] and "test or dummy content" in asked[0]
+    assert "save the file once Spark has checked the fix on the screen" in asked[0]   # saving is part of the yes
     asked.clear()
     assert cli._share_prompt(10, auto=True) and "test or dummy" not in asked[0]       # --stand-in, or paid billing
+    assert "save" not in asked[0]                              # nanokvm edit --auto never saves
     out = capsys.readouterr().out
     assert "--auto: typing it without asking." in out and "verified" in out
     assert "reading the screen again with Muse Glimmer" in out and "1 fresh reading(s) of the screen" in out
-    assert "nanokvm saved nothing (keep VS Code's auto-save off)" in out and "Glimmer noticed" in out
+    assert "--auto: Spark checked the fix on the screen, so saving VS Code, sum.cpp without asking." in out
+    assert "Saved on the locked computer: Ctrl+S sent, and Glimmer saw the tab's unsaved-changes dot go" in out
+    assert "nanokvm saved nothing" not in out and "Glimmer noticed" in out
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and len(w.meta.requests) == 3
+    assert w.ed.saves == 1 and not w.ed.dirty
 
 
 def test_fix_carries_on_when_the_fresh_screen_shows_more_to_fix(world):
@@ -203,6 +211,82 @@ def test_fix_carries_on_when_the_fresh_screen_shows_more_to_fix(world):
     assert [r.outcome.status for r in res.edits] == ["verified", "verified"]
     assert res.checks == E.MAX_CHECKS == 2 and res.turns == 5 and res.summary == "Now it is fixed."
     assert res.stopped is None
+
+
+def _misread_first(w, monkeypatch, wrong):
+    """The first code reading has line 6 as ``wrong``; every later one reads the screen as it is."""
+    real, calls = w.ed.transcription, []
+
+    def transcription():
+        calls.append(1)
+        return real().replace("6 " + FILE[5], "6 " + wrong) if len(calls) == 1 else real()
+    monkeypatch.setattr(w.ed, "transcription", transcription)
+
+
+def test_fix_tries_again_from_the_screen_as_read_now(world, monkeypatch):
+    w = world                                       # seen live on 30 Oct: line 8 read differently the second time
+    _misread_first(w, monkeypatch, "    for (int i = 0; i <= n; ++j) {")
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="loop bound"),
+                  _call(start_line=6, end_line=6, new_text=FIX, note="loop bound, from the screen read again"),
+                  spark_stream("Done."), spark_stream("FIXED: the loop bound.")]
+    res = w.run(None)
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and res.stopped is None
+    assert [r.outcome.status for r in res.edits] == ["not_applied", "verified"] and res.checks == 1
+    told = w.meta.requests[1][2]["messages"][-1]["content"]
+    assert told.startswith("Not applied: the screen no longer shows the expected lines at line 6: line 6's text "
+                           "reads differently. Only navigation keys were sent; the file wasn't changed.")
+    assert "Stop editing" not in told and "The screen, read again just now:" in told and "++i) {" in told
+    assert res.save is None                                    # no approve_save: nothing to save with
+
+
+def test_indentation_read_differently_before_typing_doesnt_stop_the_edit(world, monkeypatch):
+    w = world                                       # whole lines are replaced, whatever their indentation
+    _misread_first(w, monkeypatch, "      for (int i = 0; i <= n; ++i) {")
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="loop bound"), spark_stream("Done.")]
+    res = w.run()
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and [r.outcome.status for r in res.edits] == ["verified"]
+
+
+def _no_key(w, monkeypatch, usage, when=lambda: True):
+    """The simulated VS Code ignores Ctrl+``usage`` while ``when()`` holds (another app has the keyboard)."""
+    real = w.ed.key
+
+    def key(mods, u):
+        if not (mods and u == E_KEY(usage) and when()):
+            real(mods, u)
+    monkeypatch.setattr(w.ed, "key", key)
+
+
+@pytest.mark.parametrize("case,status,said", [
+    ("declined", "declined", "you said no"),
+    ("other tab", "not_saved", "the selected tab reads as 'other.cpp'"),
+    ("no focus", "not_saved", "VS Code's Go to Line box didn't open"),
+    ("save ignored", "failed", "the tab still shows unsaved changes"),
+    ("no dot seen", "unchecked", "saw no unsaved-changes dot on the tab before it either"),
+    ("not FIXED", "skipped", "Spark didn't answer FIXED"),
+])
+def test_the_save_is_checked_before_and_after(world, monkeypatch, case, status, said):
+    w = world
+    saving = []
+    if case == "other tab":
+        w.tab_override = "other.cpp\nUNSAVED"
+    elif case == "no dot seen":
+        w.tab_override = "sum.cpp\nSAVED"
+    elif case == "no focus":
+        _no_key(w, monkeypatch, "g", when=lambda: saving)
+    elif case == "save ignored":
+        _no_key(w, monkeypatch, "s")
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="loop bound"), spark_stream("Done."),
+                  spark_stream("It is fixed." if case == "not FIXED" else "FIXED: the loop bound.")]
+    res = w.run(None, approve_save=lambda name: saving.append(name) or case != "declined")
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and res.stopped is None
+    assert res.save.status == status and said in res.save.detail, res.save
+    ctrl_s = [keys for mods, keys in _keys_sent(w) if mods and E_KEY("s") in keys]
+    assert len(ctrl_s) == (1 if status in ("failed", "unchecked") else 0)
+    assert w.ed.dirty and w.ed.saves == 0 or case == "no dot seen"
+    assert saving == ([] if case == "not FIXED" else ["VS Code, sum.cpp"])
+    if status == "failed":
+        assert _keys_sent(w)[-1][1] == (E_KEY("esc"),)           # in case a Save As dialog opened
 
 
 def test_cli_fix_refuses_without_a_person_at_the_keyboard(world, monkeypatch, capsys):
@@ -308,15 +392,44 @@ def test_a_go_to_line_box_that_opens_late_is_seen_on_the_second_try(world, monke
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and res.edits[0].outcome.status == "verified"
 
 
-def test_the_last_line_on_the_screen_is_never_edited(world):
-    w = world                                                     # its wrapped rows may go on below the screen
+def test_the_files_last_line_can_be_edited(world):
+    w = world                                       # VS Code's status bar shows the selection stops at the file's end
     w.replies += [_call(start_line=10, end_line=10, new_text="}  // sum_first", note="label the end"),
-                  spark_stream("Line 10 can't be edited.")]
-    res = w.run()
-    assert w.ed.lines == FILE and _keys_sent(w) == [] and res.edits[0].plan is None
+                  spark_stream("Done.")]
+    shown = []
+    res = w.run(approve=lambda plan: shown.append(plan) or True)
+    assert w.ed.lines == FILE[:9] + ["}  // sum_first", ""]    # typed with its line break: the file ends with one
+    assert res.edits[0].outcome.status == "verified" and res.edits[0].outcome.file_end and res.stopped is None
+    assert shown[0].at_bottom and "line 10 must be the file's last line" in " ".join(shown[0].steps())
     told = w.meta.requests[1][2]["messages"][3]["content"]
-    assert "line 10 can't be edited from this reading" in told and "lines 1-9 can be edited" in told
-    assert "doesn't mean it is missing from the file, so don't add it again" in told   # seen live on 29 Oct
+    assert told == "Applied and checked on the screen (line 10): 1 new line(s) are now at line 10, and line 11, the " \
+                   "file's last line, is now empty."
+
+
+def test_fix_deletes_garbage_on_the_last_line_then_saves(world):
+    w = world                                       # seen live on 30 Oct: hello.cpp with junk typed on its last line
+    w.ed.lines.append("sdfg sdfg;;")
+    w.replies += [_call(start_line=11, end_line=11, new_text="", note="delete the junk"), spark_stream("Done."),
+                  spark_stream("FIXED: the junk on line 11 is gone.")]
+    asked = []
+    res = w.run(None, approve_save=lambda name: asked.append(name) or True)
+    assert w.ed.lines == FILE + [""] and res.edits[0].outcome.status == "verified" and res.stopped is None
+    assert res.checks == 1 and asked == ["VS Code, sum.cpp"]
+    assert res.save.status == "saved" and w.ed.saves == 1 and not w.ed.dirty
+    s = {usage for _mods, keys in _keys_sent(w) for usage in keys}
+    assert E_KEY("s") in s
+    assert E.file_key("VS Code, sum.cpp") == E.file_key("`sum.cpp` ●") == "sum.cpp"
+
+
+def test_the_last_line_shown_isnt_edited_if_the_file_goes_on(world):
+    w = world                                       # its wrapped rows may go on below the screen, unread
+    w.ed.lines += [f"// more {i}" for i in range(30)]          # 40 lines: rows 1-30 are on the screen
+    w.replies += [_call(start_line=30, end_line=30, new_text="// changed", note="n")]
+    res = w.run()
+    assert res.edits[0].outcome.status == "not_applied" and res.edits[0].outcome.retry
+    assert "line 30 is the last line on the screen and the file goes on below it" in res.stopped
+    assert w.ed.lines[29] == "// more 19" and w.ed.selection() is None
+    assert all(E_KEY("backspace") not in keys for _mods, keys in _keys_sent(w))
 
 
 def test_a_line_shown_with_other_indentation_is_unverified(world, monkeypatch):
@@ -475,12 +588,17 @@ def test_the_go_to_line_box_is_known_by_its_colon_or_its_hint():
 def test_strict_reading_leaves_out_every_line_that_may_be_read_wrong():
     phantom = "5 int a;\n6 int x = f(a,\n7 b);\n7 int y;\n8 int z;\n9 }"   # line 6's second row reads as line 7
     assert sorted(E.numbered_lines(phantom)) == [5, 6, 7, 8, 9]
-    assert sorted(E.numbered_lines(phantom, strict=True)) == [5, 8]          # 9: the last line shown
+    assert sorted(E.numbered_lines(phantom, strict=True)) == [5, 8, 9]       # 9, the last line: the typer checks it
     sticky = "3 int f() {\n10 a;\n11 b;\n12 c;"                              # a sticky-scroll line, then 10-12
-    assert E.numbered_lines(sticky, strict=True) == {10: "a;", 11: "b;"}
+    assert E.numbered_lines(sticky, strict=True) == {10: "a;", 11: "b;", 12: "c;"}
     wrapped = "20 x = foo(a,\n42 + b);\n21 y;\n22 z;"                         # a wrapped row starting with a number
-    assert E.numbered_lines(wrapped, strict=True) == {21: "y;"}
+    assert E.numbered_lines(wrapped, strict=True) == {21: "y;", 22: "z;"}
     assert E.numbered_lines("", strict=True) == {}
+    plan = E.plan_edit({"start_line": 9, "end_line": 9, "new_text": "x"}, E.numbered_lines(phantom, strict=True), "us")
+    assert plan.at_bottom and not E.plan_edit({"start_line": 9, "end_line": 8, "new_text": "x"},
+                                              E.numbered_lines(phantom, strict=True), "us").at_bottom   # inserts don't
+    assert E.confirms_fix("FIXED: it compiles.") and E.confirms_fix("**Fixed.**")
+    assert not E.confirms_fix("It is fixed.") and not E.confirms_fix("Not fixed: line 9 can't be edited.")
 
 
 def test_plan_edit_checks_what_spark_sent():

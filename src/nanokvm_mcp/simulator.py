@@ -26,14 +26,18 @@ _SHIFT = P.MOD_LSHIFT | P.MOD_RSHIFT
 
 class SimEditor:
     """A tiny stand-in for VS Code, for the edit tests: numbered lines, a cursor, Ctrl+G (Go to Line, cursor at
-    column 1), Ctrl+L (expand line selection), Backspace, Escape, Enter and typing (US layout), and a status
-    bar like VS Code's ("Ln 25, Col 1 (61 selected)"). Typing replaces a selection; auto-indent and
-    auto-closing are off, as README section 7 asks."""
+    column 1), Ctrl+L (expand line selection), Ctrl+S (save), Backspace, Escape, Enter and typing (US layout), a
+    status bar like VS Code's ("Ln 25, Col 1 (61 selected)") and the file's tab, with a dot while there are
+    unsaved changes. Typing replaces a selection; auto-indent and auto-closing are off, as README section 7
+    asks."""
 
     VISIBLE = 30                                   # rows on the screen
 
-    def __init__(self, lines: list[str]) -> None:
+    def __init__(self, lines: list[str], name: str = "main.cpp") -> None:
         self.lines = list(lines) or [""]
+        self.name = name
+        self.dirty = False                         # unsaved changes
+        self.saves = 0
         self.row, self.col = 0, 0                  # cursor, 0-based
         self.anchor: tuple[int, int] | None = None # selection start
         self.goto: str | None = None               # digits in the Go to Line box while it is open
@@ -71,6 +75,10 @@ class SimEditor:
             return "NONE"
         return f":{self.goto}\nType a line number between 1 and {len(self.lines)} to navigate to."
 
+    def tab_text(self) -> str:
+        """The selected tab as Glimmer would read it: the file name, then whether it shows the unsaved-changes dot."""
+        return f"{self.name}\n{'UNSAVED' if self.dirty else 'SAVED'}"
+
     # ---- input
     def key(self, mods: int, usage: int) -> None:
         ctrl, shift = bool(mods & _CTRL), bool(mods & _SHIFT)
@@ -96,6 +104,9 @@ class SimEditor:
                 self.goto = ""
             elif usage == KEYS["l"]:
                 self._expand_line()
+            elif usage == KEYS["s"]:
+                self.dirty = False
+                self.saves += 1
             return
         if usage == KEYS["esc"]:
             self.anchor = None
@@ -129,10 +140,12 @@ class SimEditor:
         (r1, c1), (r2, c2) = s
         self.lines[r1:r2 + 1] = [self.lines[r1][:c1] + self.lines[r2][c2:]]
         self.row, self.col = r1, c1
+        self.dirty = True
         return True
 
     def _insert(self, text: str) -> None:
         self._delete_selection()
+        self.dirty = True
         line = self.lines[self.row]
         parts = text.split("\n")
         if len(parts) == 1:
@@ -151,10 +164,12 @@ class SimEditor:
             line = self.lines[self.row]
             self.lines[self.row] = line[:self.col - 1] + line[self.col:]
             self.col -= 1
+            self.dirty = True
         elif self.row:
             prev = self.lines[self.row - 1]
             self.lines[self.row - 1:self.row + 1] = [prev + self.lines[self.row]]
             self.row, self.col = self.row - 1, len(prev)
+            self.dirty = True
         self._reveal()
 
 
@@ -234,6 +249,9 @@ class SimDesktop:
                     y += 36
             else:
                 ed = self.editor
+                cv2.putText(desk, ed.name, (1100, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+                if ed.dirty:                                                         # the tab's unsaved-changes dot
+                    cv2.circle(desk, (1100 + 14 * len(ed.name) + 16, 108), 6, (255, 255, 255), -1)
                 y = 160
                 for n, line in ed.visible():
                     cv2.putText(desk, f"{n:>4}", (90, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (140, 140, 140), 1, cv2.LINE_AA)

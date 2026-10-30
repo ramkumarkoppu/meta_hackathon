@@ -21,7 +21,8 @@
 # keyboard/mouse requests from any program. With control = true, keys reach the locked computer only
 # while the NanoKVM's TARGET USB-C (cable 4) is plugged in (unplug it and the setup is physically
 # view-only). `nanokvm edit` and `fix` type only edits you approve at their prompt (each one, or once
-# per run with --auto), and the Claude Code bridge
+# per run with --auto), `fix` saves the file only with the same approval once Spark has checked the
+# fix on the screen, and the Claude Code bridge
 # asks you in Claude Code before every keyboard/mouse action, even in auto mode (confirm_actions).
 control = true
 confirm_actions = true

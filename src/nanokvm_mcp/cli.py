@@ -306,13 +306,17 @@ def _region(text: str | None) -> tuple[float, float, float, float] | None:
     return parts[0], parts[1], parts[2], parts[3]
 
 
-def _share_prompt(minutes: int, auto: bool = False, test_content: bool = False) -> bool:
+def _share_prompt(minutes: int, auto: bool = False, test_content: bool = False, save: bool = False) -> bool:
     """The one question before the screen is shared. ``auto`` (--auto): the same yes lets this run type Spark's
-    edits without asking for each one (each is still shown and checked on the screen, and nothing is saved).
+    edits without asking for each one (each is still shown and checked on the screen), and with ``save`` (nanokvm
+    fix) save the file once Spark has checked the fix on a fresh reading of the screen.
     ``test_content``: Meta billing is on free credits and --stand-in wasn't given, so the yes also confirms the
     screen shows only test or dummy content, the only content that may go while Meta can use what is sent."""
     q = f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min"
-    if auto:
+    if auto and save:
+        q += (", type Muse Spark's edits into VS Code without asking for each one, and save the file once Spark has "
+              "checked the fix on the screen")
+    elif auto:
         q += ", and type Muse Spark's edits into VS Code without asking for each one"
     if test_content:
         q += (". Meta billing is on free credits and Meta may use what is sent, so say yes only if the screen shows "
@@ -501,6 +505,30 @@ def _auto_edit(plan) -> bool:
     return True
 
 
+def _approve_save(name: str) -> bool:
+    return _console_yes(f"Spark checked the fix on the screen. Save {name} in VS Code on the locked computer?")
+
+
+def _auto_save(name: str) -> bool:
+    """nanokvm fix --auto: save without asking (allowed once, at the share prompt)."""
+    _out(f"--auto: Spark checked the fix on the screen, so saving {name} without asking.")
+    return True
+
+
+_REVIEW = "Review the changes in VS Code before you save. Ctrl+Z, or File: Revert File, undoes them."
+
+
+def _save_report(save) -> str:
+    """The closing line about saving, for nanokvm fix once edits were typed."""
+    if save.status == "saved":
+        return f"Saved on the locked computer: {save.detail}. Ctrl+Z in VS Code still undoes the edits; save again after."
+    if save.status == "unchecked":
+        return f"Probably saved: {save.detail}. Look at the file's tab in VS Code."
+    if save.status == "failed":
+        return f"Not saved: {save.detail}."
+    return f"Not saved ({save.detail}). {_REVIEW}"
+
+
 def cmd_edit(cl: ServiceClient, args) -> int:
     from .glimmer import GlimmerError
     from .outbound import OutboundBlocked
@@ -510,14 +538,16 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     if args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
     test = _asks_test_content(cfg, args.stand_in)
+    fix = args.request is None                      # nanokvm fix: saves once Spark has checked the fix
     try:
-        with Pipeline(cfg, approve_share=lambda m: _share_prompt(m, auto=args.auto, test_content=test),
+        with Pipeline(cfg, approve_share=lambda m: _share_prompt(m, auto=args.auto, test_content=test, save=fix),
                       approve_send=_approve_send, stand_in=args.stand_in or test) as pipe:
             if not _glimmer_up(pipe):
                 return 2
             pipe.open(args.minutes)
             res = pipe.edit(args.request, _region(args.region), approve_edit=_auto_edit if args.auto else _approve_edit,
-                            on_event=lambda m: _out(f"... {m}"))
+                            on_event=lambda m: _out(f"... {m}"),
+                            approve_save=(_auto_save if args.auto else _approve_save) if fix else None)
     except PermissionError:
         _out("Not shared: nothing was read, sent or typed.")
         return 1
@@ -550,10 +580,13 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     _out(f"\n({typed} edit(s) typed, {sum(1 for r in res.edits if r.outcome and r.outcome.status == 'verified')} "
          f"checked on the screen{rechecked}; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
          f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
-    if typed:
+    if res.save is not None:
+        _out(_save_report(res.save))
+    elif typed:
         _out("nanokvm saved nothing (keep VS Code's auto-save off): review the changes in VS Code before you save. "
              "Ctrl+Z, or File: Revert File, undoes them.")
-    return 0 if not res.stopped else 4
+    unsaved = res.save is not None and res.save.status not in ("saved", "declined")
+    return 4 if res.stopped or unsaved else 0
 
 
 def cmd_serve(cl: ServiceClient, args) -> int:
@@ -634,7 +667,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
         p.add_argument("--auto", action="store_true",
                        help="type the edits without asking for each one: you allow it once, at the share prompt; "
-                            "each edit is still shown and checked on the screen, and nothing is saved")
+                            "each edit is still shown and checked on the screen" + (
+                                ", and the file is saved once Spark has checked the fix on a fresh reading of the "
+                                "screen" if name == "fix" else ", and nothing is saved"))
         p.set_defaults(fn=cmd_edit)
     args = ap.parse_args(argv)
     cl = ServiceClient(Config.load())

@@ -47,6 +47,10 @@ BOX_PROMPT = ("This is the top of a screen with a VS Code window. If a VS Code q
               "drops down near the top centre of the window) is open, output on the first line exactly the "
               "characters typed in its input field, or EMPTY if it is empty, and on the second line its hint or "
               "first item. Output only those two lines, or NONE if no quick-input box is open.")
+TAB_PROMPT = ("This is the top of a screen with a VS Code window. Find the selected tab in VS Code's editor, the one whose "
+              "file is shown. On the first line, copy the file name on that tab exactly. On the second line, write "
+              "UNSAVED if that tab shows a filled dot, the mark VS Code shows for unsaved changes, or SAVED if it "
+              "doesn't. Output only those two lines, or NONE if no VS Code editor tab is visible.")
 MINIMISE_PROMPT = ("Below are lines of text read from a screen, then a question about them. Copy out only the "
                    "lines needed to answer the question, unchanged and in their original order, each with its "
                    "line number if it has one. For code, copy the whole function or block that contains them, "
@@ -199,6 +203,10 @@ class GlimmerClient:
     def quick_input(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         """What VS Code's quick-input box shows (':' for Go to Line), from a crop of the screen's top."""
         return self.read_image(image_b64, fmt, BOX_PROMPT, max_tokens=128)
+
+    def editor_tab(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
+        """The selected editor tab's file name, and whether it shows unsaved changes (before and after a save)."""
+        return self.read_image(image_b64, fmt, TAB_PROMPT, max_tokens=128)
 
     def minimise(self, text: str, question: str) -> GlimmerReply:
         """Trim already-redacted screen text to the lines the question needs (high reasoning, capped
