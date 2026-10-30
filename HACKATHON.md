@@ -91,13 +91,23 @@ So far:
 - **Asking from the live view (30 Oct, `assist.py`).** `nanokvm viewer` has a prompt box beside the
   live picture: type any question about what the locked computer shows, and Spark answers from
   Glimmer's redacted reading of the window in front (Glimmer is told to quote its messages exactly and
-  to leave out other windows and notifications), or Glimmer answers alone with nothing sent. *Fix it*
-  then runs the fix loop with the question as a hint. Every approval the terminal asks for is asked in
-  the panel, beside the live picture; Stop releases every key. On the real locked computer on 30 Oct,
-  a question found a deliberate `standard::cout` error ($0.0021); Fix it's first run stopped safely at
-  the Go to Line check, which led to the next item. An independent review (3 reviewers, each checked by
-  a skeptic) then tightened it: the test-content question comes with every share, approvals scroll and
-  arm only once seen, and a hidden prompt box can't send.
+  to leave out other windows and notifications), or Glimmer answers alone with nothing sent. *Fix code*
+  (first called *Fix it*) then runs the fix loop with the question as a hint. Every approval the
+  terminal asks for is asked in the panel, beside the live picture; Stop releases every key. On the
+  real locked computer on 30 Oct, a question found a deliberate `standard::cout` error ($0.0021); the
+  fix loop's first run there stopped safely at the Go to Line check, which led to the keyboard wake-up
+  below. An independent review (3 reviewers, each checked by a skeptic) then tightened it: the
+  test-content question comes with every share, approvals scroll and arm only once seen, and a hidden
+  prompt box can't send.
+- **Do it: any program, not just code (30 Oct, `acting.py`).** I wanted the assistant for anything on
+  the locked computer, such as a requirements tool, not only code in VS Code. *Do it* carries out a
+  described task one step at a time (click, double-click, right-click, type, keys, scroll). Muse
+  Glimmer, on my GPU, looks at the screen, plans the next step and finds its target, so by default
+  nothing leaves the laptop; Spark can plan instead, from the redacted description, but Glimmer still
+  finds every target locally. A test on a synthetic screen first showed Glimmer points accurately on
+  its own 0-1000 scale (8 of 8 targets, and *NONE* for one that wasn't there). Each step is outlined on
+  the live picture and allowed by a click, or by one yes with Auto, except steps that change
+  something. Not yet run on the real locked computer.
 - **Indentation from VS Code, not the picture (30 Oct).** After a fix, the code wasn't always tidy:
   Glimmer can read a line's indentation a few spaces off, and Spark copies it. Now the indentation of
   every line an edit replaces, and of every line it types, is measured in VS Code itself (End, then

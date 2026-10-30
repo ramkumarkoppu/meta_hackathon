@@ -44,6 +44,7 @@ MAX_PART = 16_000_000          # bytes; a 1920x1080 JPEG is far smaller
 BG, BAR_BG, FG = "#111111", "#1c1c1c", "#cccccc"
 OK_FG, WARN_FG, BAD_FG = "#8fd18f", "#e3b341", "#ff7b72"
 PANEL_BG, FIELD_BG, DIM_FG = "#181818", "#242424", "#8b949e"
+TARGET_FG = "#ff9500"          # the outline of a Do it step's target on the picture
 
 
 # ---------------------------------------------------------------- the stream
@@ -415,6 +416,7 @@ class AskPanel:
         tk = win.tk
         self.tk, self.cfg = tk, win.client.cfg
         self.reveal = None              # set by the window: shows the panel (and leaves full screen) for an approval
+        self.show_target = None         # set by the window: outlines a Do it step's target on the live picture
         self.events = EventQueue()
         self.session: AssistSession | None = None
         self.approval: Approval | None = None
@@ -432,11 +434,12 @@ class AskPanel:
         self.status.pack(side="bottom", fill="x", pady=(0, 6))
         row = tk.Frame(f, bg=PANEL_BG)
         row.pack(side="bottom", fill="x", padx=8, pady=4)
-        self.ask_btn = tk.Button(row, text="Ask", width=8, command=self.submit_ask)
-        self.fix_btn = tk.Button(row, text="Fix it", width=8, command=self.submit_fix)
-        self.stop_btn = tk.Button(row, text="Stop", width=8, command=self.stop, state="disabled")
-        for b in (self.ask_btn, self.fix_btn, self.stop_btn):
-            b.pack(side="left", padx=(0, 6))
+        self.ask_btn = tk.Button(row, text="Ask", width=7, command=self.submit_ask)
+        self.do_btn = tk.Button(row, text="Do it", width=7, command=self.submit_do)
+        self.fix_btn = tk.Button(row, text="Fix code", width=8, command=self.submit_fix)
+        self.stop_btn = tk.Button(row, text="Stop", width=6, command=self.stop, state="disabled")
+        for b in (self.ask_btn, self.do_btn, self.fix_btn, self.stop_btn):
+            b.pack(side="left", padx=(0, 5))
         self.auto_var = tk.BooleanVar(value=False)
         tk.Checkbutton(row, text="Auto", variable=self.auto_var, bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG,
                        activebackground=PANEL_BG, activeforeground=FG, font=small).pack(side="left")
@@ -462,8 +465,13 @@ class AskPanel:
         self.show_box = tk.Checkbutton(opts, text="Show me the exact text before it is sent", variable=self.show_var,
                                        bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG, activebackground=PANEL_BG,
                                        activeforeground=FG, font=small)
+        self.spark_var = tk.BooleanVar(value=False)   # Do it plans on this laptop unless this is ticked
+        self.spark_box = tk.Checkbutton(opts, text="Do it: plan with Spark (sends the redacted reading)",
+                                        variable=self.spark_var, bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG,
+                                        activebackground=PANEL_BG, activeforeground=FG, font=small)
         self.local_box.grid(row=1, column=0, columnspan=3, sticky="w")
         self.show_box.grid(row=2, column=0, columnspan=3, sticky="w")
+        self.spark_box.grid(row=3, column=0, columnspan=3, sticky="w")
         if self.cfg.outbound == "local_only":         # the window can make nanokvm.toml stricter, never looser
             self.local_box.configure(state="disabled")
         if self.cfg.outbound == "approve":
@@ -503,9 +511,11 @@ class AskPanel:
         self.log.tag_configure("mono", font=mono)
         self.log.tag_configure("err", foreground=BAD_FG)
         self.log.tag_configure("ok", foreground=OK_FG)
-        self._write("Type a question about what the locked computer shows, then Enter (Shift+Enter: new line). "
-                    "Nothing is read or sent until you ask. Fix it lets Muse Spark fix it there, typed through the "
-                    "NanoKVM; Auto skips asking for each edit and the save. F2 hides this panel.", "say")
+        self._write("Type a question about what the locked computer shows and press Enter (Shift+Enter: new line), or "
+                    "describe a task and press Do it: it is done there one step at a time, each step shown and "
+                    "outlined on the picture first. Fix code fixes a file in VS Code. Auto skips asking for each step "
+                    "(Do it still asks before a step that changes something). Nothing is read or sent until you ask. "
+                    "F2 hides this panel.", "say")
         self.refresh()
 
     # ---- the log
@@ -547,6 +557,16 @@ class AskPanel:
             self.prompt.delete("1.0", "end")
         self.refresh()
 
+    def submit_do(self) -> None:
+        """Do it: the task typed in the prompt box (or the last question that went to Spark)."""
+        if self.busy or self.do_blocked() or not self.shown:
+            return
+        task = self._text() or self.last_question
+        spark = self.spark_var.get() and not self.local_var.get()     # Local only keeps the planning here too
+        if task and self._session().do(task, self.auto_var.get(), spark, self.show_var.get()):
+            self.prompt.delete("1.0", "end")
+        self.refresh()
+
     def stop(self) -> None:
         if self.session is not None:
             self.session.stop()
@@ -578,20 +598,28 @@ class AskPanel:
             why = "it needs Muse Spark: untick Local only"
         return why
 
+    def do_blocked(self) -> str | None:
+        return None if self.cfg.control else "keyboard/mouse control is off (control = false in nanokvm.toml)"
+
     def refresh(self) -> None:
         """Buttons and the status line, from the session's state."""
         busy, waiting = self.busy, self.approval is not None
-        no_fix = self.fix_blocked()
+        no_fix, no_do = self.fix_blocked(), self.do_blocked()
         self.ask_btn.configure(state="disabled" if busy else "normal")
+        self.do_btn.configure(state="disabled" if busy or no_do else "normal")
         self.fix_btn.configure(state="disabled" if busy or no_fix else "normal")
         self.stop_btn.configure(state="normal" if busy else "disabled")
+        local = self.local_var.get() or self.cfg.outbound == "local_only"
+        self.spark_box.configure(state="disabled" if local else "normal")   # Local only: Do it plans here
         s = self.session
         shared = s.shared_minutes_left() if s else 0
         parts = ["Waiting for your answer above." if waiting else "Working… (Stop ends it)" if busy else "Ready."]
         parts.append(f"Glimmer can read the screen for {shared} more min." if shared else
                      "Glimmer can't read the screen until you ask.")
-        if no_fix and not busy:
-            parts.append(f"Fix it is off: {no_fix}.")
+        if no_do and not busy:
+            parts.append(f"Do it is off: {no_do}.")
+        elif no_fix and not busy:
+            parts.append(f"Fix code is off: {no_fix}.")
         self.status.configure(text=" ".join(parts))
 
     def poll(self) -> None:
@@ -616,8 +644,13 @@ class AskPanel:
                 self._write(str(payload), "err")
             elif kind == "approve":
                 self._show_approval(payload)
+            elif kind == "target":                           # a Do it step's target: outline it on the picture
+                if self.show_target is not None:
+                    self.show_target(payload)
             elif kind == "idle":
                 self._drop_card()                            # an approval Stop answered no
+                if self.show_target is not None:
+                    self.show_target(None)
             if kind in ("idle", "approve"):
                 self.refresh()
 
@@ -686,6 +719,10 @@ class ViewerWindow:
         self.image_item = self.canvas.create_image(0, 0, anchor="nw")
         self.note_item = self.canvas.create_text(0, 0, fill=FG, font=("Segoe UI", 12),
                                                  text="Connecting to the NanoKVM service…")
+        # A Do it step's target, outlined on the picture before the step is done (per mille of the screen)
+        self.target_item = self.canvas.create_rectangle(0, 0, 0, 0, outline=TARGET_FG, width=3, state="hidden")
+        self.target: tuple[int, int, int, int] | None = None
+        self.panel.show_target = self.show_target
         self.photo = None           # the picture on screen; Tk shows nothing once it is garbage-collected
         self.mode = "fit"           # "fit" the window, or "actual" pixels (drag to pan)
         self.closed = False
@@ -740,7 +777,7 @@ class ViewerWindow:
         try:
             self.panel.close()          # stops its work, releases every key if it typed, ends its share
         finally:
-            self.panel.reveal = None    # no window -> panel -> window cycle (see below)
+            self.panel.reveal = self.panel.show_target = None   # no window -> panel -> window cycle (see below)
             self.feed.stop()
             self.poller.stop()
             try:
@@ -800,6 +837,24 @@ class ViewerWindow:
         self._placed = (w, h, cw, ch)
         self.canvas.coords(self.image_item, max(0, (cw - w) // 2), max(0, (ch - h) // 2))
         self.canvas.configure(scrollregion=(0, 0, max(cw, w), max(ch, h)))
+        self._draw_target()
+
+    def show_target(self, box: tuple[int, int, int, int] | None) -> None:
+        """Outline a Do it step's target (a box per mille of the screen) on the picture, or clear it."""
+        self.target = box
+        self._draw_target()
+
+    def _draw_target(self) -> None:
+        if self.target is None or self.photo is None:
+            self.canvas.itemconfigure(self.target_item, state="hidden")
+            return
+        ox, oy = self.canvas.coords(self.image_item)[:2]
+        pw, ph = self.photo.width(), self.photo.height()
+        x1, y1, x2, y2 = self.target
+        self.canvas.coords(self.target_item, ox + x1 * pw / 1000 - 3, oy + y1 * ph / 1000 - 3,
+                           ox + x2 * pw / 1000 + 3, oy + y2 * ph / 1000 + 3)
+        self.canvas.itemconfigure(self.target_item, state="normal")
+        self.canvas.tag_raise(self.target_item)
 
     @property
     def starting(self) -> bool:

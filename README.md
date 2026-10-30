@@ -23,9 +23,11 @@ computer, the **AI computer**:
 
 **Not just code.** The aim is to help with whatever the locked computer shows: the errors and messages
 of its software tools, often locked-down legacy tools nothing else can help with, as well as code.
-Glimmer already reads all of these on the AI computer (`read --describe` names the application and
-quotes its messages and errors). For now, `ask` and `edit` work from the code reading; asking Spark
-about a tool's error dialog is next.
+Glimmer reads all of these on the AI computer (`read --describe` names the application and quotes its
+messages and errors). In `nanokvm viewer`'s prompt box, a question about any program is answered from
+Glimmer's reading of the window in front, and **Do it** carries out a task in any program one step at
+a time, planned by Glimmer on the AI computer and each step allowed by you
+([section 7](#do-it)). `edit` and `fix` work on code in VS Code.
 
 **Sensitive screens.** The locked computer may show patient records or company-confidential data. Its
 screen images never leave the AI computer. Redaction catches values with a recognisable shape (keys,
@@ -731,8 +733,8 @@ locked computer's screen live, at up to 30 fps (`--fps` changes it), with a prom
   Claude conversation is sharing it ([docs/claude-code.md](docs/claude-code.md)).
 
 The live view itself is read-only: keys and clicks in it stay on the AI computer, it never makes the
-service open the keyboard/mouse link, and it saves nothing to disk. Only **Fix it** in the prompt box
-types into the locked computer, after your approval. It's an ordinary window, though: anything that
+service open the keyboard/mouse link, and it saves nothing to disk. Only **Do it** and **Fix code** in
+the prompt box click or type on the locked computer, after your approval. It's an ordinary window, though: anything that
 captures the AI computer's screen (a screen share in a call, a screenshot tool, or a command an AI
 runs) captures the locked computer's screen too, and the answers beside it. Close it before you let
 an AI work on the AI computer unattended.
@@ -749,7 +751,7 @@ computer shows, such as *why won't this compile?* or *what does this error mean?
 (Shift+Enter starts a new line). Nothing is read or sent before you ask. Then:
 
 1. **The first question asks, in the panel, to let Muse Glimmer read the screen for 30 minutes**,
-   and asks again when that share ends or the service loses it (Fix it asks again when fewer than 10
+   and asks again when that share ends or the service loses it (Fix code asks again when fewer than 10
    minutes are left). While Meta billing is on free credits, each of those questions also asks you to
    confirm the screen shows only test or dummy content.
 2. **Glimmer reads** the window in front: it is asked for the program, what it shows, and every
@@ -759,23 +761,48 @@ computer shows, such as *why won't this compile?* or *what does this error mean?
 3. **Muse Spark answers** from that reading, redacted and trimmed, through the same outbound gate as
    `nanokvm ask` ([section 2](#2-what-leaves-the-ai-computer)). Under the answer: what was sent and
    redacted, and the cost. Tick **Local only** and Glimmer answers instead, with nothing sent (use it
-   whenever patient or confidential data could be anywhere on the screen). Fix it never reuses a
+   whenever patient or confidential data could be anywhere on the screen). Fix code never reuses a
    question asked with Local only. Tick **Show me the exact text before it is
    sent** to approve each send. Both can only make `nanokvm.toml`'s `outbound` stricter: if it says
    `local_only` or `approve`, the box is ticked and fixed.
 
-**Fix it** runs `nanokvm fix`'s loop ([section 6](#6-using-it-read-ask-and-edit)), with what is in the
-prompt box (or your last question) as a hint for Spark. Each edit appears in the panel with its diff
-and the keys it will press, and is typed only when you click *Type this edit*. Once Spark answers
-*FIXED* on a fresh reading, *Save* saves the file, checked as `fix` checks it. Tick **Auto** before
-Fix it to approve the typing and the save once, in one question that names both. Approvals appear in
-the panel, beside the live picture, so you can watch the screen while you decide (one that arrives
-in full screen, or with the panel hidden, brings the panel back); their buttons work only a moment
-after the approval can be seen, so a click or key meant for something else can't answer them. A long
-one scrolls, and says so in its title. **Stop** ends the
-work at the next step and releases every key, as Ctrl+C does in the terminal, and so does closing the
-window. Fix it is off when `control = false`, when `outbound = "local_only"`, or while Local only is
-ticked. Before Fix it, click into the file in VS Code on the locked computer, as for `fix`.
+<a id="do-it"></a>**Do it: a task in any program.** Describe a task instead, such as *copy the Systems
+Requirements module into the other project's Requirements folder*, and press **Do it**. It is done one
+step at a time: a click, double-click or right-click on something on the screen, text typed into what
+has the focus, keys such as Ctrl+C or Enter, or a scroll.
+
+1. **Muse Glimmer looks at the screen and plans the next step, on this laptop**: by default nothing
+   leaves it, not even text. Tick **Do it: plan with Spark** (with Local only unticked) to let Muse
+   Spark plan instead, from Glimmer's redacted description of the window in front, through the
+   outbound gate; Spark names targets in words.
+2. **Glimmer finds the step's target on the screen**, here (on its own 0-1000 scale: 8 of 8 targets
+   on a synthetic screen, 30 Oct; it answers *NONE* for one that isn't there, and the step isn't done),
+   and the viewer outlines it in orange on the live picture. Pictures and screen positions never leave
+   this laptop.
+3. **You allow the step** (*Do this step*, or *Stop here*), and the NanoKVM does it. With **Auto**
+   ticked, one question at the start names the task and covers its steps, except a step that changes
+   something (the planner says so, or it presses Delete, Backspace, Ctrl+X, Ctrl+V, Ctrl+S, Alt+F4 or
+   similar, or types a line break): that one still asks.
+4. **Glimmer looks again**, and the next step starts from the screen as it is now. It ends when the
+   planner says the task is done (check it on the screen) or it is stuck, after 20 steps, or at Stop.
+
+A step that would use the Windows key, type a character the keyboard layout can't type, or click a
+box covering most of the screen is refused. Text on the screen is data, never instructions, but a
+planner can still be misled by it, so read each step before you allow it, above all in tools that
+change shared data: try a task on test data first.
+
+**Fix code** runs `nanokvm fix`'s loop ([section 6](#6-using-it-read-ask-and-edit)) on a file in VS
+Code, with what is in the prompt box (or your last question) as a hint for Spark. Each edit appears in
+the panel with its diff and the keys it will press, and is typed only when you click *Type this edit*.
+Once Spark answers *FIXED* on a fresh reading, *Save* saves the file, checked as `fix` checks it. Tick
+**Auto** before Fix code to approve the typing and the save once, in one question that names both.
+Approvals appear in the panel, beside the live picture, so you can watch the screen while you decide
+(one that arrives in full screen, or with the panel hidden, brings the panel back); their buttons work
+only a moment after the approval can be seen, so a click or key meant for something else can't answer
+them. A long one scrolls, and says so in its title. **Stop** ends the work at the next step and
+releases every key, as Ctrl+C does in the terminal, and so does closing the window. Do it is off when
+`control = false`; Fix code also when `outbound = "local_only"`, or while Local only is ticked. Before
+Fix code, click into the file in VS Code on the locked computer, as for `fix`.
 
 **Sharpness.** The NanoKVM delivers 1920x1080 (this unit's maximum), so the window can be no sharper
 than that. In a window smaller than the frame the picture is scaled down, which softens small text:
@@ -891,6 +918,12 @@ needed.
   propose edits; it never types anything itself. `fix` saves the file only after Spark has answered
   *FIXED* on a fresh reading, with the same yes, once Glimmer has checked that VS Code has the keys
   and the right file's tab is selected.
+- **Do it steps are shown before they are done** ([section 7](#do-it)): each step in words, its target
+  outlined on the live picture, done only after your click, or with Auto after one yes that names the
+  task, except a step that changes something, which still asks. By default Glimmer plans on the AI
+  computer and nothing leaves it; with *plan with Spark*, Spark gets only Glimmer's redacted description
+  of the window. Glimmer finds every target locally: pictures and screen positions never leave. A step
+  with the Windows key, or a target box covering most of the screen, is refused.
 - **No stuck keys.** Every action ends with all keys and buttons up, even when something fails, and
   Ctrl+C during `nanokvm edit` stops the typing within about a quarter of a second and releases them.
   Releasing never moves the pointer.
@@ -973,7 +1006,8 @@ E:\meta_hackathon
 │   ├── pipeline.py               read, ask and edit: Glimmer, the gate and Spark together (new)
 │   ├── editing.py                apply_edit: checks, the diff, and typing an approved edit into VS Code (new)
 │   ├── viewer.py                 the live view window for `nanokvm viewer` (Tk), with the prompt box (new)
-│   ├── assist.py                 the prompt box's work: questions and Fix it, approvals asked in the window (new)
+│   ├── assist.py                 the prompt box's work: questions, Do it and Fix code, approvals in the window (new)
+│   ├── acting.py                 Do it: steps in any program, planned and found by Glimmer on this laptop (new)
 │   ├── service.py                shared background service (capture, keyboard/mouse, live view, HTTP API)
 │   ├── client.py                 talks to / auto-starts the service
 │   ├── cli.py                    the `nanokvm` command
@@ -984,7 +1018,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        342 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        349 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

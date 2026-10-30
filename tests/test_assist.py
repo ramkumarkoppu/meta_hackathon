@@ -1,5 +1,5 @@
-"""The live viewer's prompt box (assist.py): questions about the screen and Fix it, with every approval asked in the
-window. Uses the simulated VS Code, a fake Glimmer and a fake Meta API from test_editing."""
+"""The live viewer's prompt box (assist.py): questions about the screen, Do it and Fix code, with every approval asked
+in the window. Uses the simulated desktop and VS Code, a fake Glimmer and a fake Meta API from test_editing."""
 import json
 import threading
 import time
@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from fakes import spark_stream
+from nanokvm_mcp import acting as A
 from nanokvm_mcp import editing as E
 from nanokvm_mcp.assist import AssistSession, EventQueue
 from nanokvm_mcp.glimmer import WINDOW_PROMPT, GlimmerClient
@@ -297,3 +298,112 @@ def test_one_piece_of_work_at_a_time(world):
 
 def _keys_typed(w):
     return [keys for mods, keys in w.env.desk.combos if E_KEY("enter") in keys or E_KEY("backspace") in keys]
+
+
+# ---------------------------------------------------------------- Do it: any program, one step at a time
+BUTTON = (781, 148, 937, 231)                                # the simulated desktop's button, per mille
+
+
+def _ui_step(**args):
+    return spark_stream("", tool_calls=[("ui_step", json.dumps(args))], finish="tool_calls")
+
+
+def _plan_prompts(w):
+    texts = [b["messages"][1]["content"][0]["text"] for b in _image_reads(w)]
+    return [t for t in texts if t.startswith("You operate the computer")]
+
+
+def test_do_it_plans_on_this_laptop_and_each_step_is_outlined_then_approved(world):
+    w = world
+    w.plans += ["ACTION: click\nTARGET: the 'Button' at the top right\nCHANGES: no\nWHY: press it",
+                "**ACTION:** done\n**WHY:** the button was pressed"]
+    s, events, _ = _session(w)
+    assert s.do("press the button")
+    seen = _drive(s, events, lambda a: True)
+    share, step = _approvals(seen)
+    assert share.kind == "share" and "test or dummy" not in share.text            # planned here: nothing is sent
+    assert step.kind == "step" and step.text.startswith("Click the 'Button' at the top right (outlined in orange")
+    assert w.env.desk.button_presses == 1 and _texts(seen, "target") == [BUTTON, None]   # outlined, then cleared
+    report = _texts(seen, "report")[0]
+    assert report[0] == ("Muse Glimmer says the task is done: check it on the screen.", "ok")
+    assert report[1] == ("the button was pressed", "") and "nothing was sent" in report[2][0]
+    assert w.meta.requests == []
+    assert "1. Click the 'Button' at the top right: done" in _plan_prompts(w)[1]   # the next plan saw what happened
+
+
+def test_auto_runs_steps_that_change_nothing_and_asks_before_one_that_does(world):
+    w = world
+    w.plans += ["ACTION: click\nTARGET: the Button\nCHANGES: no\nWHY: select it",
+                "ACTION: keys\nKEYS: ctrl+v\nCHANGES: no\nWHY: paste it",    # Ctrl+V changes something, whatever it says
+                "ACTION: done\nWHY: pasted"]
+    s, events, _ = _session(w)
+    assert s.do("paste it into the box", auto=True)
+    seen = _drive(s, events, lambda a: True)
+    first, risky = _approvals(seen)
+    assert first.kind == "share" and "without asking for each step" in first.text and "paste it into the box" in first.text
+    assert risky.kind == "step" and "Press ctrl+v" in risky.text and "This step changes something." in risky.text
+    assert w.env.desk.button_presses == 1
+
+
+def test_a_target_glimmer_cant_find_is_never_clicked_and_the_planner_is_told(world):
+    w = world
+    w.locate = lambda target: "NONE"
+    w.plans += ["ACTION: click\nTARGET: the Save As button\nCHANGES: yes\nWHY: save",
+                "ACTION: stuck\nWHY: there is no Save As button"]
+    s, events, _ = _session(w)
+    assert s.do("save it under a new name")
+    seen = _drive(s, events, lambda a: True)
+    assert [a.kind for a in _approvals(seen)] == ["share"] and w.env.desk.clicks == []
+    assert ("1. Click the Save As button: not done: the screen reader couldn't find that on the screen"
+            in _plan_prompts(w)[1])
+    assert _texts(seen, "report")[0][0] == ("Muse Glimmer is stuck: it can't see how to go on from this screen.", "err")
+
+
+def test_steps_that_reach_outside_the_program_or_cant_be_typed_are_refused(world):
+    w = world
+    w.plans += ["ACTION: keys\nKEYS: win+r\nCHANGES: no\nWHY: open Run",
+                "ACTION: type\nTEXT: café\nCHANGES: no\nWHY: name", "ACTION: done\nWHY: gave up"]
+    s, events, _ = _session(w)
+    assert s.do("open the run box")
+    seen = _drive(s, events, lambda a: True)
+    assert [a.kind for a in _approvals(seen)] == ["share"] and w.env.desk.combos == []
+    says = " ".join(_texts(seen, "say"))
+    assert "the Windows key isn't used" in says and "can't type" in says
+    assert "1. Press win+r: not done: the Windows key isn't used" in _plan_prompts(w)[2]
+    assert A.parse_box("0 0 1000 1000") is None and A.parse_box("10 10 20 20") == (10, 10, 20, 20)   # no whole screen
+
+
+def test_do_it_with_spark_sends_the_redacted_reading_never_a_picture_or_coordinates(world):
+    w = world
+    w.ui_text = "Window: Simulated tool, owner jane.doe@example.org\nButton: 'Button x0' (top right)"
+    w.replies += [_ui_step(action="click", target="the 'Button x0' button at the top right", changes=False,
+                           note="press it"), spark_stream("DONE: pressed it.")]
+    s, events, _ = _session(w)
+    assert s.do("press the button", spark=True)
+    seen = _drive(s, events, lambda a: True)
+    share, step = _approvals(seen)
+    assert "test or dummy content" in share.text and step.kind == "step"     # to Meta, on free credits
+    assert w.env.desk.button_presses == 1 and len(w.meta.requests) == 2
+    sent = json.dumps([r[2] for r in w.meta.requests])
+    assert "jane.doe" not in sent and "[[EMAIL_1]]" in sent and "data:" not in sent
+    assert not any(f" {n} " in sent or f"{n}," in sent for n in BUTTON)     # Glimmer's box stays here
+    assert w.meta.requests[1][2]["messages"][-1]["content"].startswith("Done.\n\nThe window in front, read again:")
+    report = _texts(seen, "report")[0]
+    assert report[0] == ("Muse Spark says the task is done: check it on the screen.", "ok")
+    assert report[1] == ("DONE: pressed it.", "")                          # Spark's own text: never coloured
+
+
+def test_stop_at_a_step_ends_the_task_before_it_is_done(world):
+    w = world
+    w.plans += ["ACTION: click\nTARGET: the Button\nCHANGES: no\nWHY: press"]
+    s, events, _ = _session(w)
+    assert s.do("press it")
+
+    def answer(a):
+        if a.kind == "step":
+            s.stop()
+            return False
+        return True
+    seen = _drive(s, events, answer)
+    assert "Stopped." in _texts(seen, "info") and w.env.desk.button_presses == 0
+    assert _texts(seen, "target")[-1] is None                               # the outline goes too

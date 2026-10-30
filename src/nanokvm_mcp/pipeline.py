@@ -139,7 +139,7 @@ class Pipeline:
     def read(self, kind: str = "code", rect: tuple[float, float, float, float] | None = None) -> Reading:
         readers = {"code": self.glimmer.transcribe_code, "describe": self.glimmer.describe_screen,
                    "errors": self.glimmer.extract_errors, "diagnose": self.glimmer.diagnose_screen,
-                   "window": self.glimmer.read_window}
+                   "window": self.glimmer.read_window, "ui": self.glimmer.describe_ui}
         if kind not in readers:
             raise ValueError(f"kind must be one of {sorted(readers)}")
         frame = self._frame(rect)
@@ -151,6 +151,21 @@ class Pipeline:
             frame["image_b64"] = None     # drop the image before anything else happens
             del frame
         return Reading(reply.content, kind, time.monotonic() - t0, meta)
+
+    def look(self, fn: Callable[[str, str], object]) -> object:
+        """``fn(image_b64, fmt)`` on one fresh frame of the whole screen, for several of Glimmer's answers about the
+        same picture (Do it: plan the step, then find its target). The image is dropped afterwards, as in read."""
+        frame = self._frame(None)
+        try:
+            return fn(frame["image_b64"], frame["format"])
+        finally:
+            frame["image_b64"] = None
+            del frame
+
+    def screen_size(self) -> tuple[int, int]:
+        """The screen's coordinate space, the one click and scroll actions use."""
+        screen = self.svc.status()["screen"]
+        return int(screen["width"]), int(screen["height"])
 
     # ---- asking
     def spark(self) -> SparkClient:

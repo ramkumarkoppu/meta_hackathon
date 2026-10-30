@@ -12,6 +12,7 @@ from conftest import SimEnv
 from fakes import FakeServer, llama_reply, spark_stream
 from nanokvm_mcp import cli
 from nanokvm_mcp import editing as E
+from nanokvm_mcp.acting import UI_PROMPT
 from nanokvm_mcp.glimmer import BOX_PROMPT, DIAGNOSE_PROMPT, STATUS_PROMPT, TAB_PROMPT, GlimmerClient
 from nanokvm_mcp.outbound import OutboundBlocked, OutboundGate
 from nanokvm_mcp.pipeline import EditError, Pipeline
@@ -40,8 +41,11 @@ def world(tmp_path):
     env = SimEnv(tmp_path, editor_lines=FILE)
     ed = env.desk.editor
     ed.name = "sum.cpp"
+    # Do it: plans (Glimmer's answers to PLAN_PROMPT, in turn) and where each target is (per mille; the simulated
+    # desktop's button is at 781 148 937 231), plus the window described for Spark
     w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, tab_override=None, cfg=env.cfg,
-                        diagnosis="VS Code, sum.cpp\nNo errors shown.")
+                        diagnosis="VS Code, sum.cpp\nNo errors shown.", plans=[], ui_text="Window: Simulated tool\n"
+                        "Button: 'Button x0' (top right)", locate=lambda target: "781 148 937 231")
 
     def llama(path, body):
         if path == "/health":                                # asked before the screen is shared
@@ -59,6 +63,12 @@ def world(tmp_path):
                 return 200, llama_reply(w.diagnosis)
             if prompt == TAB_PROMPT:
                 return 200, llama_reply(w.tab_override or ed.tab_text())
+            if prompt.startswith("You operate the computer"):
+                return 200, llama_reply(w.plans.pop(0) if w.plans else "ACTION: done\nWHY: nothing left to do")
+            if prompt.startswith("Find ") and "bounding box" in prompt:
+                return 200, llama_reply(w.locate(prompt.split("Find ", 1)[1].split(" in this screenshot", 1)[0]))
+            if prompt == UI_PROMPT:
+                return 200, llama_reply(w.ui_text)
             return 200, llama_reply(ed.transcription())
         user = msgs[1]["content"]
         if "<question>" in user:                             # minimise: keep every line

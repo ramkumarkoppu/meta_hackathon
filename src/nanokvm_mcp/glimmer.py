@@ -215,6 +215,20 @@ class GlimmerClient:
         """What VS Code's quick-input box shows (':' for Go to Line), from a crop of the screen's top."""
         return self.read_image(image_b64, fmt, BOX_PROMPT, max_tokens=128)
 
+    def plan_step(self, image_b64: str, fmt: str, prompt: str) -> GlimmerReply:
+        """Do it, planned on this laptop: the next step towards a task, from the screenshot (acting.PLAN_PROMPT).
+        Some thinking is allowed here, unlike the readings; it is dropped with the rest of the reply's reasoning."""
+        return self.read_image(image_b64, fmt, prompt, reasoning="medium", think_tokens=1024, max_tokens=400)
+
+    def locate(self, image_b64: str, fmt: str, prompt: str) -> GlimmerReply:
+        """Where a step's target is, as a box on a 0-1000 scale (acting.GROUND_PROMPT)."""
+        return self.read_image(image_b64, fmt, prompt, max_tokens=40)
+
+    def describe_ui(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
+        """The window in front as something to operate, for Spark (acting.UI_PROMPT)."""
+        from .acting import UI_PROMPT
+        return self.read_image(image_b64, fmt, UI_PROMPT)
+
     def editor_tab(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         """The selected editor tab's file name, and whether it shows unsaved changes (before and after a save)."""
         return self.read_image(image_b64, fmt, TAB_PROMPT, max_tokens=128)

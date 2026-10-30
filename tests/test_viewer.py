@@ -435,6 +435,10 @@ class _FakeSession:
         self.calls.append(("fix",) + a)
         return True
 
+    def do(self, *a):
+        self.calls.append(("do",) + a)
+        return True
+
     def answer(self, approval, yes):
         self.answers.append((approval.kind, yes))
 
@@ -446,6 +450,40 @@ class _FakeSession:
 
     def shared_minutes_left(self):
         return 0
+
+
+def test_a_do_it_target_is_outlined_on_the_picture_and_do_it_plans_here_by_default(sim, monkeypatch):
+    monkeypatch.setattr(V, "AssistSession", _FakeSession)
+    win = _window(sim)
+    try:
+        win.photo = win.tk.PhotoImage(width=400, height=200)
+        win.canvas.coords(win.image_item, 10, 20)
+        win.panel.events.put(("target", (100, 200, 300, 400)))
+        win.panel.poll()
+        assert win.canvas.itemcget(win.target_item, "state") == "normal"
+        assert [round(c) for c in win.canvas.coords(win.target_item)] == [10 + 40 - 3, 20 + 40 - 3, 10 + 120 + 3,
+                                                                           20 + 80 + 3]
+        win.panel.events.put(("idle", None))                 # the work is over: the outline goes
+        win.panel.poll()
+        assert win.canvas.itemcget(win.target_item, "state") == "hidden"
+        p = win.panel
+        p.prompt.insert("1.0", "copy it into the other folder")
+        p.submit_do()                                        # planned on this laptop unless Plan with Spark is ticked
+        assert p.session.calls[-1] == ("do", "copy it into the other folder", False, False, False)
+        p.spark_var.set(True)
+        p.local_var.set(True)                                # Local only wins: still planned here
+        p.refresh()
+        assert p.spark_box["state"] == "disabled"
+        p.prompt.insert("1.0", "and again")
+        p.submit_do()
+        assert p.session.calls[-1] == ("do", "and again", False, False, False)
+        p.local_var.set(False)
+        p.refresh()
+        p.prompt.insert("1.0", "with Spark")
+        p.submit_do()
+        assert p.session.calls[-1] == ("do", "with Spark", False, True, False)
+    finally:
+        win.close()
 
 
 def test_the_prompt_box_asks_with_the_choices_made_and_letters_stay_typing(sim, monkeypatch):
@@ -557,14 +595,15 @@ def test_the_prompt_box_follows_stricter_settings(sim, monkeypatch):
     try:
         p = win.panel
         assert p.local_var.get() and p.local_box["state"] == "disabled"
-        assert p.fix_btn["state"] == "disabled" and "Fix it is off" in p.status["text"]
+        assert p.fix_btn["state"] == "disabled" and "Fix code is off" in p.status["text"]
     finally:
         win.close()
         sim.client.cfg.outbound = "auto"
     sim.client.cfg.control = False
     win = _window(sim)
     try:
-        assert win.panel.fix_btn["state"] == "disabled" and "control is off" in win.panel.status["text"]
+        assert win.panel.fix_btn["state"] == win.panel.do_btn["state"] == "disabled"
+        assert "Do it is off: keyboard/mouse control is off" in win.panel.status["text"]
         assert win.panel.show_box["state"] == "normal"
     finally:
         win.close()

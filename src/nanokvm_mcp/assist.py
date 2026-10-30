@@ -23,11 +23,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+from . import acting as A
 from . import editing as E
 from .client import ServiceError
 from .config import Config
 from .glimmer import GlimmerError
-from .outbound import OutboundBlocked
+from .outbound import OutboundBlocked, OutboundGate
 from .pipeline import AskResult, EditError, EditResult, Pipeline
 from .spark import SparkError
 
@@ -150,6 +151,13 @@ class AssistSession:
     def fix(self, hint: str = "", auto: bool = False, show_first: bool = False) -> bool:
         """Start the fix loop, with ``hint`` (the person's question) added to Spark's request."""
         return self._start(lambda: self._fix((hint or "").strip(), auto, show_first))
+
+    def do(self, task: str, auto: bool = False, spark: bool = False, show_first: bool = False) -> bool:
+        """Start Do it: ``task`` in any program, one step at a time (acting.py). Glimmer plans unless ``spark``."""
+        task = (task or "").strip()
+        if not task:
+            return False
+        return self._start(lambda: self._do(task, auto, spark, show_first))
 
     def answer(self, approval: Approval, yes: bool) -> None:
         approval.answer = bool(yes)
@@ -332,6 +340,165 @@ class AssistSession:
     def _typing_allowed(self) -> bool:
         self.used_keys = self.job_typed = True
         return True
+
+    # ---- Do it: a task in any program
+    def _do(self, task: str, auto: bool, spark: bool, show_first: bool) -> None:
+        if not self.base_cfg.control:
+            raise EditError("keyboard/mouse control is off (control = false in nanokvm.toml)")
+        use_spark = spark and self.base_cfg.outbound != "local_only"
+        cfg = self._cfg_for(not use_spark, show_first)
+        planner = ("Muse Spark plans from the redacted reading" if use_spark else
+                   "Muse Glimmer plans on this laptop; nothing leaves it")
+        self.post(("question", f"Do it: {E.safe_text(task, multiline=True)}\n({planner}"
+                               + ("; Auto: steps that change nothing run without asking" if auto else "") + ")"))
+        extra = ([f"Do this task on the locked computer without asking for each step: {E.safe_text(task)!r}. Each step "
+                  "is still shown, with its target outlined on the picture; a step that changes something still asks; "
+                  "Stop ends it."] if auto else [])
+        pipe = self._prepare(cfg, extra)
+        width, height = pipe.screen_size()
+        if use_spark:
+            self._do_with_spark(pipe, cfg, task, auto, width, height)
+        else:
+            self._do_locally(pipe, task, auto, width, height)
+
+    def _do_locally(self, pipe: Pipeline, task: str, auto: bool, width: int, height: int) -> None:
+        """Glimmer looks at the screen, plans the next step and finds its target: nothing leaves this laptop."""
+        history: list[str] = []
+        for n in range(1, A.MAX_STEPS + 1):
+            self._say(f"Muse Glimmer looks at the screen and plans step {n}")
+
+            def plan_and_find(b64: str, fmt: str):
+                reply = pipe.glimmer.plan_step(b64, fmt, A.PLAN_PROMPT.format(
+                    task=task, history="\n".join(history) or "none yet"))
+                kind, step = A.parse_plan(reply.content)
+                if kind == "step" and step.action in A.POINTED and step.target:
+                    step.box = A.parse_box(pipe.glimmer.locate(b64, fmt, A.GROUND_PROMPT.format(
+                        target=step.target)).content)
+                return kind, step
+            kind, step = pipe.look(plan_and_find)
+            if kind in ("done", "stuck"):
+                verdict = ("Muse Glimmer says the task is done: check it on the screen." if kind == "done" else
+                           "Muse Glimmer is stuck: it can't see how to go on from this screen.")
+                self.post(("report", [(verdict, "ok" if kind == "done" else "err"),
+                                      (E.safe_text(step) or "(no reason given)", ""),
+                                      (f"({n - 1} step(s) done; planned on this laptop, nothing was sent)", "")]))
+                return
+            result = self._one_step(pipe, step, auto, n, width, height)
+            history.append(A.history_line(n, step, result))
+            if result == "declined":
+                self.post(("report", [(f"Stopped: you said no to step {n}.", ""),
+                                      (f"({n - 1} step(s) done; nothing was sent)", "")]))
+                return
+        self.post(("report", [(f"Stopped after {A.MAX_STEPS} steps: the task isn't done yet.", "err")]))
+
+    def _do_with_spark(self, pipe: Pipeline, cfg: Config, task: str, auto: bool, width: int, height: int) -> None:
+        """Spark plans from Glimmer's redacted description of the window; Glimmer still finds every target here."""
+        self._say("Muse Glimmer describes the window in front")
+        reading = pipe.read("ui")
+        gate = OutboundGate(cfg, pipe.glimmer, pipe.spark(), approve=self._approve_send, stand_in=pipe.stand_in)
+        prepared = gate.prepare(reading.text, task, reading.frame.get("image_sha256"), trim=False)
+        history: list[dict] = []
+        cost, turns, n = 0.0, 0, 0
+
+        def report(*first: tuple[str, str]) -> None:
+            self.post(("report", [*first, (f"({n} step(s) done; {turns} request(s) to {cfg.spark_model}, store=false, "
+                                           f"cost ${cost:.4f}; logged in {cfg.run_dir / 'outbound.log'})", "")]))
+        while turns < A.MAX_ACT_TURNS:
+            self._say("asking Muse Spark for the next step")
+            answer = gate.ask(prepared, A.ACT_SYSTEM, tools=[A.UI_STEP], parallel_tool_calls=False, history=history)
+            turns += 1
+            cost += answer.reply.cost_usd
+            if not answer.tool_calls:
+                text = E.safe_text(answer.content or "", multiline=True).strip()
+                if text.upper().startswith("DONE"):            # nanokvm's own line gets the colour, never Spark's text
+                    report(("Muse Spark says the task is done: check it on the screen.", "ok"), (text, ""))
+                else:
+                    report((text or "Muse Spark sent an empty reply", ""))
+                return
+            history.append({"role": "assistant", "content": answer.reply.content or None,
+                            "tool_calls": [{"id": c["id"], "type": "function",
+                                            "function": {"name": c["name"], "arguments": c["arguments"]}}
+                                           for c in answer.reply.tool_calls]})
+            call = answer.tool_calls[0]
+            told = "Unknown tool; only ui_step exists."
+            if call["name"] == "ui_step":
+                try:
+                    step = A.step_from_args(call["arguments"])
+                except A.StepRejected as e:
+                    told = f"Not done: {e}."
+                else:
+                    if step.action in A.POINTED and step.target:
+                        step.box = A.parse_box(pipe.look(lambda b64, fmt: pipe.glimmer.locate(
+                            b64, fmt, A.GROUND_PROMPT.format(target=step.target))).content)
+                    n += 1
+                    result = self._one_step(pipe, step, auto, n, width, height)
+                    if result == "declined":
+                        report((f"Stopped: you said no to step {n}.", ""))
+                        return
+                    told = "Done." if result == "done" else f"Not done: {result.removeprefix('not done: ')}."
+                    self._say("Muse Glimmer describes the window in front again")
+                    told += "\n\nThe window in front, read again:\n" + gate.screen_blocks(prepared, pipe.read("ui").text)
+            history.append({"role": "tool", "tool_call_id": call["id"], "content": told})
+            for other in answer.tool_calls[1:]:
+                history.append({"role": "tool", "tool_call_id": other["id"], "content": "Not done: one step per reply."})
+            if n >= A.MAX_STEPS:
+                report((f"Stopped after {A.MAX_STEPS} steps: the task isn't done yet.", "err"))
+                return
+        report((f"Stopped after {A.MAX_ACT_TURNS} requests to Spark.", "err"))
+
+    def _one_step(self, pipe: Pipeline, step: A.Step, auto: bool, n: int, width: int, height: int) -> str:
+        """Check one step, show it (its target outlined on the picture), get the yes (Auto: only for a step that
+        changes something) and do it. What happened, in words without screen text: done, declined, or not done."""
+        try:
+            A.check_step(step, self.base_cfg.keyboard_layout)
+        except A.StepRejected as e:
+            self._say(f"step {n} can't be done: {e}")
+            return f"not done: {e}"
+        if step.action in A.POINTED and step.box is None:
+            self._say(f"step {n}: Muse Glimmer couldn't find {E.safe_text(step.target)} on the screen")
+            return "not done: the screen reader couldn't find that on the screen"
+        shown = E.safe_text(step.describe(), multiline=True) + (" (outlined in orange on the picture)" if step.box else "")
+        if step.why:
+            shown += f"\nWhy: {E.safe_text(step.why)}"
+        if step.risky:
+            shown += "\nThis step changes something."
+        if step.box:
+            self.post(("target", step.box))
+        try:
+            if auto and not step.risky:
+                self._say(f"Auto: step {n}: {E.safe_text(step.describe())}")
+                ok = True
+            else:
+                ok = self._confirm(Approval("step", f"Step {n}: do this?", shown, "Do this step", "Stop here"))
+            if not ok:
+                return "declined"
+            self.used_keys = self.job_typed = True
+            self._act(pipe, A.act_body(step, width, height))
+            time.sleep(1.0)                                  # let the screen settle before the next look
+            return "done"
+        finally:
+            if step.box:
+                self.post(("target", None))
+
+    def _act(self, pipe: Pipeline, body: dict) -> dict:
+        """One request to the service on a worker thread, so Stop is seen at once, even while it types."""
+        box: dict = {}
+
+        def run() -> None:
+            try:
+                box["reply"] = pipe.svc.act(body)
+            except BaseException as e:  # noqa: BLE001  (handed back to the worker)
+                box["error"] = e
+        worker = threading.Thread(target=run, name="viewer-act", daemon=True)
+        worker.start()
+        while worker.is_alive():
+            worker.join(0.2)
+            if self.stop_event.is_set():
+                pipe.svc.act({"action": "release_all"})     # stops typing between keystrokes, every key up
+                raise KeyboardInterrupt
+        if "error" in box:
+            raise box["error"]
+        return box.get("reply") or {}
 
     def _approve_edit(self, auto: bool) -> Callable[[E.EditPlan], bool]:
         def approve(plan: E.EditPlan) -> bool:
