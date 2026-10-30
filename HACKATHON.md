@@ -98,6 +98,13 @@ So far:
   the Go to Line check, which led to the next item. An independent review (3 reviewers, each checked by
   a skeptic) then tightened it: the test-content question comes with every share, approvals scroll and
   arm only once seen, and a hidden prompt box can't send.
+- **Indentation from VS Code, not the picture (30 Oct).** After a fix, the code wasn't always tidy:
+  Glimmer can read a line's indentation a few spaces off, and Spark copies it. Now the indentation of
+  every line an edit replaces, and of every line it types, is measured in VS Code itself (End, then
+  Home, puts the cursor on the line's first character; the status bar's Col says where). A line read
+  wrong is put right in what Spark sees, and Spark plans again; a typed line indented other than as
+  typed fails the check. `fix` asks Spark to leave what it changes indented like the code around it,
+  and its final check looks for misindented lines too.
 - **Keys lost right after a start (30 Oct).** Every time the first keys went out right after the
   service started (or after an idle spell), the first Ctrl+G did nothing. That happened on 29 Oct's
   first typing run and twice on 30 Oct, and I had put it down to VS Code's focus. Now, before the first

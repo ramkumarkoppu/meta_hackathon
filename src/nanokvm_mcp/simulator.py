@@ -42,6 +42,7 @@ class SimEditor:
         self.anchor: tuple[int, int] | None = None # selection start
         self.goto: str | None = None               # digits in the Go to Line box while it is open
         self.top = 0                               # first row on the screen
+        self.auto_indent = False                   # as editor.autoIndent: Enter indents the new line like this one
 
     # ---- what the screen shows
     def selection(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
@@ -110,12 +111,30 @@ class SimEditor:
             return
         if usage == KEYS["esc"]:
             self.anchor = None
+        elif usage in (KEYS["home"], KEYS["end"], KEYS["up"], KEYS["down"]):
+            self.anchor = None
+            self._move(usage)
         elif usage == KEYS["backspace"]:
             self._backspace()
         elif usage == KEYS["enter"]:
-            self._insert("\n")
+            line = self.lines[self.row]
+            self._insert("\n" + (line[:len(line) - len(line.lstrip(" "))] if self.auto_indent else ""))
         elif ch is not None and ch not in "\n\t":
             self._insert(ch)
+
+    def _move(self, usage: int) -> None:
+        """Home is VS Code's: to the line's first character, or to column 1 from there. Up and Down keep the column
+        where the line is long enough."""
+        line = self.lines[self.row]
+        if usage == KEYS["home"]:
+            first = len(line) - len(line.lstrip(" ")) if line.strip() else 0
+            self.col = 0 if self.col == first else first
+        elif usage == KEYS["end"]:
+            self.col = len(line)
+        else:
+            self.row = max(0, self.row - 1) if usage == KEYS["up"] else min(len(self.lines) - 1, self.row + 1)
+            self.col = min(self.col, len(self.lines[self.row]))
+            self._reveal()
 
     def _reveal(self, centre: bool = False) -> None:
         if centre:                                 # Go to Line always centres the line, as VS Code does

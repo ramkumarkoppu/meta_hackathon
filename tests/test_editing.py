@@ -403,7 +403,7 @@ def test_the_files_last_line_can_be_edited(world):
     assert shown[0].at_bottom and "line 10 must be the file's last line" in " ".join(shown[0].steps())
     told = w.meta.requests[1][2]["messages"][3]["content"]
     assert told == "Applied and checked on the screen (line 10): 1 new line(s) are now at line 10, and line 11, the " \
-                   "file's last line, is now empty."
+                   "file's last line, is now empty. Indentation measured in the editor: line 10: 0 spaces."
 
 
 def test_fix_deletes_garbage_on_the_last_line_then_saves(world):
@@ -432,14 +432,56 @@ def test_the_last_line_shown_isnt_edited_if_the_file_goes_on(world):
     assert all(E_KEY("backspace") not in keys for _mods, keys in _keys_sent(w))
 
 
-def test_a_line_shown_with_other_indentation_is_unverified(world, monkeypatch):
-    w = world
-    real = w.ed.transcription                                     # e.g. auto-indent added a space
-    monkeypatch.setattr(w.ed, "transcription", lambda: real().replace("6 " + FIX, "6  " + FIX))
+def test_an_auto_indented_line_is_caught_by_the_status_bar_not_the_reading(world):
+    w = world                                       # editor.autoIndent left on: Enter indents the line after it
+    w.ed.auto_indent = True
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="fix")]
     res = w.run()
-    assert res.edits[0].outcome.status == "unverified" and "doesn't show the expected lines" in res.stopped
-    assert len(w.meta.requests) == 1
+    assert res.edits[0].outcome.status == "unverified" and "auto-indent" in res.stopped
+    assert "not Ln 7, Col 1" in res.stopped and len(w.meta.requests) == 1
+
+
+def test_a_new_line_read_with_other_indentation_is_verified_by_the_status_bar(world, monkeypatch):
+    w = world                                       # the editor has it right; only the reading is spaces off
+    real = w.ed.transcription
+    monkeypatch.setattr(w.ed, "transcription", lambda: real().replace("6 " + FIX, "6  " + FIX))
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="fix"), spark_stream("Done.")]
+    res = w.run()
+    assert res.edits[0].outcome.status == "verified" and res.edits[0].outcome.indents == {6: 4}
+    assert "Indentation measured in the editor: line 6: 4 spaces." in w.meta.requests[1][2]["messages"][3]["content"]
+
+
+def test_fix_plans_again_with_the_indentation_the_editor_measured(world, monkeypatch):
+    w = world                                       # seen live on 30 Oct: the old line read with the wrong indentation
+    real = w.ed.transcription
+    monkeypatch.setattr(w.ed, "transcription", lambda: real().replace("6 " + FILE[5], "6 " + FILE[5].lstrip()))
+    unindented = FIX.lstrip()                                     # what Spark writes from that reading
+    w.replies += [_call(start_line=6, end_line=6, new_text=unindented, note="loop bound"),
+                  _call(start_line=6, end_line=6, new_text=FIX, note="loop bound, indented as measured"),
+                  spark_stream("Done."), spark_stream("FIXED: the loop bound.")]
+    res = w.run(None)
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and res.stopped is None
+    assert [r.outcome.status for r in res.edits] == ["not_applied", "verified"]
+    told = w.meta.requests[1][2]["messages"][-1]["content"]
+    assert told.startswith("Not applied: the editor indents line 6: 4 spaces (its status bar shows it), not as the "
+                           "screen text showed (line 6: 0).")
+    assert "6     for (int i = 0; i <= n; ++i) {" in told       # the screen sent again, with the measured indentation
+    check = w.meta.requests[3][2]["messages"][-1]["content"]
+    assert "6     for (int i = 0; i < n; ++i) {" in check        # the fresh reading too
+    assert E.apply_indents("6 x\n7   y\n8", {6: 4, 8: 2}) == "6     x\n7   y\n8"   # empty rows stay empty
+    plan = E.plan_edit({"start_line": 6, "end_line": 6, "new_text": "x\ny"}, {6: "a", 7: "b"}, "us")
+    assert E.shift_indents({5: 1, 6: 4, 7: 8}, plan) == {5: 1, 8: 8}   # line 6 replaced by two lines: 7 moves to 8
+
+
+def test_edit_stops_when_the_editor_measures_other_indentation(world, monkeypatch):
+    w = world                                       # nanokvm edit: no second try, the person runs it again
+    real = w.ed.transcription
+    monkeypatch.setattr(w.ed, "transcription", lambda: real().replace("6 " + FILE[5], "6 " + FILE[5].lstrip()))
+    w.replies += [_call(start_line=6, end_line=6, new_text=FIX.lstrip(), note="loop bound")]
+    res = w.run()
+    assert w.ed.lines == FILE and res.edits[0].outcome.status == "not_applied"
+    assert "the editor indents line 6: 4 spaces" in res.stopped and len(w.meta.requests) == 1
+    assert all(E_KEY("backspace") not in keys for _mods, keys in _keys_sent(w))
 
 
 def test_only_the_first_edit_in_a_reply_is_typed(world):
@@ -638,7 +680,7 @@ def test_keys_cut_short_by_release_all_stop_the_edit():
 def test_ctrl_c_is_seen_while_the_service_is_still_typing():
     screen = {6: FILE[5], 7: FILE[6]}
     plan = E.plan_edit({"start_line": 6, "end_line": 6, "new_text": FIX, "note": ""}, screen, "us")
-    statuses = iter(["Ln 6, Col 1", "Ln 7, Col 1 (36 selected)"])
+    statuses = iter(["Ln 6, Col 1", "Ln 6, Col 5", "Ln 7, Col 1 (36 selected)"])   # Go to Line, End+Home, Ctrl+L
     busy, released, actions = threading.Event(), threading.Event(), []
 
     def act(body):
@@ -664,7 +706,7 @@ def test_ctrl_c_is_seen_while_the_service_is_still_typing():
 def test_ctrl_c_while_typing_releases_every_key():
     screen = {6: FILE[5], 7: FILE[6]}
     plan = E.plan_edit({"start_line": 6, "end_line": 6, "new_text": FIX, "note": ""}, screen, "us")
-    statuses = iter(["Ln 6, Col 1", "Ln 7, Col 1 (36 selected)"])
+    statuses = iter(["Ln 6, Col 1", "Ln 6, Col 5", "Ln 7, Col 1 (36 selected)"])   # Go to Line, End+Home, Ctrl+L
     actions = []
 
     def act(body):

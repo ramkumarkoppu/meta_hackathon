@@ -591,23 +591,34 @@ printed above them can't.
    typed: elsewhere, digits and Enter could act (in VS Code's terminal,
    Ctrl+G is *Go to Recent Directory*, and Enter would run a `cd`). Then the line number and Enter go to
    the line. Glimmer reads the status bar (it must say *Ln S, Col 1*, with nothing selected) and the
-   lines there (they must read as the ones Spark changed; indentation isn't compared here, since it is
-   what a second reading gets wrong most, and the whole lines are replaced anyway). Ctrl+L once per
-   line selects them, checked on the status bar again: the selection must end at column 1 of the next
-   line, or, for an edit that ends on the last line shown, on that line, which shows that it is the
-   file's last line, at the column that fits its length as read (one that goes on below the screen,
-   unread, is never deleted). Backspace deletes them, and the new lines are typed.
-4. **The result is checked.** Glimmer reads the screen again: the new lines must be there, followed by
-   the line that came after the old ones (at the end of the file, the empty last line the typing leaves:
-   each typed line ends with a line break). Each line must have the same indentation; runs of spaces
-   inside a line aren't compared, since Glimmer can't count them reliably.
+   lines there (they must read as the ones Spark changed, indentation aside). **Indentation comes from
+   VS Code, not the picture**: Glimmer can read a line's indentation a few spaces off (seen live: 4
+   spaces, then 0), and Spark would copy the mistake. So End, then Home, puts the cursor on each old
+   line's first character (Down between them), and the status bar's *Col* says exactly how far it is
+   indented. If a line is indented differently from how it read, and Spark's new line doesn't already
+   have the measured indentation, nothing is typed: Spark is told the measured numbers and plans again
+   (`fix`; `edit` stops), and from then on the screen text Spark gets carries the measured
+   indentation. Ctrl+L once per line selects the lines, checked on the status bar again: the selection
+   must end at column 1 of the next line, or, for an edit that ends on the last line shown, on that
+   line, which shows that it is the file's last line, at the column that fits its length as read (one
+   that goes on below the screen, unread, is never deleted). Backspace deletes them, and the new lines
+   are typed.
+4. **The result is checked.** The status bar must say *Col 1* on the line after the new ones (auto-indent
+   would have indented it), and Up, End and Home on each new line must show it indented exactly as
+   typed. Glimmer then reads the screen again: the new lines must read as typed, followed by the line
+   that came after the old ones (at the end of the file, the empty last line the typing leaves: each
+   typed line ends with a line break). Runs of spaces inside a line aren't compared, since Glimmer
+   can't count them reliably.
 
-If an edit fails step 1, or you decline it, nothing is typed: Spark is told why, in words and line
-numbers, and may propose another. A failed check in step 3 or 4 stops the session and nothing more is
-typed, except in `fix` when the lines no longer read as Spark's: Spark then gets the screen as read
-and may try again. Before Backspace, only navigation keys have been sent and the file is unchanged;
-after it, check the file. At most 4 edits and 6 requests to Spark per session. **Ctrl+C** in the
-terminal stops the typing within about a quarter of a second and releases every key.
+`fix` also asks Spark to leave what it changes tidy, indented like the code around it, and its final
+check looks for misindented lines too, trusting the indentation VS Code measured. If an edit fails
+step 1, or you decline it, nothing is typed: Spark is told why, in words and line numbers, and may
+propose another. A failed check in step 3 or 4 stops the session and nothing more is typed, except in
+`fix` when the lines no longer read as Spark's, or are indented differently: Spark then gets the screen
+as read (with the measured indentation) and may try again. Before Backspace, only navigation keys have
+been sent and the file is unchanged; after it, check the file. At most 4 edits and 8 requests to Spark
+per session. **Ctrl+C** in the terminal stops the typing within about a quarter of a second and
+releases every key.
 
 <a id="saving-after-the-fix"></a>**Saving after the fix (`fix` only).** Once Spark answers the fresh
 check with *FIXED*, and you allow it (asked then, or with `--auto` at the share prompt):
@@ -694,7 +705,7 @@ looks at the screen again until the problem is fixed, and the file is saved.
    Glimmer checking the screen before and after → Spark sees the screen as it now is → when Spark says
    it's done, Glimmer reads the screen afresh and Spark checks the fix there → on *FIXED*, Ctrl+S, with
    Glimmer checking the file's tab before and after. It stops when the fix is saved, at the first
-   failed check, or at the limits (4 edits, 6 requests to Spark); Ctrl+C stops it at once. Leave out
+   failed check, or at the limits (4 edits, 8 requests to Spark); Ctrl+C stops it at once. Leave out
    `--auto` to approve each edit and the save, or use `nanokvm edit "REQUEST"` to ask for a particular
    change (`edit` never saves). With patient or confidential data on the screen, don't use `fix`: it
    sends redacted text, and redaction can't catch those (*Sensitive screens* at the top of this page).
@@ -925,6 +936,8 @@ needed.
 | `Spark's edit … can't be typed: line N can't be edited from this reading` | Glimmer didn't read that line cleanly: it is off the screen, or its numbering looked wrong. Spark is told and may try again. If it keeps happening, scroll so the lines sit mid-screen and ask again. |
 | `line N is the last line on the screen and the file goes on below it` | Nothing was deleted: Escape dropped the selection. Scroll so that line sits higher on the screen and run it again. |
 | `the screen no longer shows the expected lines at line N` | Nothing was typed but Go to Line. With `fix`, Spark gets the screen as read then and tries again; with `edit`, run it again. |
+| `the editor indents line N: K spaces …, not as the screen text showed` | Nothing was typed: Glimmer read that line's indentation wrong, and Spark planned on it. With `fix`, Spark gets the measured indentation and tries again; with `edit`, run it again. |
+| `line N is indented by K spaces in the editor, not M as typed`, or `after typing, the status bar shows … not Ln N, Col 1` | Something re-indented the typed text: switch `editor.autoIndent` off ([section 4](#4-locked-computer-settings)), then check the file (Ctrl+Z undoes it). |
 | `Not saved (…)` or `Not saved: Ctrl+S sent, but …` | The run says why: Spark didn't answer *FIXED*, the selected tab isn't the file Glimmer named, VS Code didn't have the keys, or the tab still showed unsaved changes after Ctrl+S (look for a message in VS Code). Check the change and save it yourself. `Probably saved` means Glimmer saw no unsaved-changes dot even before Ctrl+S (is auto-save on?). |
 | `typed, but the screen doesn't show the expected lines` | Check the file on the locked computer. *File: Revert File* returns to the last saved version; Ctrl+Z undoes typing only in small steps. Check that the typing helpers are off ([section 4](#4-locked-computer-settings)) and that `keyboard_layout` matches. |
 | Wrong characters typed (for example `"` and `@` swapped) | `keyboard_layout` doesn't match the locked computer's keyboard layout (on a Mac, see [section 1a](#1a-operating-systems)). Fix it and run `nanokvm stop`. |
@@ -971,7 +984,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        339 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        342 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

@@ -261,6 +261,7 @@ class Pipeline:
         typed_at_check = 0                              # typed edits when the screen was last read afresh
         checking = False
         confirmed = False                               # Spark's last word, with nothing typed since a fresh check: FIXED
+        indents: dict[int, int] = {}                    # line -> indentation VS Code measured, in the file as it is now
         while True:
             if result.turns >= E.MAX_TURNS:
                 result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
@@ -298,7 +299,7 @@ class Pipeline:
                 except (GlimmerError, ServiceError) as e:
                     result.stopped = f"the screen couldn't be read again to check the fix: {e}"
                     break
-                now = E.numbered_lines(fresh.text, strict=True)
+                now = E.with_indents(E.numbered_lines(fresh.text, strict=True), indents)
                 if not now:
                     result.stopped = "after the edits, no numbered code lines could be read to check the fix"
                     break
@@ -308,7 +309,8 @@ class Pipeline:
                 typed_at_check = typed
                 history.append({"role": "assistant", "content": answer.reply.content or ""})
                 history.append({"role": "user",
-                                "content": gate.follow_up(prepared, fresh.text, fresh_notes, E.CHECK_REQUEST)})
+                                "content": gate.follow_up(prepared, E.apply_indents(fresh.text, indents), fresh_notes,
+                                                          E.CHECK_REQUEST)})
                 checking = True
                 continue
             raw = answer.reply.tool_calls             # replayed as Spark sent them: redacted
@@ -326,17 +328,22 @@ class Pipeline:
                                         stop or typed >= E.MAX_EDITS, say)
                 told, out = record.told_spark, record.outcome
                 retry = fix and out is not None and out.retry
+                if out is not None:                     # what VS Code measured, kept in step with the line numbers
+                    if out.status == "verified":
+                        indents = E.shift_indents(indents, record.plan)
+                    indents.update(out.indents)
                 if fix and out is not None and (out.status == "verified" or retry) and out.screen and self.last_code:
-                    # Spark's next step starts from the screen as it is now: the check's own reading, no extra read
+                    # Spark's next step starts from the screen as it is now: the check's own reading, no extra read,
+                    # with the indentation VS Code measured put in
                     told += (f"\n\nThe screen, read again {'after this edit' if out.status == 'verified' else 'just now'}"
-                             ":\n" + gate.screen_blocks(prepared, self.last_code.text))
+                             ":\n" + gate.screen_blocks(prepared, E.apply_indents(self.last_code.text, indents)))
                 history.append({"role": "tool", "tool_call_id": call["id"], "content": told})
                 result.edits.append(record)
                 if out is not None:
                     if out.status != "not_applied":
                         typed += 1
                     if out.status == "verified" or retry:
-                        screen = out.screen or screen
+                        screen = E.with_indents(out.screen or screen, indents)
                     else:
                         stop = True
                         result.stopped = out.detail
