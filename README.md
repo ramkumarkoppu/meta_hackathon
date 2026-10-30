@@ -443,7 +443,7 @@ their sources:
 | Weights | Unsloth's [unsloth/Muse-Glimmer-30B-GGUF](https://huggingface.co/unsloth/Muse-Glimmer-30B-GGUF) | `models\unsloth\Muse-Glimmer-30B-UD-Q4_K_XL.gguf`, 15,878,222,368 bytes, SHA-256 `82bece304887a313ece08400bc030f6066c7bff5b906b0cd40308ec8a409fd38` |
 | Vision projector | the same Unsloth repo | `models\unsloth\mmproj-Muse-Glimmer-30B-BF16.gguf`, 3,849,173,728 bytes, SHA-256 `d08cdcfa0b41d8e20554b52df404ba4f7b440d0bc502a90038508b6407df8ee1` |
 | DFlash drafter (speeds up generation) | Meta's [meta-models/Muse-Glimmer-30B-GGUF](https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF) | `models\dflash-Muse-Glimmer-30B-Q4_K_M.gguf`, 1,631,208,128 bytes, SHA-256 `b2e808bf656086fe86bd0d0bd990f01d33e377537a07c02d45371517c8b264ef` |
-| Launcher | this repo | `tools\run-glimmer.ps1`: one slot, 32K context, all layers on the GPU, images up to 4,096 tokens, DFlash at draft length 15, no web UI, no prompt logging (but an answer that fails to parse is printed in its window, so treat that window like a reading) |
+| Launcher | this repo | `tools\run-glimmer.ps1`: one slot, 32K context, all layers on the GPU, images up to 4,096 tokens, DFlash at draft length 15, sampling at temperature 1.0, top-p 0.95, top-k 64 (Unsloth's settings), no web UI, no prompt logging (but an answer that fails to parse is printed in its window, so treat that window like a reading). Readings of the screen ask for temperature 0 instead, so the same screen reads the same and the checks around typing compare like with like. |
 | NVIDIA's compiled-kernel cache | made on first run | `.cache\nv\` |
 
 Start the server, then check it from a second terminal:

@@ -34,6 +34,7 @@ def test_read_sends_reasoning_cap_and_data_uri_then_flushes(setup):
     assert reply.reasoning_chars > 0 and not hasattr(reply, "reasoning")   # thinking text is dropped
     read, flush = fake.bodies(CHAT)
     assert read["chat_template_kwargs"] == {"reasoning_strength": "low"}
+    assert read["temperature"] == 0.0                 # readings are greedy: the same screen reads the same
     assert read["reasoning_budget_tokens"] == 0 and read["reasoning_budget_end_tags"] == ["<|eom|>"]
     assert read["cache_prompt"] is False
     image = read["messages"][1]["content"][1]["image_url"]["url"]
@@ -64,6 +65,7 @@ def test_minimise_uses_high_reasoning_with_a_capped_budget(setup):
     client.minimise("12 int total = 0;\n13 for (...)", "why is the sum wrong?")
     (body,) = fake.bodies(CHAT)
     assert body["chat_template_kwargs"] == {"reasoning_strength": "high"}
+    assert "temperature" not in body                  # text-only requests keep the server's sampling
     assert body["reasoning_budget_tokens"] == client.cfg.minimise_think_tokens
     text = body["messages"][1]["content"]
     assert "why is the sum wrong?" in text and "12 int total = 0;" in text

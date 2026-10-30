@@ -120,8 +120,9 @@ class GlimmerClient:
             return False
 
     def chat(self, messages: list, *, reasoning: str | None = None, think_tokens: int | None = 0,
-             max_tokens: int = 4096) -> GlimmerReply:
-        """One chat request. think_tokens caps Glimmer's thinking (None = uncapped)."""
+             max_tokens: int = 4096, temperature: float | None = None) -> GlimmerReply:
+        """One chat request. think_tokens caps Glimmer's thinking (None = uncapped). temperature None keeps the
+        server's sampling (run-glimmer.ps1: 1.0, top-p 0.95, top-k 64, as Meta and Unsloth advise for chat)."""
         reasoning = reasoning or self.cfg.read_reasoning
         if reasoning not in REASONING_LEVELS:
             raise ValueError(f"reasoning must be one of {REASONING_LEVELS}")
@@ -135,6 +136,8 @@ class GlimmerClient:
                 "chat_template_kwargs": {"reasoning_strength": reasoning}}
         if think_tokens is not None:
             body.update(thinking_cap(think_tokens))
+        if temperature is not None:
+            body["temperature"] = temperature
         with self._lock:
             r = self._post("/v1/chat/completions", body, self.cfg.glimmer_timeout_s)
         choice = (r.get("choices") or [{}])[0]
@@ -160,14 +163,18 @@ class GlimmerClient:
 
     def read_image(self, image_b64: str, fmt: str, prompt: str, *, reasoning: str | None = None,
                    think_tokens: int | None = 0, max_tokens: int = 4096) -> GlimmerReply:
-        """Ask Glimmer about one image (sent as a data: URI); the server is flushed afterwards."""
+        """Ask Glimmer about one image (sent as a data: URI); the server is flushed afterwards. Greedy
+        (temperature 0): a reading of the screen should be the most likely one, and the same every time, so the
+        checks before and after typing compare like with like (at the server's 1.0 a re-read could differ by a
+        space of indentation; seen live on 29 Oct). The drafter also accepts more of its drafts."""
         mime = "png" if fmt == "png" else "jpeg"
         messages = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": [
                         {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{image_b64}"}}]}]
         try:
-            return self.chat(messages, reasoning=reasoning, think_tokens=think_tokens, max_tokens=max_tokens)
+            return self.chat(messages, reasoning=reasoning, think_tokens=think_tokens, max_tokens=max_tokens,
+                             temperature=0.0)
         finally:
             del messages
             self.flush()

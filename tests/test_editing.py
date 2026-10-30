@@ -233,6 +233,9 @@ def test_nothing_is_typed_after_navigation_if_the_screen_changed(world):
     res = w.run(approve=approve_then_someone_edits)
     assert w.ed.lines[5] == "    // changed meanwhile" and w.ed.lines[6:] == FILE[6:]
     assert res.edits[0].outcome.status == "not_applied" and "no longer shows" in res.stopped
+    assert "line 6's text reads differently" in res.stopped and "changed meanwhile" not in res.stopped
+    assert E.mismatch({6: "  return 0"}, 6, ["    return 0"]) == "line 6 reads with 2 spaces of indentation, not 4"
+    assert E.mismatch({}, 6, ["x"]) == "line 6 couldn't be read reliably"
     sent = {usage for _mods, keys in _keys_sent(w) for usage in keys}
     assert sent == {E_KEY("esc"), E_KEY("g"), E_KEY("6"), E_KEY("enter")}   # only Go to Line: no select, delete or typing
     assert len(w.meta.requests) == 1                                # and Spark isn't asked again

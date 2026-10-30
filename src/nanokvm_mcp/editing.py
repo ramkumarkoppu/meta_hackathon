@@ -192,6 +192,19 @@ def lines_match(screen: dict[int, str], start: int, expected: list[str]) -> bool
     return all(start + i in screen and same_line(screen[start + i], line) for i, line in enumerate(expected))
 
 
+def mismatch(screen: dict[int, str], start: int, expected: list[str]) -> str:
+    """Why lines_match failed, for the first line that differs, in numbers only (no screen text)."""
+    for i, want in enumerate(expected):
+        n = start + i
+        if n not in screen:
+            return f"line {n} couldn't be read reliably"
+        if _indent(screen[n]) != _indent(want):
+            return f"line {n} reads with {_indent(screen[n])} spaces of indentation, not {_indent(want)}"
+        if _norm(screen[n]) != _norm(want):
+            return f"line {n}'s text reads differently"
+    return "no difference found"
+
+
 @dataclass
 class EditPlan:
     start: int
@@ -406,7 +419,8 @@ class EditTyper:
         screen = self.read_lines()
         expected = plan.old if plan.replaced else ([plan.after] if plan.after is not None else [])
         if not lines_match(screen, plan.start, expected):
-            return EditOutcome("not_applied", f"the screen no longer shows the expected lines at line {plan.start}")
+            return EditOutcome("not_applied", f"the screen no longer shows the expected lines at line {plan.start}: "
+                                              + mismatch(screen, plan.start, expected))
         # 5. select the whole lines; the selection must end at column 1 of the line after them before anything is
         #    deleted (the file's last line is never edited: the strict reading leaves out the last line shown)
         if plan.replaced:
