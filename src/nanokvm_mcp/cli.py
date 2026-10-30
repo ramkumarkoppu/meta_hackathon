@@ -515,20 +515,6 @@ def _auto_save(name: str) -> bool:
     return True
 
 
-_REVIEW = "Review the changes in VS Code before you save. Ctrl+Z, or File: Revert File, undoes them."
-
-
-def _save_report(save) -> str:
-    """The closing line about saving, for nanokvm fix once edits were typed."""
-    if save.status == "saved":
-        return f"Saved on the locked computer: {save.detail}. Ctrl+Z in VS Code still undoes the edits; save again after."
-    if save.status == "unchecked":
-        return f"Probably saved: {save.detail}. Look at the file's tab in VS Code."
-    if save.status == "failed":
-        return f"Not saved: {save.detail}."
-    return f"Not saved ({save.detail}). {_REVIEW}"
-
-
 def cmd_edit(cl: ServiceClient, args) -> int:
     from .glimmer import GlimmerError
     from .outbound import OutboundBlocked
@@ -581,7 +567,7 @@ def cmd_edit(cl: ServiceClient, args) -> int:
          f"checked on the screen{rechecked}; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
          f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
     if res.save is not None:
-        _out(_save_report(res.save))
+        _out(res.save.report())
     elif typed:
         _out("nanokvm saved nothing (keep VS Code's auto-save off): review the changes in VS Code before you save. "
              "Ctrl+Z, or File: Revert File, undoes them.")
@@ -606,7 +592,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("stop", help="stop the background service").set_defaults(fn=cmd_stop)
     sub.add_parser("keytest", help="press Num Lock twice through the NanoKVM and check that the locked computer "
                                    "follows (no picture taken)").set_defaults(fn=cmd_keytest)
-    p = sub.add_parser("viewer", help="watch the locked computer screen live in a window (read-only)")
+    p = sub.add_parser("viewer", help="watch the locked computer's screen live in a window, and ask about it (or fix "
+                                      "it) from the prompt box beside the picture")
     p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
     p.add_argument("--close-after", type=_seconds, metavar="SECONDS", help="close the window after this long")
     where = p.add_mutually_exclusive_group()

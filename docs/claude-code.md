@@ -26,7 +26,7 @@ gets as close as Claude Code allows:
 - **Always current.** Every screenshot is the current frame (~0.1 s old).
 - **Reacting to changes.** `wait_for_change` makes Claude respond as soon as the screen changes.
 - **Live view for you.** `nanokvm viewer` shows the screen to you live
-  ([README section 7](../README.md#7-watching-the-screen-yourself)).
+  ([README section 7](../README.md#7-watching-the-screen-yourself-and-asking-about-it)).
 
 ## 3. Approvals and what goes to Anthropic
 

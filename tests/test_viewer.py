@@ -422,6 +422,155 @@ def test_r_starts_the_service_once_and_says_why_it_failed(sim, monkeypatch):
         win.close()
 
 
+class _FakeSession:
+    """Stands in for assist.AssistSession: records what the panel asks of it."""
+    def __init__(self, cfg, post, **_kw):
+        self.cfg, self.post, self.calls, self.answers, self.busy = cfg, post, [], [], False
+
+    def ask(self, *a):
+        self.calls.append(("ask",) + a)
+        return True
+
+    def fix(self, *a):
+        self.calls.append(("fix",) + a)
+        return True
+
+    def answer(self, approval, yes):
+        self.answers.append((approval.kind, yes))
+
+    def stop(self):
+        self.calls.append(("stop",))
+
+    def close(self):
+        self.calls.append(("close",))
+
+    def shared_minutes_left(self):
+        return 0
+
+
+def test_the_prompt_box_asks_with_the_choices_made_and_letters_stay_typing(sim, monkeypatch):
+    from nanokvm_mcp.assist import Approval
+    monkeypatch.setattr(V, "AssistSession", _FakeSession)
+    win = _window(sim)
+    p = win.panel
+    try:
+        assert p.session is None and p.ask_btn["state"] == "normal"            # nothing happens until a question
+        p.prompt.insert("1.0", "why does it crash?")
+        p.kind_var.set("code")
+        p.local_var.set(True)
+        p.refresh()
+        assert p.fix_btn["state"] == "disabled"                               # Fix it needs Spark
+        p.submit_ask()
+        assert p.session.calls == [("ask", "why does it crash?", "code", True, False)]
+        assert p.prompt.get("1.0", "end").strip() == ""
+        p.local_var.set(False)
+        p.auto_var.set(True)
+        p.refresh()
+        p.submit_fix()                                       # a Local only question stays here: no hint for Spark
+        assert p.session.calls[-1] == ("fix", "", True, False)
+        p.prompt.insert("1.0", "and now?")
+        p.submit_ask()
+        p.submit_fix()                                       # the last question that went to Spark is the hint
+        assert p.session.calls[-1] == ("fix", "and now?", True, False)
+
+        # an approval: shown in the panel, its buttons work only after a moment
+        a = Approval("edit", "Type Spark's edit of line 6?", "-    6 x\n+    6 y", "Type this edit", "Don't type",
+                     mono=True)
+        p.events.put(("approve", a))
+        p.poll()
+        assert p.card.winfo_manager() == "pack" and p.yes_btn["state"] == "disabled"
+        assert p.yes_btn["text"] == "Type this edit" and "+    6 y" in p.card_text.get("1.0", "end")
+        p._arm(a)
+        assert p.yes_btn["state"] == "normal"
+        p.decide(True)
+        assert p.session.answers == [("edit", True)] and p.card.winfo_manager() == ""
+        assert "You: Type this edit" in p.log.get("1.0", "end")
+        p.events.put(("report", [("- line 6: verified (line 6 replaced)", ""), ("Saved on the locked computer: ok.",
+                                                                                  "ok")]))
+        p.events.put(("idle", None))
+        p.poll()
+        assert "Saved on the locked computer" in p.log.get("1.0", "end")
+        assert "ok" in p.log.tag_names(p.log.search("Saved on the locked", "1.0"))
+
+        # an approval waiting while the panel is hidden: shown again, and its buttons wait again before working
+        long = Approval("send", "Send exactly this to Muse Spark (Meta)?", "\n".join(f"{n} line" for n in range(60)),
+                        "Send", "Don't send", mono=True)
+        win.toggle_panel()
+        assert p.frame.winfo_manager() == ""
+        p.events.put(("approve", long))
+        p.poll()                                             # an approval shows the panel again
+        assert p.frame.winfo_manager() == "pack" and "(scroll to read all of it)" in p.card_title["text"]
+        win.toggle_panel()                                   # hidden while it waits: arming does nothing
+        p._arm(long)
+        assert p.yes_btn["state"] == "disabled"
+        win.toggle_panel()
+        assert p.yes_btn["state"] == "disabled"              # shown again: still a moment before it works
+        p._arm(long)
+        assert p.yes_btn["state"] == "normal"
+        p.events.put(("idle", None))                         # Stop answered it no: the card goes
+        p.poll()
+        assert p.approval is None and p.card.winfo_manager() == "" and p.yes_btn["state"] == "disabled"
+        win.set_fullscreen(True)
+        p.events.put(("approve", a))                         # an approval in full screen leaves full screen
+        p.poll()
+        assert not win.root.attributes("-fullscreen") and p.frame.winfo_manager() == "pack"
+        p.decide(False)
+
+        # a hidden prompt box can't send: the focus leaves it, and Ask does nothing
+        p.prompt.focus_set()
+        p.prompt.insert("1.0", "typed blind")
+        win.toggle_panel()
+        assert win.root.focus_get() is not p.prompt
+        calls = len(p.session.calls)
+        p.submit_ask()
+        assert len(p.session.calls) == calls
+        win.toggle_panel()
+        p.prompt.delete("1.0", "end")
+
+        # letter keys are the window's only while the picture, not a text box, has the focus
+        called = []
+        handler = win._unless_typing(lambda: called.append(1))
+        monkeypatch.setattr(win.root, "focus_get", lambda: p.prompt)
+        handler(None)
+        assert called == []
+        monkeypatch.setattr(win.root, "focus_get", lambda: win.canvas)
+        handler(None)
+        assert called == [1]
+
+        win.toggle_panel()                                                    # F2
+        assert p.frame.winfo_manager() == ""
+        win.toggle_panel()
+        assert p.frame.winfo_manager() == "pack"
+        win.set_fullscreen(True)                                              # the picture alone
+        assert p.frame.winfo_manager() == "" and win.bar.winfo_manager() == ""
+        win.set_fullscreen(False)
+        assert p.frame.winfo_manager() == "pack" and win.root.pack_slaves().index(win.bar) == 0
+    finally:
+        win.close()
+    assert p.session.calls[-1] == ("close",)                                  # closing the window ends its work
+
+
+def test_the_prompt_box_follows_stricter_settings(sim, monkeypatch):
+    monkeypatch.setattr(V, "AssistSession", _FakeSession)
+    sim.client.cfg.outbound = "local_only"
+    win = _window(sim)
+    try:
+        p = win.panel
+        assert p.local_var.get() and p.local_box["state"] == "disabled"
+        assert p.fix_btn["state"] == "disabled" and "Fix it is off" in p.status["text"]
+    finally:
+        win.close()
+        sim.client.cfg.outbound = "auto"
+    sim.client.cfg.control = False
+    win = _window(sim)
+    try:
+        assert win.panel.fix_btn["state"] == "disabled" and "control is off" in win.panel.status["text"]
+        assert win.panel.show_box["state"] == "normal"
+    finally:
+        win.close()
+        sim.client.cfg.control = True
+
+
 def test_ctrl_c_closes_the_window_and_still_prints_the_summary(sim, monkeypatch, capsys):
     tk = pytest.importorskip("tkinter")
     try:

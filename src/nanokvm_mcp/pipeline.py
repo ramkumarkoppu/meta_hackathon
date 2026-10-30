@@ -31,7 +31,7 @@ ASK_SYSTEM = ("You help a developer with what is on their screen. The user's mes
 @dataclass
 class Reading:
     text: str
-    kind: str                         # code, describe, errors or diagnose
+    kind: str                         # code, describe, errors, diagnose or window
     seconds: float
     frame: dict = field(default_factory=dict)   # metadata only: the image itself is never kept
 
@@ -94,12 +94,28 @@ class Pipeline:
         self.svc.share(minutes, local=True)
         self._shared = True
 
-    def close(self) -> None:
+    def close(self, quick: bool = False) -> None:
+        """End the share. ``quick`` (a window closing): never start a stopped service for it (a stopped service
+        holds no share) and give up after a few seconds."""
         if self._shared:
             try:
-                self.svc.unshare()
+                if quick:
+                    self.svc.request("POST", "/api/unshare", {}, timeout=5.0)
+                else:
+                    self.svc.unshare()
+            except ServiceError:
+                if not quick:
+                    raise
             finally:
                 self._shared = False
+
+    def share_seconds_left(self) -> float:
+        """How long the service will keep this pipeline's share: 0 if it has none (never opened, ended, or lost
+        when the service restarted)."""
+        if not self._shared:
+            return 0.0
+        info = self.svc.status().get("sharing") or {}
+        return float(info.get("remaining_min") or 0) * 60 if info.get("active") else 0.0
 
     def __enter__(self) -> "Pipeline":
         return self
@@ -122,7 +138,8 @@ class Pipeline:
 
     def read(self, kind: str = "code", rect: tuple[float, float, float, float] | None = None) -> Reading:
         readers = {"code": self.glimmer.transcribe_code, "describe": self.glimmer.describe_screen,
-                   "errors": self.glimmer.extract_errors, "diagnose": self.glimmer.diagnose_screen}
+                   "errors": self.glimmer.extract_errors, "diagnose": self.glimmer.diagnose_screen,
+                   "window": self.glimmer.read_window}
         if kind not in readers:
             raise ValueError(f"kind must be one of {sorted(readers)}")
         frame = self._frame(rect)
@@ -142,17 +159,22 @@ class Pipeline:
         return self._spark
 
     def ask(self, question: str, rect: tuple[float, float, float, float] | None = None,
-            kind: str = "code") -> AskResult:
+            kind: str = "code", on_event: Callable[[str], None] | None = None) -> AskResult:
+        say = on_event or (lambda _m: None)
+        say("reading the screen with Muse Glimmer")
         reading = self.read(kind, rect)
         if self.cfg.outbound == "local_only":
             # nothing leaves: Glimmer answers from its own reading, at the higher reasoning level
+            say("Muse Glimmer is answering on this laptop (nothing is sent)")
             reply = self.glimmer.chat(
                 [{"role": "system", "content": SYSTEM},
                  {"role": "user", "content": f"{question}\n\n<screen_text>\n{reading.text}\n</screen_text>"}],
                 reasoning=self.cfg.minimise_reasoning, think_tokens=2048, max_tokens=8192)
             return AskResult(reading, reply.content, True)
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
+        say("redacting the reading, and Muse Glimmer trims it to what the question needs")
         prepared = gate.prepare(reading.text, question, reading.frame.get("image_sha256"))
+        say("asking Muse Spark")
         sent = gate.ask(prepared, ASK_SYSTEM)
         return AskResult(reading, sent.content, False, prepared, sent)
 
@@ -191,7 +213,8 @@ class Pipeline:
     def edit(self, request: str | None, rect: tuple[float, float, float, float] | None = None, *,
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
              on_event: Callable[[str], None] | None = None,
-             approve_save: Callable[[str], bool] | None = None) -> EditResult:
+             approve_save: Callable[[str], bool] | None = None, hint: str | None = None,
+             stopped: Callable[[], bool] | None = None) -> EditResult:
         """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
         the person approves into VS Code, checking the screen before and after. Stops at the first edit
         whose checks fail. If a later request fails after an edit was typed, the session report is still
@@ -203,7 +226,10 @@ class Pipeline:
         something is still wrong it carries on editing (at most E.MAX_CHECKS times, within the usual limits).
         An edit that wasn't typed because the screen no longer reads as Spark's lines doesn't end the run: Spark
         gets the screen as read then, and tries again from it. Once Spark answers a fresh check with FIXED, the
-        file is saved if ``approve_save`` (given the file name from Glimmer's notes) says yes."""
+        file is saved if ``approve_save`` (given the file name from Glimmer's notes) says yes. ``hint`` (the
+        viewer's Fix it) adds the person's own question to E.FIX_REQUEST; it is redacted like any request.
+        ``stopped`` (the viewer's Stop) is asked between keys: once it says yes, every key is released and
+        KeyboardInterrupt is raised, as Ctrl+C does in the terminal."""
         say = on_event or (lambda _m: None)
         if self.cfg.outbound == "local_only":
             raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
@@ -219,14 +245,14 @@ class Pipeline:
             say("asking Muse Glimmer what is wrong on the screen")
             notes = self.read("diagnose", rect).text
             say("Glimmer noticed (sent to Spark, redacted):\n" + E.safe_text(notes, multiline=True)[:800])
-            request = E.FIX_REQUEST
+            request = E.FIX_REQUEST + (f"\n\n{E.HINT_INTRO}{hint.strip()}" if (hint or "").strip() else "")
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l",
                                      chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len),
-                                     save_key="cmd+s" if mac else "ctrl+s")
+                                     save_key="cmd+s" if mac else "ctrl+s", stopped=stopped)
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in,
-                            trusted=(E.FIX_REQUEST, E.CHECK_REQUEST))
+                            trusted=(E.FIX_REQUEST, E.CHECK_REQUEST, E.HINT_INTRO))
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"),
                                 notes=notes, trim=not fix)
         result = EditResult(reading, prepared, "")

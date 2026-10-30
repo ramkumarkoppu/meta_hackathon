@@ -88,6 +88,21 @@ So far:
   line, planned again when the second reading differed, deleted it, checked it on the screen, got
   *FIXED* from Spark on a fresh reading, and saved the file, checked on the screen: understand, think,
   act, understand, end to end (4 requests to Spark, $0.0085).
+- **Asking from the live view (30 Oct, `assist.py`).** `nanokvm viewer` has a prompt box beside the
+  live picture: type any question about what the locked computer shows, and Spark answers from
+  Glimmer's redacted reading of the window in front (Glimmer is told to quote its messages exactly and
+  to leave out other windows and notifications), or Glimmer answers alone with nothing sent. *Fix it*
+  then runs the fix loop with the question as a hint. Every approval the terminal asks for is asked in
+  the panel, beside the live picture; Stop releases every key. On the real locked computer on 30 Oct,
+  a question found a deliberate `standard::cout` error ($0.0021); Fix it's first run stopped safely at
+  the Go to Line check, which led to the next item. An independent review (3 reviewers, each checked by
+  a skeptic) then tightened it: the test-content question comes with every share, approvals scroll and
+  arm only once seen, and a hidden prompt box can't send.
+- **Keys lost right after a start (30 Oct).** Every time the first keys went out right after the
+  service started (or after an idle spell), the first Ctrl+G did nothing. That happened on 29 Oct's
+  first typing run and twice on 30 Oct, and I had put it down to VS Code's focus. Now, before the first
+  key or click after the link opens or a quiet minute, the service taps Scroll Lock until the locked
+  computer's Scroll Lock light (reported back to the NanoKVM's chip) follows, then taps it back.
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
   transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,

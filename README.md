@@ -55,7 +55,8 @@ Developer track).
   smoke tests), a smoke test for the Meta Model API, and a Claude Code bridge that isn't part of the
   entry.
 - **Built during the event:** Glimmer reading and checking the screen (`glimmer.py`), redaction and
-  the outbound gate, the Spark client, `nanokvm read`, `ask` and `edit`, and the viewer window.
+  the outbound gate, the Spark client, `nanokvm read`, `ask`, `edit` and `fix`, the viewer window, and
+  its prompt box for asking about the screen and fixing it.
 
 [HACKATHON.md](HACKATHON.md) has the details. Demos use a stand-in PC showing dummy code, never a real
 work computer.
@@ -75,7 +76,7 @@ work computer.
    - [5b. Muse Spark through Meta's Model API](#5b-muse-spark-through-metas-model-api)
 6. [Using it: read, ask and edit](#6-using-it-read-ask-and-edit)
    - [6a. The whole loop, step by step](#6a-the-whole-loop-step-by-step)
-7. [Watching the screen yourself](#7-watching-the-screen-yourself)
+7. [Watching the screen yourself, and asking about it](#7-watching-the-screen-yourself-and-asking-about-it)
 8. [First run with the hardware](#8-first-run-with-the-hardware)
 9. [Settings (nanokvm.toml)](#9-settings-nanokvmtoml)
 10. [Safety details](#10-safety-details)
@@ -109,7 +110,7 @@ locked computer ◄──USB keyboard── NanoKVM-USB ◄────┘
 | Muse Glimmer | the AI computer's GPU, through llama.cpp's `llama-server` on `127.0.0.1:8001` | Reads the screen (code with line numbers, a description, or errors), trims text before it leaves, and checks typed edits on the screen. |
 | Outbound gate | AI computer | The only path from screen text to Meta: redaction, trimming, a second redaction, checks and an audit log ([section 2](#2-what-leaves-the-ai-computer)). |
 | Muse Spark | Meta's cloud, through the Model API | Answers questions about the screen and proposes edits with one tool, `apply_edit`. It only ever sees redacted text. |
-| `nanokvm` command | AI computer | `read`, `ask` and `edit` ([section 6](#6-using-it-read-ask-and-edit)), the live `viewer` ([section 7](#7-watching-the-screen-yourself)) and `diag` ([section 8](#8-first-run-with-the-hardware)). |
+| `nanokvm` command | AI computer | `read`, `ask` and `edit` ([section 6](#6-using-it-read-ask-and-edit)), the live `viewer` ([section 7](#7-watching-the-screen-yourself-and-asking-about-it)) and `diag` ([section 8](#8-first-run-with-the-hardware)). |
 
 Before the event, the same service was built as a bridge for Claude Code (an MCP server). It still
 works and has its own page, [docs/claude-code.md](docs/claude-code.md); it isn't part of the entry.
@@ -517,7 +518,9 @@ without a terminal, so a script, or an AI running commands without one (such as 
 tool), can't approve. This guards against mistakes, not against programs on this computer: anything
 that can type into the terminal running `nanokvm` can answer its prompts, and a program that can read
 `.run\token` can use the service without the command ([section 10](#10-safety-details)). So don't let
-an AI drive that terminal. `--region x,y,w,h` reads only part of the screen (in the pixels of a
+an AI drive that terminal. The prompt box in `nanokvm viewer` asks the same questions in its window
+instead, answered by clicking its buttons ([section 7](#asking-from-the-viewer)); the same caveat
+applies to anything that can click in that window. `--region x,y,w,h` reads only part of the screen (in the pixels of a
 `nanokvm screenshot`).
 
 - **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took, and a
@@ -699,13 +702,13 @@ looks at the screen again until the problem is fixed, and the file is saved.
    change in VS Code; Ctrl+Z still undoes it (then save again).
 9. **Finish:** Ctrl+C in window 1 stops Glimmer, and `nanokvm stop` stops the service.
 
-## 7. Watching the screen yourself
+## 7. Watching the screen yourself, and asking about it
 
 ### In a window on the AI computer
 
 Run `E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer`. A window on the AI computer shows the
-locked computer's screen live, at up to 30 fps (`--fps` changes it). Two status lines under the
-picture show:
+locked computer's screen live, at up to 30 fps (`--fps` changes it), with a prompt box beside it
+([below](#asking-from-the-viewer)). Two status lines under the picture show:
 
 - the capture mode, the capture and window frame rates, and the delay from capture to the window;
 - *shown at 75%* (for example) when the picture is scaled down to fit the window: press **1** for
@@ -716,17 +719,52 @@ picture show:
 - whether `nanokvm read`, `ask` or `edit` is reading the screen with Muse Glimmer, and whether a
   Claude conversation is sharing it ([docs/claude-code.md](docs/claude-code.md)).
 
-The window is read-only: keys and clicks in it stay on the AI computer, it never makes the service
-open the keyboard/mouse link, and it saves nothing to disk. It's an ordinary window, though: anything
-that captures the AI computer's screen (a screen share in a call, a screenshot tool, or a command an
-AI runs) captures the locked computer's screen too. Close it before you let an AI work on the AI
-computer unattended.
+The live view itself is read-only: keys and clicks in it stay on the AI computer, it never makes the
+service open the keyboard/mouse link, and it saves nothing to disk. Only **Fix it** in the prompt box
+types into the locked computer, after your approval. It's an ordinary window, though: anything that
+captures the AI computer's screen (a screen share in a call, a screenshot tool, or a command an AI
+runs) captures the locked computer's screen too, and the answers beside it. Close it before you let
+an AI work on the AI computer unattended.
 
-Keys: **F11** or a double-click for full screen, which hides the status lines so that a screen the size
-of the capture (1920x1080) shows the picture at actual size (**Esc** leaves it); **1** to switch
-between fitting the window and actual pixels (drag to pan); **R** to start the service if it has
-stopped; **Q** (or Ctrl+C in the terminal) to close. When it closes, it prints how many frames it
-showed and the delay.
+Keys: **F11**, or a double-click on the picture, for full screen, which hides the status lines and
+the prompt box so that a screen the size of the capture (1920x1080) shows the picture at actual size
+(**Esc** leaves it); **1** to switch between fitting the window and actual pixels (drag to pan); **R**
+to start the service if it has stopped; **Q** (or Ctrl+C in the terminal) to close; **F2** to hide or
+show the prompt box. While the prompt box has the focus, letters are typing: click the picture to
+use 1, R and Q again. When it closes, it prints how many frames it showed and the delay.
+
+<a id="asking-from-the-viewer"></a>**Asking from the viewer.** Type a question about what the locked
+computer shows, such as *why won't this compile?* or *what does this error mean?*, and press Enter
+(Shift+Enter starts a new line). Nothing is read or sent before you ask. Then:
+
+1. **The first question asks, in the panel, to let Muse Glimmer read the screen for 30 minutes**,
+   and asks again when that share ends or the service loses it (Fix it asks again when fewer than 10
+   minutes are left). While Meta billing is on free credits, each of those questions also asks you to
+   confirm the screen shows only test or dummy content.
+2. **Glimmer reads** the window in front: it is asked for the program, what it shows, and every
+   message in it, quoted exactly, and to leave out other windows, the taskbar and the system's
+   notifications. That is an instruction to the model, not a crop: Glimmer is shown the whole screen.
+   With *the code* chosen, it transcribes the code on the screen with its line numbers.
+3. **Muse Spark answers** from that reading, redacted and trimmed, through the same outbound gate as
+   `nanokvm ask` ([section 2](#2-what-leaves-the-ai-computer)). Under the answer: what was sent and
+   redacted, and the cost. Tick **Local only** and Glimmer answers instead, with nothing sent (use it
+   whenever patient or confidential data could be anywhere on the screen). Fix it never reuses a
+   question asked with Local only. Tick **Show me the exact text before it is
+   sent** to approve each send. Both can only make `nanokvm.toml`'s `outbound` stricter: if it says
+   `local_only` or `approve`, the box is ticked and fixed.
+
+**Fix it** runs `nanokvm fix`'s loop ([section 6](#6-using-it-read-ask-and-edit)), with what is in the
+prompt box (or your last question) as a hint for Spark. Each edit appears in the panel with its diff
+and the keys it will press, and is typed only when you click *Type this edit*. Once Spark answers
+*FIXED* on a fresh reading, *Save* saves the file, checked as `fix` checks it. Tick **Auto** before
+Fix it to approve the typing and the save once, in one question that names both. Approvals appear in
+the panel, beside the live picture, so you can watch the screen while you decide (one that arrives
+in full screen, or with the panel hidden, brings the panel back); their buttons work only a moment
+after the approval can be seen, so a click or key meant for something else can't answer them. A long
+one scrolls, and says so in its title. **Stop** ends the
+work at the next step and releases every key, as Ctrl+C does in the terminal, and so does closing the
+window. Fix it is off when `control = false`, when `outbound = "local_only"`, or while Local only is
+ticked. Before Fix it, click into the file in VS Code on the locked computer, as for `fix`.
 
 **Sharpness.** The NanoKVM delivers 1920x1080 (this unit's maximum), so the window can be no sharper
 than that. In a window smaller than the frame the picture is scaled down, which softens small text:
@@ -763,7 +801,7 @@ E:\meta_hackathon\.venv\Scripts\nanokvm.exe diag --mouse-test # also moves the l
   shows `'target_usb_connected': True` if the NanoKVM reports cable 4 as connected.
 
 It ends with `RESULT: OK` or a list of problems with fixes. Then run `nanokvm viewer` and check the
-picture by eye ([section 7](#7-watching-the-screen-yourself)). When the locked computer shows real
+picture by eye ([section 7](#7-watching-the-screen-yourself-and-asking-about-it)). When the locked computer shows real
 work, check without a picture instead: `nanokvm start`, then `nanokvm status --json` (video state,
 `frame_size`, `blank`) save nothing, while `diag` always saves a screenshot.
 
@@ -773,7 +811,8 @@ Other commands (prefix with `E:\meta_hackathon\.venv\Scripts\`):
 nanokvm status          # service, video, keyboard/mouse and screen shares (--json for the raw data)
 nanokvm keytest         # presses Num Lock twice: does the locked computer take the NanoKVM's keys? (no picture)
 nanokvm screenshot      # saves .run\screenshot.jpg, or the file you name
-nanokvm viewer          # live view in a window (--browser: in your browser; --no-open: only prints the URL)
+nanokvm viewer          # live view in a window, with a prompt box to ask about the screen or fix it (section 7)
+                        #   (--browser: the live view in your browser, watch-only; --no-open: only prints the URL)
 nanokvm watch           # prints a line per screen change and saves .run\watch\latest.jpg
 nanokvm start | stop    # the service also starts automatically when a command needs it
 nanokvm serve           # run the service in the foreground with console logging (debugging)
@@ -826,6 +865,7 @@ never save a screenshot.
 | `capture_width` / `capture_height` / `capture_fps` | 1920 / 1080 / 30 | Video mode requested from the NanoKVM |
 | `region` | not set | Manual active area `"x,y,w,h"` in capture pixels. Normally leave it unset. |
 | `key_hold_ms` / `key_gap_ms` / `click_hold_ms` | 25 / 15 / 60 | Keyboard and click timing in milliseconds. Raise them if the locked computer misses keys; typing gets slower. |
+| `wake_after_s` | 60 | Before the first key or click after this many seconds without any (or after the keyboard link opens), the service taps Scroll Lock until the locked computer's Scroll Lock light follows, then taps it back: keys sent before then could be lost (seen live: the first Ctrl+G after a fresh start did nothing). Scroll Lock changes nothing in VS Code or in typing. 0 turns it off. |
 
 The Claude Code bridge has a few settings of its own (`confirm_actions`, `shot_width`, `jpeg_quality`,
 `share_minutes`, `post_action_ms`); see [docs/claude-code.md](docs/claude-code.md#6-settings-only-claude-uses).
@@ -835,7 +875,7 @@ needed.
 
 ## 10. Safety details
 
-- **Edits are typed only after your yes** (for each edit, or once per run with `--auto`), keyboard only, with Glimmer checking the screen before each
+- **Edits are typed only after your yes** (for each edit, or once per run with `--auto`, or with Auto in the viewer's prompt box, where every yes is a click in its window), keyboard only, with Glimmer checking the screen before each
   irreversible step and after the typing ([section 6](#6-using-it-read-ask-and-edit)). Spark can only
   propose edits; it never types anything itself. `fix` saves the file only after Spark has answered
   *FIXED* on a fresh reading, with the same yes, once Glimmer has checked that VS Code has the keys
@@ -879,7 +919,7 @@ needed.
 | `no Meta API key` | Save the key as the only line of `.run\meta_api_key` ([section 5b](#5b-muse-spark-through-metas-model-api)). |
 | `the Meta account is on free credits` | Only test or dummy content may go: say yes to the share prompt's question about it, or add `--stand-in`. For real work, switch Billing to pay as you go and set `meta_billing = "paid"` ([section 2](#2-what-leaves-the-ai-computer)). |
 | `no numbered code lines on the screen` | Show the file in VS Code with line numbers on, maximised on Monitor A. |
-| `Not applied: after Ctrl+G, VS Code's Go to Line box isn't on the screen` | Only Escape, Ctrl+G and Escape were sent. Click into the file in VS Code on the locked computer (not its terminal or another app) and try again. |
+| `Not applied: after Ctrl+G, Glimmer saw no box at the top of the screen` (or *a box … but not VS Code's Go to Line box*) | Only Escape, Ctrl+G and Escape were sent. Until 30 Oct this happened every time the first keys went out right after the service started or after an idle spell: they were lost. Now the service first taps Scroll Lock until the locked computer's light follows (`wake_after_s`, [section 9](#9-settings-nanokvmtoml)); if the action's result says the light didn't follow, run `nanokvm keytest`. Otherwise click into the file in VS Code on the locked computer (not its terminal or another app) and try again. |
 | `Not applied: after Go to Line the status bar shows …` | Nothing was typed except Go to Line. Check that the status bar is on (*View > Appearance > Status Bar*) and try again. |
 | `Not applied: after selecting, the status bar shows …` | Nothing was deleted: Escape dropped the selection. Check that folding is off ([section 4](#4-locked-computer-settings)) and that nothing else has the keyboard, then try again. |
 | `Spark's edit … can't be typed: line N can't be edited from this reading` | Glimmer didn't read that line cleanly: it is off the screen, or its numbering looked wrong. Spark is told and may try again. If it keeps happening, scroll so the lines sit mid-screen and ask again. |
@@ -919,7 +959,8 @@ E:\meta_hackathon
 │   ├── spark.py                  client for Muse Spark (Meta Model API): text only, Standard models only (new)
 │   ├── pipeline.py               read, ask and edit: Glimmer, the gate and Spark together (new)
 │   ├── editing.py                apply_edit: checks, the diff, and typing an approved edit into VS Code (new)
-│   ├── viewer.py                 the live view window for `nanokvm viewer` (Tk, read-only) (new)
+│   ├── viewer.py                 the live view window for `nanokvm viewer` (Tk), with the prompt box (new)
+│   ├── assist.py                 the prompt box's work: questions and Fix it, approvals asked in the window (new)
 │   ├── service.py                shared background service (capture, keyboard/mouse, live view, HTTP API)
 │   ├── client.py                 talks to / auto-starts the service
 │   ├── cli.py                    the `nanokvm` command
@@ -930,7 +971,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        317 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        339 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

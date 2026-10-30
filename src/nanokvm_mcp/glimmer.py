@@ -47,6 +47,13 @@ BOX_PROMPT = ("This is the top of a screen with a VS Code window. If a VS Code q
               "drops down near the top centre of the window) is open, output on the first line exactly the "
               "characters typed in its input field, or EMPTY if it is empty, and on the second line its hint or "
               "first item. Output only those two lines, or NONE if no quick-input box is open.")
+# For a question asked in the viewer: only the window in front, like DIAGNOSE_PROMPT (other apps and the system's
+# notifications can show anything), with its messages quoted exactly, since they are what a question is usually about.
+WINDOW_PROMPT = ("This screenshot is for someone asking about a problem with the program in front. Describe only the "
+                 "window in front: the program, what it shows, and every error, warning or other message in it, quoted "
+                 "exactly, one per line. Copy any code or other text the problem may involve exactly, with line numbers "
+                 "where the program shows them. Leave out everything outside that window, such as other programs, the "
+                 "taskbar and the system's notifications. Output nothing else.")
 TAB_PROMPT = ("This is the top of a screen with a VS Code window. Find the selected tab in VS Code's editor, the one whose "
               "file is shown. On the first line, copy the file name on that tab exactly. On the second line, write "
               "UNSAVED if that tab shows a filled dot, the mark VS Code shows for unsaved changes, or SAVED if it "
@@ -191,6 +198,10 @@ class GlimmerClient:
 
     def extract_errors(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         return self.read_image(image_b64, fmt, ERRORS_PROMPT)
+
+    def read_window(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
+        """The window in front and its messages, for a question asked in the viewer."""
+        return self.read_image(image_b64, fmt, WINDOW_PROMPT)
 
     def diagnose_screen(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         """The application and file shown, and every visible sign of an error (for nanokvm fix)."""

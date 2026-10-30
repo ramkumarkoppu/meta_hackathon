@@ -1,6 +1,7 @@
-"""``nanokvm viewer``: the locked computer's screen, live, in a window on this laptop (Tk).
+"""``nanokvm viewer``: the locked computer's screen, live, in a window on this laptop (Tk), with a prompt box
+beside it for questions about the screen (assist.py).
 
-Made for checking the setup by eye. The window is read-only:
+The live view itself is read-only:
   * it plays the service's MJPEG live stream (/stream.mjpg) and polls /api/status, so the service
     stays the only process that opens the NanoKVM;
   * it never makes the service open the keyboard/mouse link and sends nothing to the locked
@@ -9,6 +10,10 @@ Made for checking the setup by eye. The window is read-only:
 Like the browser live view it uses the service token without a client id, so Claude's screen-sharing
 gate doesn't apply: it is for the person at this laptop. Nothing in it is sent to Claude, but it is an
 ordinary window, so anything that captures this laptop's screen captures the locked computer's too.
+
+The prompt box does nothing until it is used. A question shares the screen with Muse Glimmer (asked in the
+window first) and sends Spark only redacted text, as ``nanokvm ask`` does; Fix it types into the locked computer
+as ``nanokvm fix`` does, with each edit and the save approved in the window (or all at once with Auto).
 
 Frames are decoded and scaled on a background thread and the window shows only the newest one, so
 it skips frames rather than falling behind the capture.
@@ -29,6 +34,7 @@ import cv2
 import numpy as np
 
 from . import geometry as G
+from .assist import READ_KINDS, Approval, AssistSession, EventQueue, fix_blocked_reason
 from .client import ServiceClient, ServiceError, ServiceUnreachable
 from .config import Config
 
@@ -37,6 +43,7 @@ MAX_PART = 16_000_000          # bytes; a 1920x1080 JPEG is far smaller
 
 BG, BAR_BG, FG = "#111111", "#1c1c1c", "#cccccc"
 OK_FG, WARN_FG, BAD_FG = "#8fd18f", "#e3b341", "#ff7b72"
+PANEL_BG, FIELD_BG, DIM_FG = "#181818", "#242424", "#8b949e"
 
 
 # ---------------------------------------------------------------- the stream
@@ -378,7 +385,8 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
                  else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
         if status.get("local_shares_active"):
             share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask/edit)"
-    keys = "read-only · F11 full screen, 1 actual pixels, Q quit"
+    keys = ("the picture is view-only; only Fix it types, after your yes · F11 full screen, F2 prompt box, "
+            "1 actual pixels, Q quit (click the picture first)")
     return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
 
 
@@ -395,6 +403,261 @@ def _dpi_aware() -> None:
         pass
 
 
+class AskPanel:
+    """The prompt box beside the live picture. The work is done by an AssistSession on its own thread; this panel
+    shows its events and approvals. Nothing is read or sent until the first question (or Fix it)."""
+
+    WIDTH = 440
+    ARM_S = 0.6                     # an approval's buttons work only after this long, so a click or key meant for
+                                    # something else can't answer it (as the terminal drops type-ahead)
+
+    def __init__(self, win: "ViewerWindow") -> None:
+        tk = win.tk
+        self.tk, self.cfg = tk, win.client.cfg
+        self.reveal = None              # set by the window: shows the panel (and leaves full screen) for an approval
+        self.events = EventQueue()
+        self.session: AssistSession | None = None
+        self.approval: Approval | None = None
+        self.last_question = ""
+        font, small, mono = ("Segoe UI", 10), ("Segoe UI", 9), ("Consolas", 9)
+
+        f = self.frame = tk.Frame(win.root, bg=PANEL_BG, width=self.WIDTH)
+        f.pack_propagate(False)
+        tk.Label(f, text="Ask about the locked computer's screen", bg=PANEL_BG, fg=FG, anchor="w",
+                 font=("Segoe UI", 11, "bold"), padx=8, pady=6).pack(side="top", fill="x")
+
+        # bottom up: status, buttons, prompt, options, approval; the log takes what is left
+        self.status = tk.Label(f, bg=PANEL_BG, fg=DIM_FG, anchor="w", justify="left", font=small, padx=8,
+                               wraplength=self.WIDTH - 16)
+        self.status.pack(side="bottom", fill="x", pady=(0, 6))
+        row = tk.Frame(f, bg=PANEL_BG)
+        row.pack(side="bottom", fill="x", padx=8, pady=4)
+        self.ask_btn = tk.Button(row, text="Ask", width=8, command=self.submit_ask)
+        self.fix_btn = tk.Button(row, text="Fix it", width=8, command=self.submit_fix)
+        self.stop_btn = tk.Button(row, text="Stop", width=8, command=self.stop, state="disabled")
+        for b in (self.ask_btn, self.fix_btn, self.stop_btn):
+            b.pack(side="left", padx=(0, 6))
+        self.auto_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(row, text="Auto", variable=self.auto_var, bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG,
+                       activebackground=PANEL_BG, activeforeground=FG, font=small).pack(side="left")
+        self.prompt = tk.Text(f, height=3, wrap="word", bg=FIELD_BG, fg=FG, insertbackground=FG, font=font,
+                              relief="flat", padx=6, pady=4)
+        self.prompt.pack(side="bottom", fill="x", padx=8, pady=(4, 0))
+        self.prompt.bind("<Return>", lambda _e: (self.submit_ask(), "break")[1])
+        self.prompt.bind("<Shift-Return>", lambda _e: (self.prompt.insert("insert", "\n"), "break")[1])
+
+        opts = self.opts = tk.Frame(f, bg=PANEL_BG)
+        opts.pack(side="bottom", fill="x", padx=8, pady=(4, 0))
+        self.kind_var = tk.StringVar(value="window")
+        tk.Label(opts, text="Glimmer reads:", bg=PANEL_BG, fg=DIM_FG, font=small).grid(row=0, column=0, sticky="w")
+        for col, kind in enumerate(READ_KINDS, 1):
+            tk.Radiobutton(opts, text={"window": "the window in front", "code": "the code"}[kind], value=kind,
+                           variable=self.kind_var, bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG,
+                           activebackground=PANEL_BG, activeforeground=FG, font=small).grid(row=0, column=col, sticky="w")
+        self.local_var = tk.BooleanVar(value=self.cfg.outbound == "local_only")
+        self.show_var = tk.BooleanVar(value=self.cfg.outbound == "approve")
+        self.local_box = tk.Checkbutton(opts, text="Local only: Glimmer answers, nothing leaves this laptop",
+                                        variable=self.local_var, command=self.refresh, bg=PANEL_BG, fg=FG,
+                                        selectcolor=FIELD_BG, activebackground=PANEL_BG, activeforeground=FG, font=small)
+        self.show_box = tk.Checkbutton(opts, text="Show me the exact text before it is sent", variable=self.show_var,
+                                       bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG, activebackground=PANEL_BG,
+                                       activeforeground=FG, font=small)
+        self.local_box.grid(row=1, column=0, columnspan=3, sticky="w")
+        self.show_box.grid(row=2, column=0, columnspan=3, sticky="w")
+        if self.cfg.outbound == "local_only":         # the window can make nanokvm.toml stricter, never looser
+            self.local_box.configure(state="disabled")
+        if self.cfg.outbound == "approve":
+            self.show_box.configure(state="disabled")
+
+        # The approval card: the title, then the buttons packed before the text, so a short panel squeezes the text
+        # (which scrolls) and never the buttons.
+        self.card = tk.Frame(f, bg=FIELD_BG, highlightthickness=1, highlightbackground=WARN_FG)
+        self.card_title = tk.Label(self.card, bg=FIELD_BG, fg=WARN_FG, anchor="w", justify="left",
+                                   font=("Segoe UI", 10, "bold"), padx=6, pady=4, wraplength=self.WIDTH - 30)
+        self.card_title.pack(side="top", fill="x")
+        buttons = tk.Frame(self.card, bg=FIELD_BG)
+        buttons.pack(side="bottom", fill="x", padx=6, pady=6)
+        self.yes_btn = tk.Button(buttons, command=lambda: self.decide(True), state="disabled")
+        self.no_btn = tk.Button(buttons, command=lambda: self.decide(False), state="disabled")
+        self.yes_btn.pack(side="left", padx=(0, 6))
+        self.no_btn.pack(side="left")
+        self.card_text = tk.Text(self.card, height=16, wrap="word", bg=FIELD_BG, fg=FG, relief="flat", font=font,
+                                 padx=6, pady=2)
+        card_scroll = tk.Scrollbar(self.card, command=self.card_text.yview)
+        self.card_text.configure(yscrollcommand=card_scroll.set)
+        card_scroll.pack(side="right", fill="y")
+        self.card_text.pack(side="left", fill="both", expand=True)
+        self.card_fonts = (font, mono)
+
+        logf = tk.Frame(f, bg=PANEL_BG)
+        logf.pack(side="top", fill="both", expand=True, padx=8)
+        self.log = tk.Text(logf, wrap="word", bg=PANEL_BG, fg=FG, relief="flat", font=font, state="disabled",
+                           padx=2, pady=2, cursor="arrow")
+        scroll = tk.Scrollbar(logf, command=self.log.yview)
+        self.log.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.log.pack(side="left", fill="both", expand=True)
+        self.log.tag_configure("q", foreground="#e6edf3", font=("Segoe UI", 10, "bold"), spacing1=8)
+        self.log.tag_configure("say", foreground=DIM_FG, font=small)
+        self.log.tag_configure("meta", foreground=DIM_FG, font=small, spacing3=4)
+        self.log.tag_configure("mono", font=mono)
+        self.log.tag_configure("err", foreground=BAD_FG)
+        self.log.tag_configure("ok", foreground=OK_FG)
+        self._write("Type a question about what the locked computer shows, then Enter (Shift+Enter: new line). "
+                    "Nothing is read or sent until you ask. Fix it lets Muse Spark fix it there, typed through the "
+                    "NanoKVM; Auto skips asking for each edit and the save. F2 hides this panel.", "say")
+        self.refresh()
+
+    # ---- the log
+    def _write(self, text: str, tag: str = "") -> None:
+        self.log.configure(state="normal")
+        self.log.insert("end", text.rstrip("\n") + "\n", tag)
+        self.log.configure(state="disabled")
+        self.log.see("end")
+
+    # ---- actions
+    def _session(self) -> AssistSession:
+        if self.session is None:
+            self.session = AssistSession(self.cfg, self.events.put)
+        return self.session
+
+    def _text(self) -> str:
+        return self.prompt.get("1.0", "end").strip()
+
+    @property
+    def shown(self) -> bool:
+        return bool(self.frame.winfo_manager())
+
+    def submit_ask(self) -> None:
+        question = self._text()
+        if not question or self.busy or not self.shown:      # never from a hidden prompt box
+            return
+        local = self.local_var.get()
+        if self._session().ask(question, self.kind_var.get(), local, self.show_var.get()):
+            # Fix it reuses only a question that went to Spark: one asked with Local only stays on this laptop
+            self.last_question = "" if local else question
+            self.prompt.delete("1.0", "end")
+        self.refresh()
+
+    def submit_fix(self) -> None:
+        if self.busy or self.fix_blocked() or not self.shown:
+            return
+        hint = self._text() or self.last_question
+        if self._session().fix(hint, self.auto_var.get(), self.show_var.get()):
+            self.prompt.delete("1.0", "end")
+        self.refresh()
+
+    def stop(self) -> None:
+        if self.session is not None:
+            self.session.stop()
+            self._write("Stopping…", "say")
+            self._drop_card()
+
+    def decide(self, yes: bool) -> None:
+        a = self.approval
+        if a is None or self.session is None:
+            return
+        self.approval = None
+        self.card.pack_forget()
+        self._write(f"You: {a.yes if yes else a.no}", "q")
+        self.session.answer(a, yes)
+        self.refresh()
+
+    def close(self) -> None:
+        if self.session is not None:
+            self.session.close()
+
+    # ---- state
+    @property
+    def busy(self) -> bool:
+        return self.session is not None and self.session.busy
+
+    def fix_blocked(self) -> str | None:
+        why = fix_blocked_reason(self.cfg)
+        if why is None and self.local_var.get():
+            why = "it needs Muse Spark: untick Local only"
+        return why
+
+    def refresh(self) -> None:
+        """Buttons and the status line, from the session's state."""
+        busy, waiting = self.busy, self.approval is not None
+        no_fix = self.fix_blocked()
+        self.ask_btn.configure(state="disabled" if busy else "normal")
+        self.fix_btn.configure(state="disabled" if busy or no_fix else "normal")
+        self.stop_btn.configure(state="normal" if busy else "disabled")
+        s = self.session
+        shared = s.shared_minutes_left() if s else 0
+        parts = ["Waiting for your answer above." if waiting else "Working… (Stop ends it)" if busy else "Ready."]
+        parts.append(f"Glimmer can read the screen for {shared} more min." if shared else
+                     "Glimmer can't read the screen until you ask.")
+        if no_fix and not busy:
+            parts.append(f"Fix it is off: {no_fix}.")
+        self.status.configure(text=" ".join(parts))
+
+    def poll(self) -> None:
+        """The session's events, on the window's thread."""
+        for kind, payload in self.events.take():
+            if kind == "say":
+                self._write(f"… {payload}", "say")
+            elif kind == "question":
+                self._write(f"You: {payload}", "q")
+            elif kind == "answer":
+                text, report = payload
+                self._write(text)
+                self._write(report, "meta")
+            elif kind == "edit":
+                self._write(str(payload), "mono")
+            elif kind == "report":
+                for line, tag in payload:                    # coloured by nanokvm, never by Spark's text
+                    self._write(line, tag)
+            elif kind == "info":
+                self._write(str(payload), "say")
+            elif kind == "error":
+                self._write(str(payload), "err")
+            elif kind == "approve":
+                self._show_approval(payload)
+            elif kind == "idle":
+                self._drop_card()                            # an approval Stop answered no
+            if kind in ("idle", "approve"):
+                self.refresh()
+
+    def _drop_card(self) -> None:
+        self.approval = None
+        self.yes_btn.configure(state="disabled")
+        self.no_btn.configure(state="disabled")
+        self.card.pack_forget()
+
+    def _show_approval(self, a: Approval) -> None:
+        self.approval = a
+        self.card_title.configure(text=a.title)
+        self.card_text.configure(state="normal", font=self.card_fonts[1] if a.mono else self.card_fonts[0])
+        self.card_text.delete("1.0", "end")
+        self.card_text.insert("1.0", a.text)
+        self.card_text.configure(state="disabled")
+        self.card.pack(side="bottom", fill="x", padx=8, pady=(6, 0), after=self.opts)   # just above the options
+        self.card_text.yview_moveto(0)
+        self.card_text.update_idletasks()
+        if self.card_text.yview()[1] < 1.0:                  # more than the card shows
+            self.card_title.configure(text=f"{a.title} (scroll to read all of it)")
+        if self.reveal is not None:                          # an approval must be seen: show the panel
+            self.reveal()
+        self.arm_later()
+
+    def arm_later(self) -> None:
+        """The buttons work only ARM_S after the card can be seen (again, when the panel comes back)."""
+        a = self.approval
+        if a is None:
+            return
+        self.yes_btn.configure(text=a.yes, state="disabled")
+        self.no_btn.configure(text=a.no, state="disabled")
+        self.frame.after(int(self.ARM_S * 1000), lambda: self._arm(a))
+
+    def _arm(self, a: Approval) -> None:
+        if self.approval is a and self.shown:
+            self.yes_btn.configure(state="normal")
+            self.no_btn.configure(state="normal")
+
+
 class ViewerWindow:
     TICK_MS = 8                     # how often the window looks for a new picture
 
@@ -404,7 +667,7 @@ class ViewerWindow:
         self.tk = tk
         self.client = client
         self.root = tk.Tk()
-        self.root.title("Locked computer – live view (read-only)")
+        self.root.title("Locked computer – live view, and questions about it")
         self.root.configure(bg=BG)
         self.root.minsize(320, 240)
         self.root.report_callback_exception = self._callback_error
@@ -414,7 +677,11 @@ class ViewerWindow:
         self.line2 = tk.Label(bar, anchor="w", bg=BAR_BG, fg=FG, font=("Segoe UI", 9), padx=8)
         self.line1.pack(side="top", fill="x")
         self.line2.pack(side="top", fill="x")
-        self.canvas = tk.Canvas(self.root, bg=BG, highlightthickness=0, bd=0)
+        self.panel = AskPanel(self)
+        self.panel.frame.pack(side="right", fill="y")
+        self.panel.reveal = self._reveal_panel
+        self._panel_hidden_by_fullscreen = False
+        self.canvas = tk.Canvas(self.root, bg=BG, highlightthickness=0, bd=0, takefocus=True)
         self.canvas.pack(side="top", fill="both", expand=True)
         self.image_item = self.canvas.create_image(0, 0, anchor="nw")
         self.note_item = self.canvas.create_text(0, 0, fill=FG, font=("Segoe UI", 12),
@@ -431,21 +698,27 @@ class ViewerWindow:
         self._next_bar = 0.0
 
         fw, fh = max(1, client.cfg.capture_width), max(1, client.cfg.capture_height)
-        w, h = fit_size(fw, fh, min(fw, int(self.root.winfo_screenwidth() * 0.8)),
+        w, h = fit_size(fw, fh, min(fw, int(self.root.winfo_screenwidth() * 0.9) - AskPanel.WIDTH),
                         min(fh, int(self.root.winfo_screenheight() * 0.75)))
-        self.root.geometry(f"{w}x{h + 2 * self.line1.winfo_reqheight()}")
+        self.root.geometry(f"{w + AskPanel.WIDTH}x{h + 2 * self.line1.winfo_reqheight()}")
         self.feed.view = ("fit", w, h)
         self.canvas.coords(self.note_item, w // 2, h // 2)
 
-        for seq in ("<F11>", "<Key-f>", "<Key-F>", "<Double-Button-1>"):
-            self.root.bind(seq, lambda _e: self.toggle_fullscreen())
+        # The letter keys are for the picture: while a text box has the focus they are typing. Click the picture
+        # to use them again.
+        for seq in ("<Key-f>", "<Key-F>"):
+            self.root.bind(seq, self._unless_typing(self.toggle_fullscreen))
+        self.root.bind("<F11>", lambda _e: self.toggle_fullscreen())
+        self.canvas.bind("<Double-Button-1>", lambda _e: self.toggle_fullscreen())
         self.root.bind("<Escape>", lambda _e: self.set_fullscreen(False))
-        self.root.bind("<Key-1>", lambda _e: self.toggle_actual_size())
+        self.root.bind("<F2>", lambda _e: self.toggle_panel())
+        self.root.bind("<Key-1>", self._unless_typing(self.toggle_actual_size))
         for seq in ("<Key-r>", "<Key-R>"):
-            self.root.bind(seq, lambda _e: self.start_service())
-        for seq in ("<Key-q>", "<Key-Q>", "<Control-w>"):
-            self.root.bind(seq, lambda _e: self.close())
-        self.canvas.bind("<ButtonPress-1>", lambda e: self.canvas.scan_mark(e.x, e.y))
+            self.root.bind(seq, self._unless_typing(self.start_service))
+        for seq in ("<Key-q>", "<Key-Q>"):
+            self.root.bind(seq, self._unless_typing(self.close))
+        self.root.bind("<Control-w>", lambda _e: self.close())
+        self.canvas.bind("<ButtonPress-1>", lambda e: (self.canvas.focus_set(), self.canvas.scan_mark(e.x, e.y)))
         self.canvas.bind("<B1-Motion>", lambda e: self.canvas.scan_dragto(e.x, e.y, gain=1))
         self.canvas.bind("<Configure>", self._on_resize)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -464,12 +737,16 @@ class ViewerWindow:
         if self.closed:
             return
         self.closed = True
-        self.feed.stop()
-        self.poller.stop()
         try:
-            self.root.destroy()
-        except self.tk.TclError:
-            pass
+            self.panel.close()          # stops its work, releases every key if it typed, ends its share
+        finally:
+            self.panel.reveal = None    # no window -> panel -> window cycle (see below)
+            self.feed.stop()
+            self.poller.stop()
+            try:
+                self.root.destroy()
+            except self.tk.TclError:
+                pass
         # Break the root -> window reference cycle, so reference counting frees the Tk interpreter here, on
         # its own thread. If garbage collection on another thread frees it, Tcl aborts the whole process
         # ("async handler deleted by the wrong thread").
@@ -495,9 +772,11 @@ class ViewerWindow:
             pic = self.feed.take()
             if pic is not None:
                 self._show(pic)
+            self.panel.poll()
             if time.monotonic() >= self._next_bar:
                 self._next_bar = time.monotonic() + 0.25
                 self._update_bar()
+                self.panel.refresh()
         finally:
             if not self.closed:
                 self.root.after(self.TICK_MS, self._tick)
@@ -551,15 +830,56 @@ class ViewerWindow:
 
     def set_fullscreen(self, on: bool) -> None:
         """Full screen shows the picture alone, so on a screen the size of the capture (1920x1080) it is
-        at actual size; the status lines come back when you leave full screen."""
+        at actual size; the status lines and the prompt box come back when you leave full screen."""
         self.root.attributes("-fullscreen", on)
         if on:
             self.bar.pack_forget()
-        elif not self.bar.winfo_manager():
-            self.bar.pack(side="bottom", fill="x", before=self.canvas)
+            self._panel_hidden_by_fullscreen = self.panel.shown
+            self._hide_panel()
+        else:
+            if not self.bar.winfo_manager():
+                self.bar.pack(side="bottom", fill="x", before=self.canvas)
+            if self._panel_hidden_by_fullscreen:
+                self._panel_hidden_by_fullscreen = False
+                self._show_panel()
 
     def toggle_fullscreen(self) -> None:
         self.set_fullscreen(not bool(self.root.attributes("-fullscreen")))
+
+    def toggle_panel(self) -> None:
+        """F2: hide or show the prompt box (its work goes on while hidden)."""
+        if self.panel.shown:
+            self._hide_panel()
+        else:
+            self._show_panel()
+
+    def _hide_panel(self) -> None:
+        # Keys go to the focused widget even when it is hidden: take the focus off the prompt, or typing would go
+        # on into a box nobody can see (and Enter would ask what was typed there).
+        self.canvas.focus_set()
+        self.panel.frame.pack_forget()
+
+    def _show_panel(self) -> None:
+        self.panel.frame.pack(side="right", fill="y", before=self.canvas)
+        self.panel.arm_later()          # a waiting approval's buttons work only a moment after it is seen again
+
+    def _reveal_panel(self) -> None:
+        """An approval is waiting: leave full screen, and show the prompt box if F2 hid it."""
+        if bool(self.root.attributes("-fullscreen")):
+            self.set_fullscreen(False)
+        if not self.panel.shown:
+            self._show_panel()
+
+    def _unless_typing(self, action):
+        """A key handler that does nothing while a text box (the prompt, the answers) has the focus."""
+        def handler(_event) -> None:
+            try:
+                focused = self.root.focus_get()
+            except (KeyError, self.tk.TclError):
+                focused = None
+            if not isinstance(focused, (self.tk.Text, self.tk.Entry)):
+                action()
+        return handler
 
     def start_service(self) -> None:
         """R: start the service if it isn't running. One start at a time (a held key repeats), on a
@@ -587,8 +907,8 @@ def run_viewer(client: ServiceClient, fps: int = DEFAULT_FPS, close_after: float
         print(f"error: cannot open the viewer window ({type(e).__name__}: {e}). "
               "Use 'nanokvm viewer --browser' instead.", file=sys.stderr)
         return 2
-    print("The locked computer's screen is open in a window (read-only). Close it or press Q to quit.",
-          flush=True)
+    print("The locked computer's screen is open in a window, with a prompt box for questions about it (nothing is "
+          "read or sent until you ask). Close it, or click the picture and press Q, to quit.", flush=True)
     interrupted = False
     try:
         win.run()

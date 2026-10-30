@@ -92,6 +92,9 @@ FIX_REQUEST = ("Find what is wrong in this file and fix it: errors that stop it 
                "so check the code itself. Fix the cause itself: don't comment code out or hide it with a trick such "
                "as a line continuation, and if a line that needs changing can't be edited, say so instead. If "
                "nothing needs fixing, say so without calling the tool.")
+# The viewer's Fix it: the person's own question, after FIX_REQUEST (both are left out of the leak scan; the question
+# itself is redacted and scanned).
+HINT_INTRO = "The user's own question about the screen: "
 # nanokvm fix: sent with a fresh reading of the screen once Spark says it's done, so the fix is checked on the screen.
 # FIXED is the word nanokvm looks for before it saves the file (confirms_fix).
 CHECK_REQUEST = ("Here is the screen again, read after your edits. Check every line shown, the last ones too: would "
@@ -364,6 +367,17 @@ class SaveOutcome:
                       # still unsaved), not_saved (a check before Ctrl+S failed), declined, or skipped (no checked fix)
     detail: str       # for the person at the keyboard
 
+    def report(self) -> str:
+        """The closing line about saving, in the terminal and in the viewer."""
+        if self.status == "saved":
+            return f"Saved on the locked computer: {self.detail}. Ctrl+Z in VS Code still undoes the edits; save again after."
+        if self.status == "unchecked":
+            return f"Probably saved: {self.detail}. Look at the file's tab in VS Code."
+        if self.status == "failed":
+            return f"Not saved: {self.detail}."
+        return (f"Not saved ({self.detail}). Review the changes in VS Code before you save. Ctrl+Z, or File: Revert "
+                "File, undoes them.")
+
 
 TAB_STATES = ("UNSAVED", "SAVED")
 
@@ -393,14 +407,21 @@ class EditTyper:
 
     def __init__(self, act: Callable[[dict], dict], read_lines: Callable[[], dict[int, str]],
                  read_status: Callable[[], str], read_box: Callable[[], str], pause_s: float = 0.4,
-                 select_line_key: str = "ctrl+l", chunk: int = TYPE_CHUNK, save_key: str = "ctrl+s") -> None:
+                 select_line_key: str = "ctrl+l", chunk: int = TYPE_CHUNK, save_key: str = "ctrl+s",
+                 stopped: Callable[[], bool] | None = None) -> None:
         self.act, self.read_lines, self.read_status, self.read_box = act, read_lines, read_status, read_box
         self.pause_s, self.select_line_key, self.chunk = pause_s, select_line_key, max(1, chunk)
         self.save_key = save_key
+        self.stopped = stopped        # the viewer's Stop: asked before and while each request runs
+
+    def _check_stop(self) -> None:
+        if self.stopped is not None and self.stopped():
+            raise KeyboardInterrupt   # handled as Ctrl+C is: every key released (apply, save)
 
     def _call(self, body: dict) -> dict:
-        """One service request on a worker thread. The main thread waits in short steps, so Ctrl+C reaches it
-        straight away even while the service is still typing a long chunk."""
+        """One service request on a worker thread. The main thread waits in short steps, so Ctrl+C (or the
+        viewer's Stop) reaches it straight away even while the service is still typing a long chunk."""
+        self._check_stop()
         box: dict = {}
 
         def run() -> None:
@@ -412,6 +433,7 @@ class EditTyper:
         worker.start()
         while worker.is_alive():
             worker.join(0.2)
+            self._check_stop()
         if "error" in box:
             raise box["error"]
         return box.get("reply") or {}
