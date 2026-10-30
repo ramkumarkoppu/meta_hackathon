@@ -35,12 +35,16 @@ screen, send nothing: `nanokvm read` never sends, and `ask --local-only` (or `ou
 in `nanokvm.toml`) has Glimmer answer on the AI computer instead of Spark. The assistant helps with the
 software and its errors; it doesn't interpret patient data or give clinical advice.
 
-**Status (29 Oct).** All five steps are built and pass their tests on a simulated locked computer, with
-a fake Glimmer and a fake Meta API. With the real Glimmer and Spark, `read` and `ask` have run on
-simulated screens. On the real hardware, capture and the live view work, and on 29 Oct Glimmer read
-the real capture (a short C++ file transcribed exactly, the screen described correctly), and
-`nanokvm fix --auto` found a deliberate syntax error by itself, typed its fix over cable 4 and checked
-it on the screen. **The whole loop, step by step: [section 6a](#6a-the-whole-loop-step-by-step).**
+**Status (30 Oct): first milestone reached.** All five steps are built and pass their tests on a
+simulated locked computer, with a fake Glimmer and a fake Meta API. With the real Glimmer and Spark,
+`read` and `ask` have run on simulated screens. On the real hardware, capture and the live view work;
+on 29 Oct Glimmer read the real capture (a short C++ file transcribed exactly, the screen described
+correctly), and `nanokvm fix --auto` found a deliberate syntax error by itself, typed its fix over
+cable 4 and checked it on the screen. On 30 Oct the loop closed on the real locked computer: with no
+description from me, `fix --auto` found junk typed on a file's last line, planned again when Glimmer
+read that line differently the second time, deleted it, had Spark confirm the fix on a fresh reading
+(*FIXED*), and saved the file, checked by the tab's unsaved-changes dot (4 requests to Spark, $0.0085).
+**The whole loop, step by step: [section 6a](#6a-the-whole-loop-step-by-step).**
 
 **Hackathon entry.** This repo is my solo entry in the Meta Global AI Developer Hackathon (Indie
 Developer track).
@@ -626,10 +630,10 @@ typing allows for it only when the NanoKVM reports it.
 
 ### 6a. The whole loop, step by step
 
-This is how `nanokvm fix --auto` found and fixed a deliberate syntax error on the real locked computer
-on 29 Oct: Muse Glimmer reads and diagnoses the screen on the AI computer's GPU, Muse Spark gets only
-redacted text and proposes an edit, the NanoKVM-USB types it, Glimmer checks the result, and Spark
-looks at the screen again until the problem is fixed.
+This is how `nanokvm fix --auto` found, fixed and saved deliberate errors on the real locked computer
+on 29 and 30 Oct: Muse Glimmer reads and diagnoses the screen on the AI computer's GPU, Muse Spark gets
+only redacted text and proposes an edit, the NanoKVM-USB types it, Glimmer checks the result, Spark
+looks at the screen again until the problem is fixed, and the file is saved.
 
 **On the AI computer, once per session**
 

@@ -78,12 +78,16 @@ So far:
   `--auto`, one yes at the start lets it type every edit without asking; each edit is still shown and
   checked on the screen before and after typing. On 29 Oct it found and typed the fix for a deliberate
   syntax error on the real locked computer.
-- **The loop closes (30 Oct).** Once Spark answers *FIXED* on a fresh reading of the screen, `fix`
-  saves the file (Ctrl+S), with Glimmer checking first that VS Code has the keys and the right tab is
-  selected, and after that the tab's unsaved-changes dot has gone. A live run on 30 Oct also showed
-  two gaps, now closed: the file's last line couldn't be edited (VS Code's status bar now shows when a
-  selection ends at the file's end), and a line Glimmer read differently the second time ended the run
-  (Spark now gets the screen as read then, and tries again).
+- **The loop closes: first milestone (30 Oct).** Once Spark answers *FIXED* on a fresh reading of the
+  screen, `fix` saves the file (Ctrl+S), with Glimmer checking first that VS Code has the keys and the
+  right tab is selected, and after that the tab's unsaved-changes dot has gone. An earlier live run
+  that day showed two gaps, then closed: the file's last line couldn't be edited (VS Code's status bar
+  now shows when a selection ends at the file's end), and a line Glimmer read differently the second
+  time ended the run (Spark now gets the screen as read then, and tries again). Then, on the real
+  locked computer and with no description from me, `fix --auto` found junk typed on hello.cpp's last
+  line, planned again when the second reading differed, deleted it, checked it on the screen, got
+  *FIXED* from Spark on a fresh reading, and saved the file, checked on the screen: understand, think,
+  act, understand, end to end (4 requests to Spark, $0.0085).
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
   transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,
