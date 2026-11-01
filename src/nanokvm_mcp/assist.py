@@ -4,7 +4,8 @@ A question is answered by Muse Spark from Glimmer's redacted reading of the scre
 the window in front, or to transcribe the code with its line numbers), through the same outbound gate as ``nanokvm
 ask``, or by Glimmer alone when "Local only" is ticked, with nothing sent. Fix it does a task one step at a time
 (acting.py), and hands a change to code over to ``nanokvm fix``'s loop (acting.FIX_CODE), with its planner's model
-as the coder: Glimmer on this laptop by default (localcoder.py), or Spark with "plan with Spark" ticked.
+as the coder: Glimmer on this laptop by default (localcoder.py), or Spark with "Fix it: Spark plans and fixes code"
+ticked.
 
 Nothing is read, sent or typed until a question is asked or Fix it is pressed. Every approval the terminal
 commands ask for at the keyboard is asked in the window instead, as an Approval the window shows and the person
@@ -311,7 +312,10 @@ class AssistSession:
                               "\n".join([*("WARNING: " + w for w in frame_warnings), ask_report(res, cfg)]))))
 
     def _typing_allowed(self) -> bool:
+        """An edit, or the save, was allowed: from now on Stop says to check the file (not before: a Stop at the
+        hand-over leaves the file as it was)."""
         self.used_keys = self.job_typed = True
+        self.stop_note = "Stopped: every key was released. Check the file on the locked computer."
         return True
 
     # ---- Fix it: a task in any program
@@ -323,12 +327,12 @@ class AssistSession:
         planner = ("Muse Spark plans from the redacted reading" if use_spark else
                    "Muse Glimmer plans on this laptop; nothing leaves it")
         self.post(("question", f"Fix it: {E.safe_text(task, multiline=True)}\n({planner}"
-                               + ("; Auto: steps that change nothing run without asking" if auto else "") + ")"))
+                               + ("; Auto: steps that type or change nothing run without asking" if auto else "") + ")"))
         self.stop_note = "Stopped: every key was released. Check what the last step did on the locked computer."
         extra = ([f"Do this task on the locked computer without asking for each step: {E.safe_text(task)!r}. Each step "
                   "is still shown, with its target outlined on the picture, a moment before it is done; a step that "
-                  "changes something still asks, and so does a fix to code, once, before typing its edits; Stop ends "
-                  "it."] if auto else [])
+                  "types or changes something still asks, and so does a fix to code, once, before typing its edits; "
+                  "Stop ends it."] if auto else [])
         pipe = self._prepare(cfg, extra, margin_s=TASK_MARGIN_S)
         width, height = pipe.screen_size()
         self.steps_done = 0
@@ -418,7 +422,7 @@ class AssistSession:
                 call = answer.tool_calls[0]
                 told = A.TOLD_UNKNOWN_TOOL
                 args = call["arguments"] if isinstance(call["arguments"], dict) else {}
-                if call["name"] == "ui_step" and args.get("action") == A.FIX_CODE:
+                if call["name"] == "ui_step" and A.action_name(args.get("action")) == A.FIX_CODE:
                     self._do_fix(pipe, task, str(args.get("note") or ""), auto, local=False,
                                  planned=f"planning: {turns} request(s) to {cfg.spark_model}, store=false, cost "
                                          f"${cost:.4f}; logged in {cfg.run_dir / 'outbound.log'}")
@@ -454,14 +458,14 @@ class AssistSession:
 
     def _do_fix(self, pipe: Pipeline, task: str, why: str, auto: bool, local: bool, planned: str = "") -> None:
         """Fix it's planner says the task is a change to code in an editor with line numbers: nanokvm fix's loop does
-        it, with the task as its hint and the planner's model as the coder. Code is edited by line number and each edit
-        checked on the screen, never by clicking into it and typing. Each edit and the save ask; with Auto, one
-        approval naming them both covers them instead (a no means asking for each). ``planned``: what planning sent
-        (Spark), for the closing line."""
+        it, with the task as its request (E.TASK_RULES) and the planner's model as the coder, and that ends the task.
+        Code is edited by line number and each edit checked on the screen, not clicked into and typed. Each edit and
+        the save ask; with Auto, one approval naming them both covers them instead (a no means asking for each).
+        ``planned``: what planning sent (Spark), for the closing line."""
         who = "Glimmer" if local else "Spark"
         self._say(f"Muse {who} says this is a change to code" + (f" ({E.safe_text(why)})" if why else "")
-                  + f": Muse {who} edits it by line number, each edit shown first and checked on the screen")
-        self.stop_note = "Stopped: every key was released. Check the file on the locked computer."
+                  + f": Muse {who} edits it by line number, each edit shown first and checked on the screen. The task "
+                    "ends there: ask again for anything after the change to code")
         if auto:
             auto = self._confirm(Approval(
                 "auto", "Type the fix without asking for each edit?",
@@ -472,11 +476,11 @@ class AssistSession:
         steps = planned or "planned on this laptop, nothing was sent"
         try:
             res = pipe.edit(None, approve_edit=self._approve_edit(auto, who), on_event=self._say,
-                            approve_save=self._approve_save(auto, who), hint=task, stopped=self.stop_event.is_set,
+                            approve_save=self._approve_save(auto, who), task=task, stopped=self.stop_event.is_set,
                             local=local)
         except (EditError, OutboundBlocked, GlimmerError, SparkError, ServiceError) as e:
-            if not (self.steps_done or planned):
-                raise                                        # nothing was done or sent: the usual error line
+            if not (self.steps_done or self.job_typed or planned):
+                raise                                        # nothing was done, typed or sent: the usual error line
             self.post(("report", [(f"Stopped early: the fix loop: {type(e).__name__}: {e}", "err"),
                                   self._steps_line(steps)]))
             return
@@ -486,9 +490,9 @@ class AssistSession:
         self.post(("report", lines))
 
     def _one_step(self, pipe: Pipeline, step: A.Step, auto: bool, n: int, width: int, height: int) -> str:
-        """Check one step, show it (its target outlined on the picture), get the yes (Auto: only for a step that
-        changes something; the others are shown AUTO_SHOW_S before they are done) and do it. What happened, in words
-        without screen text: done, declined, or not done."""
+        """Check one step, show it (its target outlined on the picture), get the yes (Auto: only for a step that types
+        or changes something; the others are shown AUTO_SHOW_S before they are done) and do it. What happened, in
+        words without screen text: done, declined, or not done."""
         mac = (self.base_cfg.locked_os or "").strip().lower() == "macos"
         try:
             A.check_step(step, self.base_cfg.keyboard_layout, mac)
@@ -501,8 +505,10 @@ class AssistSession:
         shown = E.safe_text(step.describe()) + (" (outlined in orange on the picture)" if step.box else "")
         if step.why:
             shown += f"\nWhy: {E.safe_text(step.why)}"
-        if step.risky:
+        if step.changes_something:
             shown += "\nThis step changes something."
+        if step.action == "type":                            # always asked: say where it will go
+            shown += "\n" + self._cursor_note(pipe)
         if step.box:
             look = pipe.last_look or {}
             outline = (A.frame_box(step.box, look["capture_rect"], look["frame_size"])
@@ -530,6 +536,18 @@ class AssistSession:
         finally:
             if step.box:
                 self.post(("target", None))
+
+    def _cursor_note(self, pipe: Pipeline) -> str:
+        """Where typed text goes: the cursor position from VS Code's status bar (Glimmer reads the bottom of the
+        screen), as on 1 Nov, when 'using namespace std;' went to line 8 instead of line 2; or a reminder to look."""
+        try:
+            st = E.parse_status(pipe.read_status())
+        except (GlimmerError, ServiceError):
+            st = None
+        if st is None:
+            return "It types wherever the cursor is: check where that is on the picture."
+        sel = f", with {st[2]} characters selected (they will be replaced)" if st[2] else ""
+        return f"It types where the cursor is: the editor's status bar shows Ln {st[0]}, Col {st[1]}{sel}."
 
     def _act(self, pipe: Pipeline, body: dict) -> dict:
         """One request to the service on a worker thread, so Stop is seen at once, even while it types."""

@@ -102,9 +102,17 @@ FIX_REQUEST = ("Find what is wrong in this file and fix it: errors that stop it 
                "as a line continuation, and if a line that needs changing can't be edited, say so instead. Leave "
                "what you change tidy: indented like the code around it. If nothing needs fixing, say so without "
                "calling the tool.")
-# The viewer's Fix it, handing a change to code over: the person's task, after FIX_REQUEST (both are left out of the leak
-# scan; the task itself is redacted and scanned).
-HINT_INTRO = "The user's own question about the screen: "
+# The viewer's Fix it, handing a change to code over: the person's task is the request, TASK_INTRO + task + TASK_RULES,
+# so the coder does what was asked rather than hunting for bugs (only a task that asks for a fix is one). The fixed
+# parts are left out of the leak scan; the task itself is redacted and scanned.
+TASK_INTRO = "The user's task, in this file: "
+TASK_RULES = ("Do what the task asks in this file, and change nothing else. If it asks what is wrong or to fix it, "
+              "find what is wrong and fix it: errors that stop it compiling or running first, then obvious bugs. "
+              "<screen_notes> says what the screen reader noticed, but it can be incomplete or wrong, so check the "
+              "code itself. Fix the cause itself: don't comment code out or hide it with a trick such as a line "
+              "continuation, and if a line that needs changing can't be edited, say so instead. Leave what you "
+              "change tidy: indented like the code around it. If the task is already done, or can't be done from "
+              "these lines, say so without calling the tool.")
 # nanokvm fix: sent with a fresh reading of the screen once Spark says it's done, so the fix is checked on the screen.
 # FIXED is the word nanokvm looks for before it saves the file (confirms_fix).
 CHECK_REQUEST = ("Here is the screen again, read after your edits. Check every line shown, the last ones too: would "
@@ -113,6 +121,14 @@ CHECK_REQUEST = ("Here is the screen again, read after your edits. Check every l
                  "code around it (trust the indentation the editor measured over the rest). If it is fixed and tidy, "
                  "reply FIXED and one sentence, without calling the tool. If something is still wrong, fix it with "
                  "apply_edit, using these line numbers, or say why it can't be fixed from these lines.")
+# The same check after a task (Fix it): was the task done, and is the file still sound?
+TASK_CHECK = ("Here is the screen again, read after your edits. Check every line shown, the last ones too: is the "
+              "user's task done, and would this file still compile and do what it should? Look especially for "
+              "anything the edits broke, such as a brace, bracket or line that is now doubled or missing, and for a "
+              "line indented unlike the code around it (trust the indentation the editor measured over the rest). If "
+              "the task is done and the file tidy, reply FIXED and one sentence, without calling the tool. If "
+              "something is still missing or wrong, fix it with apply_edit, using these line numbers, or say why it "
+              "can't be done from these lines.")
 _FIXED_RE = re.compile(r"[\W_]*fixed\b", re.I)
 
 

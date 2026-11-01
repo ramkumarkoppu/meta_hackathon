@@ -464,7 +464,7 @@ def test_a_do_it_target_is_outlined_on_the_picture_and_do_it_plans_here_by_defau
         assert win.canvas.itemcget(win.target_item, "state") == "hidden"
         p = win.panel
         p.prompt.insert("1.0", "copy it into the other folder")
-        p.submit_do()                                        # planned on this laptop unless Plan with Spark is ticked
+        p.submit_do()                                        # planned on this laptop unless Spark is ticked
         assert p.session.calls[-1] == ("do", "copy it into the other folder", False, False, False)
         p.spark_var.set(True)
         p.local_var.set(True)                                # Local only wins: still planned here

@@ -196,9 +196,13 @@ def test_fix_it_hands_a_change_to_code_to_the_fix_loop_on_this_laptop(world):
     assert save.text.startswith("Glimmer checked the fix on the screen.")
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 1 and not w.ed.dirty and w.meta.requests == []
     assert w.env.desk.button_presses == 0 and _texts(seen, "target") == []  # nothing clicked or outlined
-    assert "Muse Glimmer says this is a change to code (the loop reads past the end of v)" in " ".join(_texts(seen, "say"))
-    first = _coder_requests(w)[0]["messages"][1]["content"]
-    assert first.startswith(E.FIX_REQUEST + "\n\nThe user's own question about the screen: Whats wrong with this")
+    says = " ".join(_texts(seen, "say"))
+    assert "Muse Glimmer says this is a change to code (the loop reads past the end of v)" in says
+    assert "The task ends there: ask again for anything after the change to code" in says    # nothing is dropped silently
+    coder = _coder_requests(w)
+    first = coder[0]["messages"][1]["content"]                       # the task is the request, not a bug hunt
+    assert first.startswith(f"{E.TASK_INTRO}Whats wrong with this and fix it\n\n{E.TASK_RULES}\n\n<screen_notes>")
+    assert coder[-1]["messages"][-1]["content"].startswith(E.TASK_CHECK)    # and the check asks if the task is done
     (report,) = _texts(seen, "report")
     assert any("3 request(s) to Muse Glimmer on this laptop; nothing was sent" in line for line, _t in report)
     assert [tag for line, tag in report if line.startswith("Saved on the locked computer")] == ["ok"]
@@ -208,7 +212,7 @@ def test_fix_it_hands_a_change_to_code_to_the_fix_loop_on_this_laptop(world):
 
 def test_fix_it_with_spark_hands_a_change_to_code_to_sparks_fix_loop(world):
     w = world
-    w.replies += [_ui_step(action="fix_code", changes=True, note="the loop bound"),
+    w.replies += [_ui_step(action="Fix code", changes=True, note="the loop bound"),      # read as fix_code
                   _call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Done."),
                   spark_stream("FIXED: the loop bound.")]
     s, events, _ = _session(w)
@@ -219,8 +223,7 @@ def test_fix_it_with_spark_hands_a_change_to_code_to_sparks_fix_loop(world):
     assert _approvals(seen)[1].title == "Type Spark's edit of line 6?" and len(w.meta.requests) == 4
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 1 and _coder_requests(w) == []
     first = w.meta.requests[1][2]["messages"][1]["content"]                   # the fix loop's, after the plan
-    assert first.startswith(E.FIX_REQUEST + "\n\nThe user's own question about the screen: why does sum_first read "
-                                            "past the end?")
+    assert first.startswith(f"{E.TASK_INTRO}why does sum_first read past the end?\n\n{E.TASK_RULES}")
     (report,) = _texts(seen, "report")
     assert any("1 edit(s) typed, 1 checked on the screen" in line for line, _tag in report)
     assert report[-1][0].startswith("(0 step(s) done; planning: 1 request(s) to muse-spark")   # what planning sent
@@ -234,6 +237,7 @@ def test_with_auto_a_fix_to_code_asks_once_naming_the_typing_and_the_save(world)
     seen = _drive(s, events, lambda a: True)
     share, auto = _approvals(seen)
     assert share.kind == "share" and "a fix to code, once, before typing its edits" in share.text
+    assert "a step that types or changes something still asks" in share.text
     assert auto.kind == "auto" and "without asking for each one, and save the file once Glimmer has checked" in auto.text
     assert any("Auto: typing it without asking" in e for e in _texts(seen, "edit"))
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 1
@@ -263,6 +267,64 @@ def test_a_declined_edit_or_save_is_respected(world):
     assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 0 and w.ed.dirty
     assert ("Not saved (you said no). Review the changes in VS Code before you save. Ctrl+Z, or File: Revert File, "
             "undoes them.", "") in _texts(seen, "report")[0]
+
+
+def test_stop_at_the_hand_over_question_points_at_the_last_step_not_the_file(world):
+    w = world
+    w.plans += ["ACTION: click\nTARGET: the Button\nCHANGES: no\nWHY: open it", FIX_PLAN]
+    s, events, _ = _session(w)
+    assert s.do("open it and fix it", auto=True)
+
+    def answer(a):
+        if a.kind == "auto":                                # the hand-over's question: Stop instead
+            s.stop()
+            return False
+        return True
+    seen = _drive(s, events, answer)
+    assert "Stopped: every key was released. Check what the last step did on the locked computer." in _texts(seen, "info")
+    assert w.env.desk.button_presses == 1 and w.ed.lines == FILE and _coder_requests(w) == []
+
+
+def test_typing_always_asks_and_says_where_the_cursor_is(world):
+    w = world                                       # the 1 Nov failure: text typed into code wherever the cursor was
+    w.plans += ["ACTION: type\nTEXT: using namespace std;\nCHANGES: no\nWHY: add the using line"]
+    s, events, _ = _session(w)
+    assert s.do("add the using line", auto=True)
+    seen = _drive(s, events, lambda a: a.kind != "step")
+    share, step = _approvals(seen)                  # with Auto too, and whatever the planner says about CHANGES
+    assert step.kind == "step" and "Type 'using namespace std;' into what has the focus" in step.text
+    assert "It types where the cursor is: the editor's status bar shows Ln 1, Col 1." in step.text
+    assert "This step changes something." not in step.text and w.ed.lines == FILE      # said no: nothing typed
+    w.status_override = "NONE"                                       # no status bar to read: a reminder instead
+    w.plans += ["ACTION: type\nTEXT: hello\nCHANGES: no\nWHY: x"]
+    assert s.do("type hello")
+    (step,) = _approvals(_drive(s, events, lambda a: False))
+    assert "It types wherever the cursor is: check where that is on the picture." in step.text
+
+
+def test_keys_that_partly_went_out_are_never_reported_as_nothing_typed(world, monkeypatch):
+    w = world
+    w.plans += ["ACTION: type\nTEXT: abcdef\nCHANGES: no\nWHY: x", FIX_PLAN]
+
+    def cut_short(act):
+        def wrapped(body):
+            reply = act(body)
+            if body["action"] == "type":                    # as when another client's release_all stops the typing
+                reply = {**reply, "summary": "typed 3 character(s); STOPPED early by release_all"}
+            return reply
+        return wrapped
+
+    def no_code(self, *_a, **_k):
+        raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
+    monkeypatch.setattr(Pipeline, "edit", no_code)
+    s, events, _ = _session(w, wrap_act=cut_short)
+    assert s.do("type it, then fix it")
+    seen = _drive(s, events, lambda a: True)
+    assert "step 1 not done: the keys didn't all go through" in _texts(seen, "say")
+    assert _texts(seen, "error") == [] and s.steps_done == 0                 # never "Nothing was sent or typed"
+    (report,) = _texts(seen, "report")
+    assert report[0] == ("Stopped early: the fix loop: EditError: no numbered code lines on the screen: show the file "
+                         "in VS Code with line numbers on", "err")
 
 
 def test_auto_after_a_question_asks_once_more_naming_the_task_and_a_no_types_nothing(world):
@@ -309,17 +371,17 @@ def test_stop_while_typing_stops_the_typing_and_releases_every_key(world):
     assert actions[-1] == "release_all"                                     # closing the window releases them again
 
 
-def test_the_hint_prefix_doesnt_trip_the_leak_check(world):
+def test_the_task_rules_dont_trip_the_leak_check(world):
     w = world
-    w.ed.lines[2] = '    const char* password = "question";'            # redacted, and a word of HINT_INTRO only
+    w.ed.lines[2] = '    const char* password = "trick";'               # redacted, and a word of TASK_RULES only
     w.replies += [_ui_step(action="fix_code", changes=True, note="loop bound"),
                   _call(start_line=6, end_line=6, new_text=FIX, note="loop bound"), spark_stream("Done."),
                   spark_stream("FIXED.")]
     s, events, _ = _session(w)
     assert s.do("why does it read past the end?", spark=True)
     seen = _drive(s, events, lambda a: True)
-    assert _texts(seen, "error") == [] and w.ed.lines[5] == FIX
-    assert '\\"question\\"' not in json.dumps([r[2] for r in w.meta.requests])
+    assert _texts(seen, "error") == [] and w.ed.lines[5] == FIX and "trick" in E.TASK_RULES
+    assert '\\"trick\\"' not in json.dumps([r[2] for r in w.meta.requests])
 
 
 def _wait_until(condition, timeout=10.0):
@@ -410,8 +472,15 @@ def test_the_planner_hands_code_over_and_never_clicks_into_it():
     assert A.parse_plan("**ACTION:** Fix code\n**WHY:** x") == (A.FIX_CODE, "x")
     assert A.FIX_CODE not in A.ACTIONS                         # never a step that is clicked or typed
     assert "Never change code by clicking into it and typing" in A.PLAN_PROMPT and "fix_code" in A.PLAN_PROMPT
+    assert "that ends your part of the task" in A.PLAN_PROMPT
     assert A.FIX_CODE in A.UI_STEP["function"]["parameters"]["properties"]["action"]["enum"]
     assert "fix_code" in A.ACT_SYSTEM
+    assert A.action_name("Fix code") == A.action_name(" fix-code ") == A.FIX_CODE
+    assert A.step_from_args({"action": "Double click", "target": "OK", "changes": False, "note": ""}).action == \
+        "double_click"
+    with pytest.raises(A.StepRejected, match="scroll, fix_code"):    # Spark is told the hand-over exists
+        A.step_from_args({"action": "teleport", "changes": False, "note": "n"})
+    assert A.Step("type", text="x", changes=False).risky and not A.Step("click", target="OK", changes=False).risky
 
 
 def test_auto_runs_steps_that_change_nothing_and_asks_before_one_that_does(world):

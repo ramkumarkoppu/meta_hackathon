@@ -126,22 +126,26 @@ So far:
   first typing run and twice on 30 Oct, and I had put it down to VS Code's focus. Now, before the first
   key or click after the link opens or a quiet minute, the service taps Scroll Lock until the locked
   computer's Scroll Lock light (reported back to the NanoKVM's chip) follows, then taps it back.
-- **Code by line number, never by a click, and Glimmer as the coder (1 Nov, `localcoder.py`).** Asked
+- **Code by line number, not by a click, and Glimmer as the coder (1 Nov, `localcoder.py`).** Asked
   *Whats wrong with this and fix it* about hello.cpp, Do it typed `using namespace std;` below `main`
-  instead of above it: it had clicked into the code and typed, VS Code's rows are about 19 pixels apart on
-  the locked computer, and nothing checked where the cursor landed (on a synthetic copy of the screen
-  Glimmer's plan was right, so the click most likely hit the wrong line). Now Do it never changes code by
-  clicking into it: for a change to code shown with line numbers, its planner hands the task to the fix
-  loop (edits by line number, each approved and checked on the screen, *FIXED* on a fresh reading, then
-  the save). The coder is the planner's model, and Glimmer can now be it, on my GPU: it gets the same
-  request, instructions and `apply_edit` tool as Spark, through llama-server's tool calls, so nothing is
-  sent (`nanokvm edit --local-only` and `fix --local-only` use it too). That made the *Fix code* button
-  redundant, so it's gone, and the one button that acts, Do it, is now called *Fix it*; its Auto asks
-  once before a fix's edits and save.
-  With the real Glimmer as planner and coder, on a simulated VS Code drawn like the locked computer's:
-  from the original file it replaced line 5 with `std::cout ... std::endl` (79 s); from the state Do it
-  had left, it put the `using` line above `main` and deleted the misplaced one (122 s); each time it
-  answered *FIXED* on a fresh reading and the file was saved and checked.
+  instead of above it: it had clicked into the code and typed, VS Code's rows are about 19 pixels apart
+  on the locked computer, and nothing checked where the cursor landed (on a synthetic copy of the screen
+  Glimmer's plan was right, so the click most likely hit the wrong line). Now its planner is told never
+  to click into code: for a change to code shown with line numbers, it hands the task to the fix loop
+  (edits by line number, each approved and checked on the screen, *FIXED* on a fresh reading, then the
+  save), with the task itself as the request. The coder is the planner's model, and Glimmer can now be
+  it, on my GPU: it gets the same instructions and `apply_edit` tool as Spark, through llama-server's
+  tool calls, so nothing is sent (`nanokvm edit --local-only` and `fix --local-only` use it too). That
+  made the *Fix code* button redundant, so it's gone, and the one button that acts, Do it, is now called
+  *Fix it*; its Auto asks once before a fix's edits and save. An independent review (3 reviewers, each
+  checked by a skeptic; 15 findings, none refuted) then tightened it: the hand-over rests on the
+  planner's choice, so a step that types now always asks, Auto or not, and says where the editor's
+  cursor is; the task, not a bug hunt, is the coder's request; Glimmer's chat control tokens in screen
+  text (`<|eom|>` and the like) can't reach it as real ones; and the reports name what was sent. With
+  the real Glimmer as planner and coder, on a simulated VS Code drawn like the locked computer's: from
+  the original file it put `using namespace std;` above `main` (98 s); from the state Do it had left, it
+  moved that line above `main` in one edit (96 s); each time it answered *FIXED* on a fresh reading and
+  the file was saved and checked, with nothing sent.
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
   transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,

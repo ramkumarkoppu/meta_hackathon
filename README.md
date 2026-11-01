@@ -28,7 +28,7 @@ messages and errors). In `nanokvm viewer`'s prompt box, a question about any pro
 Glimmer's reading of the window in front, and **Fix it** carries out a task in any program one step at
 a time, planned by Glimmer on the AI computer (or by Spark, if you tick it), each step shown to you
 ([section 7](#fix-it)). `edit` and `fix` work on code in VS Code, and Fix it hands a change to code over
-to `fix`'s loop, so code is always edited by line number and checked.
+to `fix`'s loop, which edits it by line number and checks every edit.
 
 **Sensitive screens.** The locked computer may show patient records or company-confidential data. Its
 screen images never leave the AI computer. Redaction catches values with a recognisable shape (keys,
@@ -568,7 +568,7 @@ applies to anything that can click in that window. `--region x,y,w,h` reads only
   actions; the once-per-run yes, which names the save, and the checks before and after every step are
   how this mode provides them. Check that the locked computer's owner is happy with edits typed and
   saved this way. While Meta billing is on free credits, the same yes also confirms that the screen
-  shows only test or dummy content.
+  shows only test or dummy content (with `--local-only` that isn't asked: nothing is sent).
 
 **Checking what Glimmer reads.** To measure its accuracy on the live screen, show the dummy file
 `tools\ab_screens\live_check.cpp` (10 lines) in VS Code on the locked computer. Typed by hand, it must
@@ -718,8 +718,9 @@ looks at the screen again until the problem is fixed, and the file is saved.
    Glimmer checking the file's tab before and after. It stops when the fix is saved, at the first
    failed check, or at the limits (4 edits, 8 requests to Spark); Ctrl+C stops it at once. Leave out
    `--auto` to approve each edit and the save, or use `nanokvm edit "REQUEST"` to ask for a particular
-   change (`edit` never saves). With patient or confidential data on the screen, don't use `fix`: it
-   sends redacted text, and redaction can't catch those (*Sensitive screens* at the top of this page).
+   change (`edit` never saves). With patient or confidential data on the screen, use `fix --local-only`
+   instead: Glimmer proposes the edits on the AI computer and nothing is sent. Plain `fix` sends redacted
+   text, and redaction can't catch those (*Sensitive screens* at the top of this page).
 8. **Review.** The last lines say whether the file was saved and how that was checked. Look at the
    change in VS Code; Ctrl+Z still undoes it (then save again).
 9. **Finish:** Ctrl+C in window 1 stops Glimmer, and `nanokvm stop` stops the service.
@@ -791,27 +792,32 @@ has the focus, keys such as Ctrl+C or Enter, or a scroll.
    Pictures and screen positions never leave this laptop.
 3. **You allow the step** (*Do this step*, or *Stop here*), and the NanoKVM does it. With **Auto**
    ticked, one question at the start names the task and covers its steps: each is shown, its target
-   outlined, 1.5 s before it is done, so Stop still catches it. A step that changes something always
-   asks: the planner says so (anything but a plain "no" counts), or its keys are Enter, Delete,
-   Backspace, Ctrl with X, V, S, Z, Y, D or W, Alt+F4 or Shift+Insert (whatever the planner calls them),
-   or it types a line break.
+   outlined, 1.5 s before it is done, so Stop still catches it. A step that types text, or changes
+   something, always asks: the planner says it changes something (anything but a plain "no" counts),
+   or its keys are Enter, Delete, Backspace, Ctrl with X, V, S, Z, Y, D or W, Alt+F4 or Shift+Insert
+   (whatever the planner calls them). Text goes wherever the cursor is, so a typing step's question
+   says where that is when the editor's status bar shows it (*Ln 8, Col 1*).
 4. **Glimmer looks again**, and the next step starts from the screen as it is now. The log keeps each
    step done. It ends when the planner says the task is done (check it on the screen) or it is stuck,
    after 20 steps, or at Stop. Fix it asks for the share again when fewer than 10 minutes are left.
 
-**Code is changed by line number, never by clicking into it.** On 1 Nov, asked *Whats wrong with this
-and fix it* about a C++ file, the task button (then called *Do it*) clicked into the code and typed `using namespace std;`, and it
-landed below `main` instead of above it: VS Code's rows are about 19 pixels apart on the locked
-computer, and nothing checked where the cursor went. So when the task is a change to code shown in an
-editor with line numbers, the planner hands it over to `fix`'s loop
-([section 6](#6-using-it-read-ask-and-edit)), with your task as its hint. Each edit appears in the panel
-with its diff and the keys it will press, is typed only when you click *Type this edit*, and is checked
-on the screen; once the coder answers *FIXED* on a fresh reading, *Save* saves the file, checked as
-`fix` checks it. The coder is the planner's model: Glimmer, on the AI computer, by default (the same
-request, instructions and `apply_edit` tool Spark would get, so nothing is sent), or Spark when *Spark
-plans and fixes code* is ticked. With **Auto**, one more question before the first edit covers the
-typing and the save; answer *Ask for each edit* and each edit, and the save, asks. Before Fix it on code,
-click into the file in VS Code on the locked computer, as for `fix`.
+**A change to code goes to `fix`'s loop, not to clicks and typing.** On 1 Nov, asked *Whats wrong
+with this and fix it* about a C++ file, the task button (then called *Do it*) clicked into the code and
+typed `using namespace std;`, and it landed below `main` instead of above it: VS Code's rows are about
+19 pixels apart on the locked computer, and nothing checked where the cursor went. So the planner is
+told never to click into code and type: when the task is a change to code shown in an editor with line
+numbers, it hands the task over to `fix`'s loop ([section 6](#6-using-it-read-ask-and-edit)), and that
+ends its part (ask again for anything after the change). Your task is the coder's request: it does what
+you asked and changes nothing else, and a task that asks what is wrong, or to fix it, gets the usual
+search for the error. Each edit appears in the panel with its diff and the keys it will press, is
+typed only when you click *Type this edit*, and is checked on the screen; once the coder answers
+*FIXED* on a fresh reading (the task done, the file sound), *Save* saves the file, checked as `fix`
+checks it. The coder is the planner's model: Glimmer, on the AI computer, by default (the same
+instructions and `apply_edit` tool Spark would get, so nothing is sent), or Spark when *Spark plans and
+fixes code* is ticked. With **Auto**, one more question before the first edit covers the typing and the
+save; answer *Ask for each edit* and each edit, and the save, asks. The hand-over is the planner's
+choice, not a guarantee, which is why a typing step always asks and says where the cursor is. Before
+Fix it on code, click into the file in VS Code on the locked computer, as for `fix`.
 
 Refused outright: keys that reach outside the program (the Windows key by any name, Ctrl+Esc, Alt+Tab,
 Alt+Esc, Ctrl+Alt+Delete; Cmd stays allowed on a Mac), a character the keyboard layout can't type, and
@@ -942,12 +948,13 @@ needed.
   and the right file's tab is selected.
 - **Fix it steps are shown before they are done** ([section 7](#fix-it)): each step in words, its target
   outlined on the live picture, done only after your click, or with Auto after one yes that names the
-  task, except a step that changes something, which still asks. By default Glimmer plans on the AI
-  computer and nothing leaves it; with *Spark plans and fixes code*, Spark gets only Glimmer's redacted
-  description of the window. Glimmer finds every target locally: pictures and screen positions never
-  leave. A step with the Windows key, or a target box covering most of the screen, is refused. A change
-  to code never goes through clicks and typing: `fix`'s loop makes it, each edit shown, approved and
-  checked as above.
+  task, except a step that types or changes something, which still asks (a typing step says where the
+  editor's cursor is). By default Glimmer plans on the AI computer and nothing leaves it; with *Spark
+  plans and fixes code*, Spark gets only Glimmer's redacted description of the window. Glimmer finds
+  every target locally: pictures and screen positions never leave. A step with the Windows key, or a
+  target box covering most of the screen, is refused. The planner is told to hand a change to code over
+  to `fix`'s loop, each edit shown, approved and checked as above; screen text quoted to Glimmer as the
+  coder can't carry its chat control tokens (`<|eom|>` and the like become look-alikes).
 - **No stuck keys.** Every action ends with all keys and buttons up, even when something fails, and
   Ctrl+C during `nanokvm edit` stops the typing within about a quarter of a second and releases them.
   Releasing never moves the pointer.
@@ -1043,7 +1050,7 @@ E:\meta_hackathon
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
 │   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
 │   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        362 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
+├── tests\                        369 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key)
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen

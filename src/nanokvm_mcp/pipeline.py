@@ -20,9 +20,9 @@ from typing import Callable
 from . import editing as E
 from .client import ServiceClient, ServiceError
 from .config import Config
-from .glimmer import SYSTEM, GlimmerClient, GlimmerError
+from .glimmer import SYSTEM, GlimmerClient, GlimmerError, quote_safe
 from .localcoder import LocalCoder
-from .outbound import Answer, OutboundBlocked, OutboundGate, Prepared
+from .outbound import Answer, OutboundBlocked, OutboundGate, Prepared, defang
 from .spark import SparkClient, SparkError
 
 ASK_SYSTEM = ("You help a developer with what is on their screen. The user's message has their question, then "
@@ -193,7 +193,8 @@ class Pipeline:
             say("Muse Glimmer is answering on this laptop (nothing is sent)")
             reply = self.glimmer.chat(
                 [{"role": "system", "content": SYSTEM},
-                 {"role": "user", "content": f"{question}\n\n<screen_text>\n{reading.text}\n</screen_text>"}],
+                 {"role": "user", "content": f"{question}\n\n<screen_text>\n{defang(quote_safe(reading.text))}\n"
+                                             "</screen_text>"}],
                 reasoning=self.cfg.minimise_reasoning, think_tokens=2048, max_tokens=8192)
             return AskResult(reading, reply.content, True)
         gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in)
@@ -238,11 +239,11 @@ class Pipeline:
     def edit(self, request: str | None, rect: tuple[float, float, float, float] | None = None, *,
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
              on_event: Callable[[str], None] | None = None,
-             approve_save: Callable[[str], bool] | None = None, hint: str | None = None,
+             approve_save: Callable[[str], bool] | None = None, task: str | None = None,
              stopped: Callable[[], bool] | None = None, local: bool | None = None) -> EditResult:
         """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
         the person approves into VS Code, checking the screen before and after. Stops at the first edit
-        whose checks fail. If a later request fails after an edit was typed, the session report is still
+        whose checks fail. If a later request fails once anything was sent or typed, the session report is still
         returned, with ``stopped`` saying why. ``local`` (always, with outbound = local_only) has Glimmer plan the
         edits on this laptop instead (localcoder.py): the same request, tool and checks, nothing sent.
 
@@ -252,8 +253,9 @@ class Pipeline:
         something is still wrong it carries on editing (at most E.MAX_CHECKS times, within the usual limits).
         An edit that wasn't typed because the screen no longer reads as Spark's lines doesn't end the run: Spark
         gets the screen as read then, and tries again from it. Once Spark answers a fresh check with FIXED, the
-        file is saved if ``approve_save`` (given the file name from Glimmer's notes) says yes. ``hint`` (the
-        viewer's Fix it) adds the person's own task to E.FIX_REQUEST; it is redacted like any request.
+        file is saved if ``approve_save`` (given the file name from Glimmer's notes) says yes. ``task`` (the
+        viewer's Fix it) makes the person's task the request instead (E.TASK_INTRO, the task, E.TASK_RULES; checked
+        with E.TASK_CHECK), redacted like any request.
         ``stopped`` (the viewer's Stop) is asked between keys: once it says yes, every key is released and
         KeyboardInterrupt is raised, as Ctrl+C does in the terminal."""
         say = on_event or (lambda _m: None)
@@ -272,7 +274,8 @@ class Pipeline:
             notes = self.read("diagnose", rect).text
             say(("Glimmer noticed:\n" if local else "Glimmer noticed (sent to Spark, redacted):\n")
                 + E.safe_text(notes, multiline=True)[:800])
-            request = E.FIX_REQUEST + (f"\n\n{E.HINT_INTRO}{hint.strip()}" if (hint or "").strip() else "")
+            request = (f"{E.TASK_INTRO}{task.strip()}\n\n{E.TASK_RULES}" if (task or "").strip() else E.FIX_REQUEST)
+        check_request = E.TASK_CHECK if (task or "").strip() else E.CHECK_REQUEST
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l",
@@ -280,7 +283,7 @@ class Pipeline:
                                      save_key="cmd+s" if mac else "ctrl+s", stopped=stopped)
         gate = (LocalCoder(self.glimmer) if local else
                 OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in,
-                             trusted=(E.FIX_REQUEST, E.CHECK_REQUEST, E.HINT_INTRO)))
+                             trusted=(E.FIX_REQUEST, E.CHECK_REQUEST, E.TASK_INTRO, E.TASK_RULES, E.TASK_CHECK)))
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"),
                                 notes=notes, trim=not fix)
         result = EditResult(reading, prepared, "", local=local)
@@ -293,7 +296,7 @@ class Pipeline:
         indents: dict[int, int] = {}                    # line -> indentation VS Code measured, in the file as it is now
         while True:
             if result.turns >= E.MAX_TURNS:
-                result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
+                result.stopped = f"stopped after {E.MAX_TURNS} requests to {coder}"
                 break
             say(asking if not result.turns else
                 f"{asking} whether the screen shows it fixed" if checking else f"telling {coder} the result")
@@ -302,9 +305,9 @@ class Pipeline:
                 answer = gate.ask(prepared, E.EDIT_SYSTEM, tools=[E.APPLY_EDIT], parallel_tool_calls=False,
                                   history=history)
             except (OutboundBlocked, SparkError, GlimmerError) as e:
-                if not typed:
-                    raise                               # nothing was typed: the caller reports it
-                result.stopped = f"{type(e).__name__}: {e}"
+                if not typed and not result.turns:
+                    raise                               # nothing was sent or typed yet: the caller reports it
+                result.stopped = f"{type(e).__name__}: {e}"     # the report keeps what was sent, and what it cost
                 break
             result.turns += 1
             result.cost_usd += answer.reply.cost_usd
@@ -339,7 +342,7 @@ class Pipeline:
                 history.append({"role": "assistant", "content": answer.reply.content or ""})
                 history.append({"role": "user",
                                 "content": gate.follow_up(prepared, E.apply_indents(fresh.text, indents), fresh_notes,
-                                                          E.CHECK_REQUEST)})
+                                                          check_request)})
                 checking = True
                 continue
             raw = answer.reply.tool_calls             # replayed as Spark sent them: redacted

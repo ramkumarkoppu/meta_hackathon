@@ -2,14 +2,14 @@
 default), and nanokvm edit/fix --local-only. It gets what Muse Spark would get (the same request, system message,
 apply_edit tool and conversation), from the local llama-server instead of through the outbound gate, so nothing
 leaves the laptop and nothing needs redacting. Screen text still can't open or close the message's own blocks
-(outbound.defang), and its edits are checked, approved and typed exactly as Spark's are (editing.plan_edit,
-EditTyper, the approvals).
+(outbound.defang), nor end the turn with Glimmer's chat control tokens (glimmer.quote_safe), and its edits are
+checked, approved and typed exactly as Spark's are (editing.plan_edit, EditTyper, the approvals).
 """
 from __future__ import annotations
 
 import json
 
-from .glimmer import GlimmerClient
+from .glimmer import GlimmerClient, quote_safe
 from .outbound import Answer, Prepared, defang
 from .spark import SparkReply
 
@@ -27,8 +27,8 @@ class LocalCoder:
                         frame_sha256=frame_sha256)
 
     def screen_blocks(self, _p: Prepared | None, screen_text: str, notes: str | None = None) -> str:
-        block = f"<screen_notes>\n{defang(notes)}\n</screen_notes>\n\n" if notes else ""
-        return f"{block}<screen_text>\n{defang(screen_text)}\n</screen_text>"
+        block = f"<screen_notes>\n{defang(quote_safe(notes))}\n</screen_notes>\n\n" if notes else ""
+        return f"{block}<screen_text>\n{defang(quote_safe(screen_text))}\n</screen_text>"
 
     def follow_up(self, p: Prepared, screen_text: str, notes: str | None, intro: str) -> str:
         return f"{intro}\n\n{self.screen_blocks(p, screen_text, notes)}"
