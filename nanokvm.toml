@@ -1,4 +1,4 @@
-# Settings for `nanokvm read`, `ask` and `edit` and the NanoKVM service they use (README section 9),
+# Settings for `nanokvm read`, `ask`, `edit`, `fix` and the viewer, and the NanoKVM service they use (README section 9),
 # and for the Claude Code bridge built before the event (docs\claude-code.md). Every line is optional;
 # the values shown (commented out) are the defaults, or examples where the comment names the default
 # or says when to use them. A misspelt name is ignored without warning, so check the spelling.
@@ -17,12 +17,13 @@
 # glimmer_port = 8001            # the local llama-server (always 127.0.0.1), started by tools\run-glimmer.ps1
 
 # --- keyboard / mouse ---
-# control = false makes the setup view-only: `nanokvm edit` refuses, and the service refuses
-# keyboard/mouse requests from any program. With control = true, keys reach the locked computer only
-# while the NanoKVM's TARGET USB-C (cable 4) is plugged in (unplug it and the setup is physically
-# view-only). `nanokvm edit` and `fix` type only edits you approve at their prompt (each one, or once
-# per run with --auto), `fix` saves the file only with the same approval once Spark has checked the
-# fix on the screen, and the Claude Code bridge
+# control = false makes the setup view-only: `nanokvm edit` and `fix` refuse, the viewer's Fix it is off,
+# and the service refuses keyboard/mouse requests from any program. With control = true, keys reach the
+# locked computer only while the NanoKVM's TARGET USB-C (cable 4) is plugged in (unplug it and the setup
+# is physically view-only). `nanokvm edit` and `fix` type only edits you approve at their prompt (each
+# one, or once per run with --auto), `fix` saves the file only with the same approval once the coder
+# (Spark, or Glimmer with --local-only) has checked the fix on the screen, the viewer's Fix it does each
+# step only after your click (or one Auto yes; typing and changes still ask), and the Claude Code bridge
 # asks you in Claude Code before every keyboard/mouse action, even in auto mode (confirm_actions).
 control = true
 confirm_actions = true
@@ -37,7 +38,8 @@ serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other NanoKVM-USB units) and CH343 
 # capture_fps = 30
 shot_width = 1456            # screenshot width Claude sees (= pointer coordinate space); 1456 keeps code legible
                              # (capped to avoid downscaling: 1456 is the widest at 16:9; at 16:10 it gives 1370)
-# capture_fourcc = "YUY2"    # default "MJPG"; try on hardware day: uncompressed = sharpest code text (needs USB 3)
+# capture_fourcc = "YUY2"    # default "MJPG"; uncompressed = sharpest code text; try it if nanokvm diag
+                             # lists the NanoKVM as USB3 Video
 # viewer_fps = 30            # browser live view frame rate (default 15; the nanokvm viewer window uses --fps)
 # viewer_width = 1920        # live view width (default 1920 = 1:1 with the capture)
 # viewer_quality = 90        # live view JPEG quality (default 90)

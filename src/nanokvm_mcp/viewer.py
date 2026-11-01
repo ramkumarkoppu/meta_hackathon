@@ -386,9 +386,10 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
         share = ("Claude screen sharing: ?" if n is None else "Claude screen sharing: off" if n == 0
                  else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
         if status.get("local_shares_active"):
-            share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask/edit)"
+            share += (" · Muse Glimmer on this laptop can read it (a share for nanokvm read/ask/edit/fix or this "
+                      "prompt box)")
     keys = ("the picture is view-only; only Fix it clicks or types, after your yes (with Auto, one yes for the task; "
-            "typing, changes and a fix's edits still ask) · F11 full screen, F2 prompt box, "
+            "typing and changes still ask, and a fix asks once before its edits) · F11 full screen, F2 prompt box, "
             "1 actual pixels, Q quit (click the picture first)")
     return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
 
@@ -512,11 +513,11 @@ class AskPanel:
         self.log.tag_configure("err", foreground=BAD_FG)
         self.log.tag_configure("ok", foreground=OK_FG)
         self._write("Type a question about what the locked computer shows and press Enter (Shift+Enter: new line), or "
-                    "describe a task and press Fix it: it is done there one step at a time, each step shown and "
-                    "outlined on the picture first; a change to code in VS Code is handed to the fix loop, which edits "
-                    "by line number, each edit shown first and checked on the screen. Auto skips asking for each step "
-                    "(it still asks before a step that types or changes something, and once before a fix's edits). "
-                    "Nothing is read or sent until you ask. F2 hides this panel.", "say")
+                    "describe a task and press Fix it: it is done there one step at a time, each step shown first, "
+                    "any target outlined on the picture; a change to code in VS Code is handed to the fix loop, which "
+                    "edits by line number, each edit shown first and checked on the screen. Auto skips asking for each "
+                    "step (it still asks before a step that types or changes something, and once before a fix's "
+                    "edits). Nothing is read or sent until you ask. F2 hides this panel.", "say")
         self.refresh()
 
     # ---- the log
@@ -623,7 +624,7 @@ class AskPanel:
             elif kind == "edit":
                 self._write(str(payload), "mono")
             elif kind == "report":
-                for line, tag in payload:                    # coloured by nanokvm, never by Spark's text
+                for line, tag in payload:                    # coloured by nanokvm, never by a model's text
                     self._write(line, tag)
             elif kind == "info":
                 self._write(str(payload), "say")

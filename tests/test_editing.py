@@ -1,5 +1,6 @@
 """Milestone 2: Muse Spark's edits, approved at the console, typed into the simulated VS Code and checked on the
-screen. A fake Glimmer "reads" the simulated editor; a fake Meta Model API plays Spark."""
+screen. A fake Glimmer "reads" the simulated editor (and, with Local only, is the coder); a fake Meta Model API
+plays Spark."""
 import _thread
 import json
 import threading
@@ -518,7 +519,7 @@ def test_only_the_first_edit_in_a_reply_is_typed(world):
 def test_an_error_after_an_edit_was_typed_keeps_the_report(world):
     w = world
     w.replies += [(400, {"error": {"message": "bad request"}})]
-    with pytest.raises(SparkError):                               # nothing typed yet: the error is raised
+    with pytest.raises(SparkError):                               # nothing sent or typed yet: the error is raised
         w.run()
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="fix"), (400, {"error": {"message": "bad"}})]
     res = w.run()

@@ -448,7 +448,7 @@ class _FakeSession:
         return 0
 
 
-def test_a_do_it_target_is_outlined_on_the_picture_and_do_it_plans_here_by_default(sim, monkeypatch):
+def test_a_fix_it_target_is_outlined_on_the_picture_and_fix_it_plans_here_by_default(sim, monkeypatch):
     monkeypatch.setattr(V, "AssistSession", _FakeSession)
     win = _window(sim)
     try:

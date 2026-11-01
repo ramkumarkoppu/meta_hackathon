@@ -12,9 +12,9 @@ commands ask for at the keyboard is asked in the window instead, as an Approval 
 answers with a click: sharing the screen with Glimmer (for SHARE_MINUTES, asked again when the service's share
 runs low or is gone), the free-credit test-content confirmation (with every share that can lead to Spark), the
 exact text before it is sent (outbound = "approve", or ticked in the window), each step, each edit and the save
-(with Auto: the steps that change nothing, then a fix's edits and its save in one approval that names them).
-Choices in the window can make nanokvm.toml's settings stricter, never looser. Work runs on one worker thread, so
-the live picture keeps moving; Stop, and closing the window, release every key.
+(with Auto: the steps that don't type or change anything, then a fix's edits and its save in one approval that
+names them). Choices in the window can make nanokvm.toml's settings stricter, never looser. Work runs on one worker
+thread, so the live picture keeps moving; Stop, and closing the window, release every key.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class NotApproved(Exception):
 @dataclass
 class Approval:
     """A yes/no the person gives in the window. The worker waits for it; closing the window or Stop is a no."""
-    kind: str                   # share, test, send, auto, edit or save
+    kind: str                   # share, test, send, auto, step, edit or save
     title: str
     text: str                   # what is approved, in full
     yes: str                    # the label of the button that approves
@@ -70,7 +70,7 @@ def ask_report(res: AskResult, cfg: Config) -> str:
 
 def fix_report(res: EditResult, cfg: Config) -> list[tuple[str, str]]:
     """The closing lines of a fix, as ``nanokvm fix`` prints them, each with how to show it: "" (plain), "ok" (the
-    save, checked on the screen) or "err". Only nanokvm's own lines get a colour, never Spark's text."""
+    save, checked on the screen) or "err". Only nanokvm's own lines get a colour, never the coder's text."""
     lines: list[tuple[str, str]] = []
     for rec in res.edits:
         if rec.plan is None:
@@ -103,8 +103,9 @@ def fix_report(res: EditResult, cfg: Config) -> list[tuple[str, str]]:
 class AssistSession:
     """The prompt box's work, without the window: ``post`` hands the window events as (kind, payload) tuples, from
     the worker thread. Kinds: say (progress), question, answer (text, report line), edit (an edit typed with Auto,
-    shown in full), report ((text, tag) lines), info, error, approve (an Approval to show), idle (the work is over).
-    The window answers an Approval with ``answer``."""
+    shown in full), report ((text, tag) lines), info, error, approve (an Approval to show), target (a step's target
+    box to outline on the picture, or None to clear it), idle (the work is over). The window answers an Approval
+    with ``answer``."""
 
     def __init__(self, cfg: Config, post: Callable[[tuple[str, object]], None], *,
                  make_pipeline: Callable[..., Pipeline] | None = None) -> None:
@@ -114,8 +115,8 @@ class AssistSession:
         self.pipe: Pipeline | None = None
         self.shared_until = 0.0              # monotonic time the share ends, as the service said at the last job
         self.test_confirmed = False          # free credits: confirmed with the current share
-        self.used_keys = False               # typing was approved at some point: release every key on close
-        self.job_typed = False               # this job's typing was approved: Stop says to check the file
+        self.used_keys = False               # keys were allowed at some point: release every key on close
+        self.job_typed = False               # this job's keys were allowed: Stop says stop_note, not just "Stopped."
         self.stop_note = ""                  # what Stop says once keys went out (each job sets its own)
         self.steps_done = 0                  # Fix it: steps actually done in this task
         self.stop_event = threading.Event()
@@ -160,7 +161,7 @@ class AssistSession:
             self.answer(pending, False)
 
     def close(self, wait: float = 3.0) -> None:
-        """The window is closing: stop, release every key if typing was approved, and end the share. Nothing here
+        """The window is closing: stop, release every key if any keys were allowed, and end the share. Nothing here
         starts a stopped service (it would hold no keys and no share) or waits long for one."""
         self.closed = True
         self.stop()
@@ -188,7 +189,6 @@ class AssistSession:
                 return False
             self.stop_event.clear()
             self.job_typed = False
-            self.stop_note = "Stopped: every key was released. Check the file on the locked computer."
             self.steps_done = 0
             self._worker = threading.Thread(target=self._run, args=(job,), name="viewer-assist", daemon=True)
             self._worker.start()
@@ -327,7 +327,7 @@ class AssistSession:
         planner = ("Muse Spark plans from the redacted reading" if use_spark else
                    "Muse Glimmer plans on this laptop; nothing leaves it")
         self.post(("question", f"Fix it: {E.safe_text(task, multiline=True)}\n({planner}"
-                               + ("; Auto: steps that type or change nothing run without asking" if auto else "") + ")"))
+                               + ("; Auto: a step that types or changes something still asks" if auto else "") + ")"))
         self.stop_note = "Stopped: every key was released. Check what the last step did on the locked computer."
         extra = ([f"Do this task on the locked computer without asking for each step: {E.safe_text(task)!r}. Each step "
                   "is still shown, with its target outlined on the picture, a moment before it is done; a step that "

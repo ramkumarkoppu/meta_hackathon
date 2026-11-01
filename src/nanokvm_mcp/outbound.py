@@ -103,8 +103,9 @@ class OutboundGate:
     def __init__(self, cfg: Config, glimmer: GlimmerClient, spark: SparkClient,
                  approve: Callable[[str], bool] | None = None, stand_in: bool = False,
                  trusted: tuple[str, ...] = ()) -> None:
-        """``trusted``: built-in instructions (nanokvm fix's), left out of the leak scan: a redacted screen value
-        such as "code" is also an ordinary word in them, and would otherwise block the send."""
+        """``trusted``: built-in wording (the fix loop's requests and checks, what Fix it tells Spark after a step),
+        left out of the leak scan: a redacted screen value such as "code" is also an ordinary word in them, and
+        would otherwise block the send."""
         self.trusted = trusted
         if cfg.outbound not in OUTBOUND_MODES:
             raise ValueError(f"outbound must be one of {OUTBOUND_MODES}")

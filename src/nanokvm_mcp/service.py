@@ -92,8 +92,8 @@ class Service:
         self._last_space: tuple[int, int, G.Region] | None = None   # space of the last screenshot served
         self.sim_desktop = None   # set in simulator mode (tests read its state through /api/status)
         # Screen sharing: client id -> (expiry monotonic, end wall-clock, local). Requests from the MCP
-        # server (one id per Claude conversation) and from nanokvm read/ask (local=True) carry
-        # X-NanoKVM-Client; captures for that client need an active share.
+        # server (one id per Claude conversation) and from nanokvm read/ask/edit/fix and the viewer's prompt
+        # box (local=True) carry X-NanoKVM-Client; captures for that client need an active share.
         self._shares: dict[str, tuple[float, float, bool]] = {}
         self._shares_lock = threading.Lock()
 
@@ -330,7 +330,8 @@ class Service:
             raise ServiceError(self.SHARE_REFUSED, 403)
 
     def share(self, client: str | None, minutes: int, local: bool = False) -> dict:
-        """local=True: the share is for a reader on this laptop (nanokvm read/ask), not a Claude conversation."""
+        """local=True: the share is for a reader on this laptop (nanokvm read/ask/edit/fix, the viewer's prompt
+        box), not a Claude conversation."""
         if not client:
             raise ServiceError("screen sharing needs a client id (X-NanoKVM-Client header)")
         minutes = max(1, min(int(minutes), self.MAX_SHARE_MINUTES))
@@ -409,7 +410,7 @@ class Service:
             "idle_exit_min": self.cfg.idle_exit_min,
             "sharing": self.share_info(client),
             "shares_active": claude_shares,          # Claude conversations
-            "local_shares_active": local_shares,     # nanokvm read/ask/edit (Muse Glimmer on this laptop)
+            "local_shares_active": local_shares,     # nanokvm read/ask/edit/fix, the viewer's prompt box (Glimmer)
             **({"sim": {"text": self.sim_desktop.text, "button_presses": self.sim_desktop.button_presses}}
                if self.sim_desktop is not None else {}),
         }

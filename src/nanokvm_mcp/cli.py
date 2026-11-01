@@ -46,7 +46,8 @@ def _kept_for(cfg: Config) -> str:
 
 def cmd_status(cl: ServiceClient, args) -> int:
     if not cl.is_running():
-        _out("NanoKVM service: not running (it starts automatically when Claude uses a tool, or run 'nanokvm start').")
+        _out("NanoKVM service: not running (it starts automatically when a nanokvm command or Claude needs it, or "
+             "run 'nanokvm start').")
         return 1
     st = cl.status()
     if args.json:
@@ -63,7 +64,8 @@ def cmd_status(cl: ServiceClient, args) -> int:
     _out(f"Screen:    {scr['width']}x{scr['height']} coordinate space, region {scr['region']} ({scr['region_source']})")
     _out(f"Viewers:   {st['viewers']}")
     _out(f"Sharing:   {st.get('shares_active', '?')} Claude conversation(s), "
-         f"{st.get('local_shares_active', '?')} local reader(s) (nanokvm read, ask or edit)")
+         f"{st.get('local_shares_active', '?')} local reader(s) (nanokvm read, ask, edit or fix, or the viewer's "
+         "prompt box)")
     _out(f"Live view: {cl.cfg.base_url}/?t=<token>  (the token is hidden here: 'nanokvm viewer' opens the "
          "window, and 'nanokvm viewer --no-open' prints the full URL)")
     return 0
@@ -649,11 +651,13 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_ask)
     for name in ("edit", "fix"):
         if name == "edit":
-            p = sub.add_parser("edit", help="ask Muse Spark for code edits and type each one you approve into VS Code")
+            p = sub.add_parser("edit", help="ask Muse Spark (or with --local-only, Glimmer) for code edits and type "
+                                            "each one you approve into VS Code; nothing is saved")
             p.add_argument("request", help='what to change, for example "fix the off-by-one in sum_first"')
         else:
             p = sub.add_parser("fix", help="as edit, with no request: Glimmer notes what is wrong on the screen, and "
-                                           "Muse Spark (or with --local-only, Glimmer) finds the error and fixes it")
+                                           "Muse Spark (or with --local-only, Glimmer) finds the error and fixes it, "
+                                           "then saves the file once the fix is checked on the screen and you allow it")
             p.set_defaults(request=None)
         p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
         p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")

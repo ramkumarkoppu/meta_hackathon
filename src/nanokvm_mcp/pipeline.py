@@ -3,8 +3,8 @@ and only redacted text goes to Muse Spark, through the outbound gate. Spark's co
 into VS Code only after the person at the keyboard approves them: each one, or with --auto all of a run's at
 once, at the share prompt (editing.py, cli.py). nanokvm fix saves the file only after Spark has checked the fix
 on a fresh reading of the screen, and only with the same approval: asked then, or given with --auto. With
-outbound = local_only (or Local only in the viewer), Glimmer is the coder too (localcoder.py): the same loop,
-checks and approvals, with nothing sent.
+outbound = local_only (and in the viewer's Fix it, unless Spark plans), Glimmer is the coder too (localcoder.py):
+the same loop, checks and approvals, with nothing sent.
 
 The pipeline uses its own client id and screen share, approved by the person at the keyboard, and closes
 the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
@@ -34,7 +34,7 @@ ASK_SYSTEM = ("You help a developer with what is on their screen. The user's mes
 @dataclass
 class Reading:
     text: str
-    kind: str                         # code, describe, errors, diagnose or window
+    kind: str                         # code, describe, errors, diagnose, window or ui
     seconds: float
     frame: dict = field(default_factory=dict)   # metadata only: the image itself is never kept
 
@@ -54,7 +54,7 @@ class EditError(RuntimeError):
 
 @dataclass
 class EditRecord:
-    plan: E.EditPlan | None           # None when Spark's call was rejected before it could be shown
+    plan: E.EditPlan | None           # None when the coder's call was rejected before it could be shown
     approved: bool
     outcome: E.EditOutcome | None     # None when nothing was typed
     told_spark: str
@@ -64,12 +64,12 @@ class EditRecord:
 class EditResult:
     reading: Reading
     prepared: Prepared
-    summary: str                      # Spark's closing message, placeholders restored
+    summary: str                      # the coder's closing message (Spark's with its placeholders restored)
     edits: list[EditRecord] = field(default_factory=list)
     turns: int = 0
     stopped: str | None = None        # why the session ended early, or None
     cost_usd: float = 0.0
-    checks: int = 0                   # nanokvm fix: fresh readings of the screen Spark checked its fix against
+    checks: int = 0                   # nanokvm fix: fresh readings of the screen the coder checked its fix against
     save: E.SaveOutcome | None = None   # nanokvm fix, once edits were typed: whether the file was saved, and why
     local: bool = False               # Glimmer was the coder, on this laptop: nothing was sent
 
@@ -292,7 +292,7 @@ class Pipeline:
         typed = 0
         typed_at_check = 0                              # typed edits when the screen was last read afresh
         checking = False
-        confirmed = False                               # Spark's last word, with nothing typed since a fresh check: FIXED
+        confirmed = False                               # the coder's last word, with nothing typed since a fresh check: FIXED
         indents: dict[int, int] = {}                    # line -> indentation VS Code measured, in the file as it is now
         while True:
             if result.turns >= E.MAX_TURNS:
@@ -323,7 +323,7 @@ class Pipeline:
                 confirmed = result.checks > 0 and typed == typed_at_check and E.confirms_fix(answer.content)
                 if not fix or typed == typed_at_check or result.checks >= E.MAX_CHECKS:
                     break                               # nothing typed since the screen was last checked
-                # Spark says it's done: read the screen afresh, and let Spark check the fix there
+                # the coder says it's done: read the screen afresh, and let the coder check the fix there
                 say("reading the screen again with Muse Glimmer to check the fix")
                 try:
                     fresh = self.read("code", rect)
@@ -345,7 +345,7 @@ class Pipeline:
                                                           check_request)})
                 checking = True
                 continue
-            raw = answer.reply.tool_calls             # replayed as Spark sent them: redacted
+            raw = answer.reply.tool_calls             # replayed as the coder sent them: Spark's stay redacted
             history.append({"role": "assistant", "content": answer.reply.content or None,
                             "tool_calls": [{"id": c["id"], "type": "function",
                                             "function": {"name": c["name"], "arguments": c["arguments"]}} for c in raw]})
@@ -365,8 +365,8 @@ class Pipeline:
                         indents = E.shift_indents(indents, record.plan)
                     indents.update(out.indents)
                 if fix and out is not None and (out.status == "verified" or retry) and out.screen and self.last_code:
-                    # Spark's next step starts from the screen as it is now: the check's own reading, no extra read,
-                    # with the indentation VS Code measured put in
+                    # the coder's next step starts from the screen as it is now: the check's own reading, no extra
+                    # read, with the indentation VS Code measured put in
                     told += (f"\n\nThe screen, read again {'after this edit' if out.status == 'verified' else 'just now'}"
                              ":\n" + gate.screen_blocks(prepared, E.apply_indents(self.last_code.text, indents)))
                 history.append({"role": "tool", "tool_call_id": call["id"], "content": told})

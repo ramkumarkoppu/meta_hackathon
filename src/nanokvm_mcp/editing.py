@@ -1,6 +1,8 @@
 """Milestone 2: Muse Spark proposes code edits, the person at the keyboard approves each one (or, with --auto, all
 of a run's at once, at the share prompt), and the approved edit is typed into VS Code on the locked computer
-through the NanoKVM keyboard.
+through the NanoKVM keyboard. With --local-only, and in the viewer's Fix it unless Spark plans, Muse Glimmer on
+this laptop is the coder instead (localcoder.py): the same request, tool and checks, with nothing sent or
+redacted. Below, "Spark" stands for either coder, except in what is said about redaction.
 
 Spark only sees redacted text (through the outbound gate) and answers with one tool, apply_edit, which replaces
 whole numbered lines. Its text is checked here before anything is typed: placeholders restored on this laptop
@@ -56,11 +58,11 @@ from .keys import text_to_keystrokes
 MAX_EDIT_LINES = 40            # per edit, old or new: the edited block must stay on one screen
 MAX_EDIT_CHARS = 2000          # per edit; typing runs at about 20 characters a second
 MAX_EDITS = 4                  # typed edits per session
-MAX_TURNS = 8                  # requests to Spark per session (a reading put right by VS Code costs one more)
+MAX_TURNS = 8                  # requests to the coder per session (a reading put right by VS Code costs one more)
 MAX_MEASURED = 12              # lines of one edit whose indentation VS Code measures (more: as read)
-MAX_CHECKS = 2                 # nanokvm fix: fresh readings of the screen sent back to Spark after it says it's done
+MAX_CHECKS = 2                 # nanokvm fix: fresh readings of the screen sent back to the coder after it says it's done
 TYPE_CHUNK = 1500              # characters per type action (at most the service's max_text_len)
-MAX_NOTE = 200                 # characters of Spark's note shown at the approval prompt
+MAX_NOTE = 200                 # characters of the coder's note shown at the approval prompt
 LAST_LINE_SLACK = 3            # characters the file's last line may be longer than read (spaces miscounted)
 
 PLACEHOLDER_RE = re.compile(r"\[\[[A-Z]+_\d+\]\]")
@@ -133,7 +135,8 @@ _FIXED_RE = re.compile(r"[\W_]*fixed\b", re.I)
 
 
 def confirms_fix(reply: str | None) -> bool:
-    """Whether Spark's answer to CHECK_REQUEST says the file is fixed: it starts with the word FIXED."""
+    """Whether the coder's answer to CHECK_REQUEST, or to TASK_CHECK after a task, says the file is fixed: it starts
+    with the word FIXED."""
     return bool(_FIXED_RE.match(reply or ""))
 
 

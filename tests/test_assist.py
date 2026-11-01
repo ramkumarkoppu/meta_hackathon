@@ -466,7 +466,7 @@ def test_a_fix_loop_that_cant_start_after_a_step_says_what_was_done(world, monke
     assert "Nothing was sent or typed: no numbered code lines" in _texts(_drive(s, events, lambda a: True), "error")[0]
 
 
-def test_the_planner_hands_code_over_and_never_clicks_into_it():
+def test_the_planner_is_told_to_hand_code_over_and_typing_always_asks():
     assert A.parse_plan("ACTION: fix_code\nWHY: line 5 uses cout without std") == (A.FIX_CODE, "line 5 uses cout "
                                                                                               "without std")
     assert A.parse_plan("**ACTION:** Fix code\n**WHY:** x") == (A.FIX_CODE, "x")
@@ -542,7 +542,7 @@ def test_keys_are_judged_by_what_they_are_not_how_they_are_spelt():
     assert not mac.risky
     typed = A.Step("type", text="abc\r", changes=False)       # a typed line break presses Enter
     A.check_step(typed, "uk")
-    assert typed.risky
+    assert typed.changes_something and not A.Step("type", text="abc", changes=False).changes_something
 
 
 def test_plans_and_boxes_are_read_so_that_doubt_means_ask_or_dont_click():

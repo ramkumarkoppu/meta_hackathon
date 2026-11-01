@@ -250,8 +250,8 @@ class ServiceClient:
         return self.call("POST", "/api/act", body, timeout=timeout)
 
     def share(self, minutes: int, local: bool = False) -> dict:
-        """local=True marks the share as a reader on this laptop (nanokvm read/ask/edit), not a Claude
-        conversation, so the live view reports the two apart."""
+        """local=True marks the share as a reader on this laptop (nanokvm read/ask/edit/fix, the viewer's prompt
+        box), not a Claude conversation, so the live view reports the two apart."""
         return self.call("POST", "/api/share", {"minutes": minutes, **({"local": True} if local else {})})
 
     def unshare(self) -> dict:
