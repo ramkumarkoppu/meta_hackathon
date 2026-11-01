@@ -1,8 +1,9 @@
-"""Muse Glimmer as the fix loop's coder, on this laptop: Fix code with Local only ticked, and Do it's code changes when
-Glimmer plans them. It gets what Muse Spark would get (the same request, system message, apply_edit tool and
-conversation), from the local llama-server instead of through the outbound gate, so nothing leaves the laptop and
-nothing needs redacting. Screen text still can't open or close the message's own blocks (outbound.defang), and its
-edits are checked, approved and typed exactly as Spark's are (editing.plan_edit, EditTyper, the approvals).
+"""Muse Glimmer as the fix loop's coder, on this laptop: Fix it's changes to code when Glimmer plans them (the viewer's
+default), and nanokvm edit/fix --local-only. It gets what Muse Spark would get (the same request, system message,
+apply_edit tool and conversation), from the local llama-server instead of through the outbound gate, so nothing
+leaves the laptop and nothing needs redacting. Screen text still can't open or close the message's own blocks
+(outbound.defang), and its edits are checked, approved and typed exactly as Spark's are (editing.plan_edit,
+EditTyper, the approvals).
 """
 from __future__ import annotations
 

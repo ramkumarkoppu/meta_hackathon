@@ -46,7 +46,7 @@ def world(tmp_path):
     env = SimEnv(tmp_path, editor_lines=FILE)
     ed = env.desk.editor
     ed.name = "sum.cpp"
-    # Do it: plans (Glimmer's answers to PLAN_PROMPT, in turn) and where each target is (per mille; the simulated
+    # Fix it: plans (Glimmer's answers to PLAN_PROMPT, in turn) and where each target is (per mille; the simulated
     # desktop's button is at 781 148 937 231), plus the window described for Spark
     # Glimmer as the coder (Local only): its answers, in turn, to the fix loop's requests (they carry the tools)
     w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, tab_override=None, cfg=env.cfg,

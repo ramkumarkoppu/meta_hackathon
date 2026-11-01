@@ -431,10 +431,6 @@ class _FakeSession:
         self.calls.append(("ask",) + a)
         return True
 
-    def fix(self, *a):
-        self.calls.append(("fix",) + a)
-        return True
-
     def do(self, *a):
         self.calls.append(("do",) + a)
         return True
@@ -497,21 +493,15 @@ def test_the_prompt_box_asks_with_the_choices_made_and_letters_stay_typing(sim, 
         p.kind_var.set("code")
         p.local_var.set(True)
         p.refresh()
-        assert p.fix_btn["state"] == "normal"                          # with Local only, Glimmer fixes the code
+        assert not hasattr(p, "fix_btn")                     # one button for tasks: Fix it hands code to the fix loop
         p.submit_ask()
         assert p.session.calls == [("ask", "why does it crash?", "code", True, False)]
         assert p.prompt.get("1.0", "end").strip() == ""
-        p.submit_fix()                                       # a fix on this laptop may use the Local only question
-        assert p.session.calls[-1] == ("fix", "why does it crash?", False, False, True)
         p.local_var.set(False)
-        p.auto_var.set(True)
-        p.refresh()
-        p.submit_fix()                                       # a Local only question stays here: no hint for Spark
-        assert p.session.calls[-1] == ("fix", "", True, False, False)
+        p.show_var.set(True)
         p.prompt.insert("1.0", "and now?")
         p.submit_ask()
-        p.submit_fix()                                       # the last question that went to Spark is the hint
-        assert p.session.calls[-1] == ("fix", "and now?", True, False, False)
+        assert p.session.calls[-1] == ("ask", "and now?", "code", False, True)
 
         # an approval: shown in the panel, its buttons work only after a moment
         a = Approval("edit", "Type Spark's edit of line 6?", "-    6 x\n+    6 y", "Type this edit", "Don't type",
@@ -597,8 +587,7 @@ def test_the_prompt_box_follows_stricter_settings(sim, monkeypatch):
     try:
         p = win.panel
         assert p.local_var.get() and p.local_box["state"] == "disabled"
-        assert p.fix_btn["state"] == "normal" and "Fix code is off" not in p.status["text"]   # Glimmer fixes here
-        assert p.spark_box["state"] == "disabled" and p.do_btn["state"] == "normal"   # Do it: planned here only
+        assert p.spark_box["state"] == "disabled" and p.do_btn["state"] == "normal"   # Fix it: planned here only
     finally:
         win.close()
         sim.client.cfg.outbound = "auto"
@@ -619,8 +608,8 @@ def test_the_prompt_box_follows_stricter_settings(sim, monkeypatch):
     sim.client.cfg.control = False
     win = _window(sim)
     try:
-        assert win.panel.fix_btn["state"] == win.panel.do_btn["state"] == "disabled"
-        assert "Do it is off: keyboard/mouse control is off" in win.panel.status["text"]
+        assert win.panel.do_btn["state"] == "disabled"
+        assert "Fix it is off: keyboard/mouse control is off" in win.panel.status["text"]
         assert win.panel.show_box["state"] == "normal"
     finally:
         win.close()

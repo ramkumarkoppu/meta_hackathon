@@ -601,8 +601,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("stop", help="stop the background service").set_defaults(fn=cmd_stop)
     sub.add_parser("keytest", help="press Num Lock twice through the NanoKVM and check that the locked computer "
                                    "follows (no picture taken)").set_defaults(fn=cmd_keytest)
-    p = sub.add_parser("viewer", help="watch the locked computer's screen live in a window, and ask about it (or fix "
-                                      "it) from the prompt box beside the picture")
+    p = sub.add_parser("viewer", help="watch the locked computer's screen live in a window, and ask about it (or have "
+                                      "a task done there) from the prompt box beside the picture")
     p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
     p.add_argument("--close-after", type=_seconds, metavar="SECONDS", help="close the window after this long")
     where = p.add_mutually_exclusive_group()

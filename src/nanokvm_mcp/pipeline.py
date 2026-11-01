@@ -163,7 +163,7 @@ class Pipeline:
 
     def look(self, fn: Callable[[str, str], object]) -> object:
         """``fn(image_b64, fmt)`` on one fresh frame of the whole screen, for several of Glimmer's answers about the
-        same picture (Do it: plan the step, then find its target). The image is dropped afterwards, as in read."""
+        same picture (Fix it: plan the step, then find its target). The image is dropped afterwards, as in read."""
         frame = self._frame(None)
         self.last_look = {k: v for k, v in frame.items() if k != "image_b64"}
         try:
@@ -253,7 +253,7 @@ class Pipeline:
         An edit that wasn't typed because the screen no longer reads as Spark's lines doesn't end the run: Spark
         gets the screen as read then, and tries again from it. Once Spark answers a fresh check with FIXED, the
         file is saved if ``approve_save`` (given the file name from Glimmer's notes) says yes. ``hint`` (the
-        viewer's Fix it) adds the person's own question to E.FIX_REQUEST; it is redacted like any request.
+        viewer's Fix it) adds the person's own task to E.FIX_REQUEST; it is redacted like any request.
         ``stopped`` (the viewer's Stop) is asked between keys: once it says yes, every key is released and
         KeyboardInterrupt is raised, as Ctrl+C does in the terminal."""
         say = on_event or (lambda _m: None)

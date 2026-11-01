@@ -235,11 +235,11 @@ class GlimmerClient:
         """What VS Code's quick-input box shows (':' for Go to Line), from a crop of the screen's top."""
         return self.read_image(image_b64, fmt, BOX_PROMPT, max_tokens=128)
 
-    PLAN_THINK_TOKENS = 768         # Do it's planning may think this much...
+    PLAN_THINK_TOKENS = 768         # Fix it's planning may think this much...
     PLAN_ANSWER_TOKENS = 512        # ...and still has this much left for the step itself (thinking counts in max_tokens)
 
     def plan_step(self, image_b64: str, fmt: str, prompt: str) -> GlimmerReply:
-        """Do it, planned on this laptop: the next step towards a task, from the screenshot (acting.PLAN_PROMPT).
+        """Fix it, planned on this laptop: the next step towards a task, from the screenshot (acting.PLAN_PROMPT).
         Some thinking is allowed here, unlike the readings; it is dropped with the rest of the reply's reasoning.
         The thinking counts towards max_tokens, so the answer gets its own room on top (seen live on 30 Oct: with
         1024 thinking tokens and max_tokens 400, every plan was cut off)."""

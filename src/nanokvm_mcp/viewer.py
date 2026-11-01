@@ -12,10 +12,9 @@ gate doesn't apply: it is for the person at this laptop. Nothing in it is sent t
 ordinary window, so anything that captures this laptop's screen captures the locked computer's too.
 
 The prompt box does nothing until it is used. A question shares the screen with Muse Glimmer (asked in the
-window first) and sends Spark only redacted text, as ``nanokvm ask`` does; Fix code types into the locked computer
-as ``nanokvm fix`` does, with each edit and the save approved in the window (or all at once with Auto), and with
-Local only Glimmer is its coder; Do it does a task one step at a time, and hands a change to code over to Fix code's
-loop.
+window first) and sends Spark only redacted text, as ``nanokvm ask`` does. Fix it does a task on the locked computer
+one step at a time, each step approved in the window, and hands a change to code over to ``nanokvm fix``'s loop,
+which types it by line number, each edit and the save approved in the window too.
 
 Frames are decoded and scaled on a background thread and the window shows only the newest one, so
 it skips frames rather than falling behind the capture.
@@ -36,7 +35,7 @@ import cv2
 import numpy as np
 
 from . import geometry as G
-from .assist import READ_KINDS, Approval, AssistSession, EventQueue, fix_blocked_reason
+from .assist import READ_KINDS, Approval, AssistSession, EventQueue
 from .client import ServiceClient, ServiceError, ServiceUnreachable
 from .config import Config
 
@@ -46,7 +45,7 @@ MAX_PART = 16_000_000          # bytes; a 1920x1080 JPEG is far smaller
 BG, BAR_BG, FG = "#111111", "#1c1c1c", "#cccccc"
 OK_FG, WARN_FG, BAD_FG = "#8fd18f", "#e3b341", "#ff7b72"
 PANEL_BG, FIELD_BG, DIM_FG = "#181818", "#242424", "#8b949e"
-TARGET_FG = "#ff9500"          # the outline of a Do it step's target on the picture
+TARGET_FG = "#ff9500"          # the outline of a Fix it step's target on the picture
 
 
 # ---------------------------------------------------------------- the stream
@@ -388,8 +387,8 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
                  else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
         if status.get("local_shares_active"):
             share += " · Muse Glimmer on this laptop is reading it (nanokvm read/ask/edit)"
-    keys = ("the picture is view-only; only Do it and Fix code click or type, after your yes (with Auto, one yes for "
-            "the task) · F11 full screen, F2 prompt box, "
+    keys = ("the picture is view-only; only Fix it clicks or types, after your yes (with Auto, one yes for the task) "
+            "· F11 full screen, F2 prompt box, "
             "1 actual pixels, Q quit (click the picture first)")
     return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
 
@@ -419,12 +418,10 @@ class AskPanel:
         tk = win.tk
         self.tk, self.cfg = tk, win.client.cfg
         self.reveal = None              # set by the window: shows the panel (and leaves full screen) for an approval
-        self.show_target = None         # set by the window: outlines a Do it step's target on the live picture
+        self.show_target = None         # set by the window: outlines a Fix it step's target on the live picture
         self.events = EventQueue()
         self.session: AssistSession | None = None
         self.approval: Approval | None = None
-        self.last_question = ""
-        self.last_question_local = False    # asked with Local only: not a hint for a fix by Spark
         font, small, mono = ("Segoe UI", 10), ("Segoe UI", 9), ("Consolas", 9)
 
         f = self.frame = tk.Frame(win.root, bg=PANEL_BG, width=self.WIDTH)
@@ -439,10 +436,9 @@ class AskPanel:
         row = tk.Frame(f, bg=PANEL_BG)
         row.pack(side="bottom", fill="x", padx=8, pady=4)
         self.ask_btn = tk.Button(row, text="Ask", width=7, command=self.submit_ask)
-        self.do_btn = tk.Button(row, text="Do it", width=7, command=self.submit_do)
-        self.fix_btn = tk.Button(row, text="Fix code", width=8, command=self.submit_fix)
+        self.do_btn = tk.Button(row, text="Fix it", width=7, command=self.submit_do)
         self.stop_btn = tk.Button(row, text="Stop", width=6, command=self.stop, state="disabled")
-        for b in (self.ask_btn, self.do_btn, self.fix_btn, self.stop_btn):
+        for b in (self.ask_btn, self.do_btn, self.stop_btn):
             b.pack(side="left", padx=(0, 5))
         self.auto_var = tk.BooleanVar(value=False)
         tk.Checkbutton(row, text="Auto", variable=self.auto_var, bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG,
@@ -463,14 +459,14 @@ class AskPanel:
                            activebackground=PANEL_BG, activeforeground=FG, font=small).grid(row=0, column=col, sticky="w")
         self.local_var = tk.BooleanVar(value=self.cfg.outbound == "local_only")
         self.show_var = tk.BooleanVar(value=self.cfg.outbound == "approve")
-        self.local_box = tk.Checkbutton(opts, text="Local only: Glimmer answers and fixes, nothing leaves this laptop",
+        self.local_box = tk.Checkbutton(opts, text="Local only: Glimmer answers too, nothing leaves this laptop",
                                         variable=self.local_var, command=self.refresh, bg=PANEL_BG, fg=FG,
                                         selectcolor=FIELD_BG, activebackground=PANEL_BG, activeforeground=FG, font=small)
         self.show_box = tk.Checkbutton(opts, text="Show me the exact text before it is sent", variable=self.show_var,
                                        bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG, activebackground=PANEL_BG,
                                        activeforeground=FG, font=small)
-        self.spark_var = tk.BooleanVar(value=False)   # Do it plans on this laptop unless this is ticked
-        self.spark_box = tk.Checkbutton(opts, text="Do it: plan with Spark (sends the redacted reading)",
+        self.spark_var = tk.BooleanVar(value=False)   # Fix it plans (and fixes code) on this laptop unless this is ticked
+        self.spark_box = tk.Checkbutton(opts, text="Fix it: Spark plans and fixes code (sends the redacted reading)",
                                         variable=self.spark_var, bg=PANEL_BG, fg=FG, selectcolor=FIELD_BG,
                                         activebackground=PANEL_BG, activeforeground=FG, font=small)
         self.local_box.grid(row=1, column=0, columnspan=3, sticky="w")
@@ -516,11 +512,11 @@ class AskPanel:
         self.log.tag_configure("err", foreground=BAD_FG)
         self.log.tag_configure("ok", foreground=OK_FG)
         self._write("Type a question about what the locked computer shows and press Enter (Shift+Enter: new line), or "
-                    "describe a task and press Do it: it is done there one step at a time, each step shown and "
-                    "outlined on the picture first. Fix code fixes a file in VS Code (with Local only, Glimmer fixes "
-                    "it on this laptop); Do it hands a change to code over to it. Auto skips asking for each step "
-                    "(Do it still asks before a step that changes something). Nothing is read or sent until you ask. "
-                    "F2 hides this panel.", "say")
+                    "describe a task and press Fix it: it is done there one step at a time, each step shown and "
+                    "outlined on the picture first; a change to code in VS Code is made by line number, each edit "
+                    "shown first and checked on the screen. Auto skips asking for each step (it still asks before a "
+                    "step that changes something, and once before a fix's edits). Nothing is read or sent until you "
+                    "ask. F2 hides this panel.", "say")
         self.refresh()
 
     # ---- the log
@@ -547,29 +543,17 @@ class AskPanel:
         question = self._text()
         if not question or self.busy or not self.shown:      # never from a hidden prompt box
             return
-        local = self.local_var.get()
-        if self._session().ask(question, self.kind_var.get(), local, self.show_var.get()):
-            self.last_question, self.last_question_local = question, local
-            self.prompt.delete("1.0", "end")
-        self.refresh()
-
-    def submit_fix(self) -> None:
-        if self.busy or self.fix_blocked() or not self.shown:
-            return
-        local = self.local_var.get()
-        # a question asked with Local only stayed on this laptop: only a fix on this laptop reuses it as the hint
-        hint = self._text() or (self.last_question if local or not self.last_question_local else "")
-        if self._session().fix(hint, self.auto_var.get(), self.show_var.get(), local):
+        if self._session().ask(question, self.kind_var.get(), self.local_var.get(), self.show_var.get()):
             self.prompt.delete("1.0", "end")
         self.refresh()
 
     def submit_do(self) -> None:
-        """Do it: the task typed in the prompt box, only (a question asked earlier isn't turned into actions)."""
+        """Fix it: the task typed in the prompt box, only (a question asked earlier isn't turned into actions)."""
         if self.busy or self.do_blocked() or not self.shown:
             return
         task = self._text()
         if not task:
-            self._write("Type the task in the box first, then press Do it.", "say")
+            self._write("Type the task in the box first, then press Fix it.", "say")
             return
         spark = self.spark_var.get() and not self.local_var.get()     # Local only keeps the planning here too
         if self._session().do(task, self.auto_var.get(), spark, self.show_var.get()):
@@ -601,23 +585,19 @@ class AskPanel:
     def busy(self) -> bool:
         return self.session is not None and self.session.busy
 
-    def fix_blocked(self) -> str | None:
-        return fix_blocked_reason(self.cfg)            # with Local only, Glimmer is the coder
-
     def do_blocked(self) -> str | None:
         return None if self.cfg.control else "keyboard/mouse control is off (control = false in nanokvm.toml)"
 
     def refresh(self) -> None:
         """Buttons and the status line, from the session's state."""
         busy, waiting = self.busy, self.approval is not None
-        no_fix, no_do = self.fix_blocked(), self.do_blocked()
+        no_do = self.do_blocked()
         self.ask_btn.configure(state="disabled" if busy else "normal")
         self.do_btn.configure(state="disabled" if busy or no_do else "normal")
-        self.fix_btn.configure(state="disabled" if busy or no_fix else "normal")
         self.stop_btn.configure(state="normal" if busy else "disabled")
         local = self.local_var.get() or self.cfg.outbound == "local_only"
         # While work runs its choices are fixed: ticking Local only part-way would look as if it stopped sending
-        self.spark_box.configure(state="disabled" if local or busy else "normal")   # Local only: Do it plans here
+        self.spark_box.configure(state="disabled" if local or busy else "normal")   # Local only: Fix it plans here
         self.local_box.configure(state="disabled" if busy or self.cfg.outbound == "local_only" else "normal")
         self.show_box.configure(state="disabled" if busy or self.cfg.outbound == "approve" else "normal")
         s = self.session
@@ -626,9 +606,7 @@ class AskPanel:
         parts.append(f"Glimmer can read the screen for {shared} more min." if shared else
                      "Glimmer can't read the screen until you ask.")
         if no_do and not busy:
-            parts.append(f"Do it is off: {no_do}.")
-        elif no_fix and not busy:
-            parts.append(f"Fix code is off: {no_fix}.")
+            parts.append(f"Fix it is off: {no_do}.")
         self.status.configure(text=" ".join(parts))
 
     def poll(self) -> None:
@@ -653,7 +631,7 @@ class AskPanel:
                 self._write(str(payload), "err")
             elif kind == "approve":
                 self._show_approval(payload)
-            elif kind == "target":                           # a Do it step's target: outline it on the picture
+            elif kind == "target":                           # a Fix it step's target: outline it on the picture
                 if self.show_target is not None:
                     self.show_target(payload)
             elif kind == "idle":
@@ -728,7 +706,7 @@ class ViewerWindow:
         self.image_item = self.canvas.create_image(0, 0, anchor="nw")
         self.note_item = self.canvas.create_text(0, 0, fill=FG, font=("Segoe UI", 12),
                                                  text="Connecting to the NanoKVM service…")
-        # A Do it step's target, outlined on the picture before the step is done (per mille of the screen)
+        # A Fix it step's target, outlined on the picture before the step is done (per mille of the screen)
         self.target_item = self.canvas.create_rectangle(0, 0, 0, 0, outline=TARGET_FG, width=3, state="hidden")
         self.target: tuple[int, int, int, int] | None = None
         self.panel.show_target = self.show_target
@@ -849,7 +827,7 @@ class ViewerWindow:
         self._draw_target()
 
     def show_target(self, box: tuple[int, int, int, int] | None) -> None:
-        """Outline a Do it step's target (a box per mille of the whole picture) on it, or clear it. In actual-pixel
+        """Outline a Fix it step's target (a box per mille of the whole picture) on it, or clear it. In actual-pixel
         mode the view scrolls so that the outline can be seen."""
         self.target = box
         self._draw_target()

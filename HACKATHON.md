@@ -92,16 +92,17 @@ So far:
   live picture: type any question about what the locked computer shows, and Spark answers from
   Glimmer's redacted reading of the window in front (Glimmer is told to quote its messages exactly and
   to leave out other windows and notifications), or Glimmer answers alone with nothing sent. *Fix code*
-  (first called *Fix it*) then runs the fix loop with the question as a hint. Every approval the
-  terminal asks for is asked in the panel, beside the live picture; Stop releases every key. On the
-  real locked computer on 30 Oct, a question found a deliberate `standard::cout` error ($0.0021); the
-  fix loop's first run there stopped safely at the Go to Line check, which led to the keyboard wake-up
-  below. An independent review (3 reviewers, each checked by a skeptic) then tightened it: the
-  test-content question comes with every share, approvals scroll and arm only once seen, and a hidden
-  prompt box can't send.
-- **Do it: any program, not just code (30 Oct, `acting.py`).** I wanted the assistant for anything on
-  the locked computer, such as a requirements tool, not only code in VS Code. *Do it* carries out a
-  described task one step at a time (click, double-click, right-click, type, keys, scroll). Muse
+  (first called *Fix it*; on 1 Nov folded into Do it, which took the name) ran the fix loop with the
+  question as a hint. Every approval the terminal asks for is asked in the panel, beside the live
+  picture; Stop releases every key. On the real locked computer on 30 Oct, a question found a
+  deliberate `standard::cout` error ($0.0021); the fix loop's first run there stopped safely at the Go
+  to Line check, which led to the keyboard wake-up below. An independent review (3 reviewers, each
+  checked by a skeptic) then tightened it: the test-content question comes with every share, approvals
+  scroll and arm only once seen, and a hidden prompt box can't send.
+- **Do it (now *Fix it*): any program, not just code (30 Oct, `acting.py`).** I wanted the assistant
+  for anything on the locked computer, such as a requirements tool, not only code in VS Code. *Do it*
+  carries out a described task one step at a time (click, double-click, right-click, type, keys,
+  scroll). Muse
   Glimmer, on my GPU, looks at the screen, plans the next step and finds its target, so by default
   nothing leaves the laptop; Spark can plan instead, from the redacted description, but Glimmer still
   finds every target locally. A test on a synthetic screen first showed Glimmer points accurately on
@@ -125,6 +126,22 @@ So far:
   first typing run and twice on 30 Oct, and I had put it down to VS Code's focus. Now, before the first
   key or click after the link opens or a quiet minute, the service taps Scroll Lock until the locked
   computer's Scroll Lock light (reported back to the NanoKVM's chip) follows, then taps it back.
+- **Code by line number, never by a click, and Glimmer as the coder (1 Nov, `localcoder.py`).** Asked
+  *Whats wrong with this and fix it* about hello.cpp, Do it typed `using namespace std;` below `main`
+  instead of above it: it had clicked into the code and typed, VS Code's rows are about 19 pixels apart on
+  the locked computer, and nothing checked where the cursor landed (on a synthetic copy of the screen
+  Glimmer's plan was right, so the click most likely hit the wrong line). Now Do it never changes code by
+  clicking into it: for a change to code shown with line numbers, its planner hands the task to the fix
+  loop (edits by line number, each approved and checked on the screen, *FIXED* on a fresh reading, then
+  the save). The coder is the planner's model, and Glimmer can now be it, on my GPU: it gets the same
+  request, instructions and `apply_edit` tool as Spark, through llama-server's tool calls, so nothing is
+  sent (`nanokvm edit --local-only` and `fix --local-only` use it too). That made the *Fix code* button
+  redundant, so it's gone, and the one button that acts, Do it, is now called *Fix it*; its Auto asks
+  once before a fix's edits and save.
+  With the real Glimmer as planner and coder, on a simulated VS Code drawn like the locked computer's:
+  from the original file it replaced line 5 with `std::cout ... std::endl` (79 s); from the state Do it
+  had left, it put the `using` line above `main` and deleted the misplaced one (122 s); each time it
+  answered *FIXED* on a fresh reading and the file was saved and checked.
 - **Glimmer reading the real screen (29 Oct).** Through the NanoKVM-USB, Glimmer on my GPU
   transcribed a 9-line C++ file in VS Code on the locked computer exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,

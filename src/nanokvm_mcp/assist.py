@@ -1,19 +1,19 @@
-"""The live viewer's prompt box: ask about the locked computer's screen, then, if you want, fix it from the window.
+"""The live viewer's prompt box: ask about the locked computer's screen, then, if you want, have the task done there.
 
 A question is answered by Muse Spark from Glimmer's redacted reading of the screen (Glimmer is asked to describe
 the window in front, or to transcribe the code with its line numbers), through the same outbound gate as ``nanokvm
-ask``, or by Glimmer alone when "Local only" is ticked, with nothing sent. "Fix code" runs ``nanokvm fix``'s loop,
-with the last question as a hint: Spark is the coder, or with Local only Glimmer is, on this laptop (localcoder.py).
-Do it hands a change to code over to the same loop (acting.FIX_CODE), with its planner's model as the coder.
+ask``, or by Glimmer alone when "Local only" is ticked, with nothing sent. Fix it does a task one step at a time
+(acting.py), and hands a change to code over to ``nanokvm fix``'s loop (acting.FIX_CODE), with its planner's model
+as the coder: Glimmer on this laptop by default (localcoder.py), or Spark with "plan with Spark" ticked.
 
 Nothing is read, sent or typed until a question is asked or Fix it is pressed. Every approval the terminal
 commands ask for at the keyboard is asked in the window instead, as an Approval the window shows and the person
 answers with a click: sharing the screen with Glimmer (for SHARE_MINUTES, asked again when the service's share
 runs low or is gone), the free-credit test-content confirmation (with every share that can lead to Spark), the
-exact text before it is sent (outbound = "approve", or ticked in the window), each edit and the save (or both at
-once with Auto, in one approval that names them). Choices in the window can make nanokvm.toml's settings
-stricter, never looser. Work runs on one worker thread, so the live picture keeps moving; Stop, and closing the
-window, release every key.
+exact text before it is sent (outbound = "approve", or ticked in the window), each step, each edit and the save
+(with Auto: the steps that change nothing, then a fix's edits and its save in one approval that names them).
+Choices in the window can make nanokvm.toml's settings stricter, never looser. Work runs on one worker thread, so
+the live picture keeps moving; Stop, and closing the window, release every key.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from .spark import SparkError
 
 SHARE_MINUTES = 30              # one share approval covers this long
 ASK_MARGIN_S = 60               # a question shares again when less than this is left...
-FIX_MARGIN_S = 10 * 60          # ...and Fix it when less than this (nanokvm fix's own share is 10 min)
+TASK_MARGIN_S = 10 * 60         # ...and Fix it when less than this (a task takes minutes; nanokvm fix shares 10 min)
 READ_KINDS = {"window": "the window in front", "code": "the code, with its line numbers"}
 
 
@@ -54,13 +54,6 @@ class Approval:
     mono: bool = False          # show the text in a fixed-width font (diffs, the exact text sent)
     answer: bool | None = None
     done: threading.Event = field(default_factory=threading.Event, repr=False)
-
-
-def fix_blocked_reason(cfg: Config) -> str | None:
-    """Why Fix code can't run with these nanokvm.toml settings, or None. (With outbound = local_only, Glimmer fixes.)"""
-    if not cfg.control:
-        return "keyboard/mouse control is off (control = false in nanokvm.toml)"
-    return None
 
 
 def ask_report(res: AskResult, cfg: Config) -> str:
@@ -123,7 +116,7 @@ class AssistSession:
         self.used_keys = False               # typing was approved at some point: release every key on close
         self.job_typed = False               # this job's typing was approved: Stop says to check the file
         self.stop_note = ""                  # what Stop says once keys went out (each job sets its own)
-        self.steps_done = 0                  # Do it: steps actually done in this task
+        self.steps_done = 0                  # Fix it: steps actually done in this task
         self.stop_event = threading.Event()
         self.closed = False
         self.pending: Approval | None = None
@@ -136,10 +129,6 @@ class AssistSession:
     def busy(self) -> bool:
         return self._worker is not None and self._worker.is_alive()
 
-    def can_fix(self) -> str | None:
-        """Why Fix it can't run with these settings, or None."""
-        return fix_blocked_reason(self.base_cfg)
-
     def shared_minutes_left(self) -> int:
         """For the window's status line: the clock's estimate, so it never waits on the service."""
         return max(0, int((self.shared_until - time.monotonic()) // 60)) if self.shared_until else 0
@@ -151,13 +140,8 @@ class AssistSession:
             return False
         return self._start(lambda: self._ask(question, kind, local_only, show_first))
 
-    def fix(self, hint: str = "", auto: bool = False, show_first: bool = False, local: bool = False) -> bool:
-        """Start the fix loop, with ``hint`` (the person's question) added to the coder's request. ``local`` (Local
-        only): Glimmer is the coder, on this laptop."""
-        return self._start(lambda: self._fix((hint or "").strip(), auto, show_first, local))
-
     def do(self, task: str, auto: bool = False, spark: bool = False, show_first: bool = False) -> bool:
-        """Start Do it: ``task`` in any program, one step at a time (acting.py). Glimmer plans unless ``spark``."""
+        """Start Fix it: ``task`` in any program, one step at a time (acting.py). Glimmer plans unless ``spark``."""
         task = (task or "").strip()
         if not task:
             return False
@@ -326,33 +310,11 @@ class AssistSession:
         self.post(("answer", (E.safe_text(res.answer, multiline=True),
                               "\n".join([*("WARNING: " + w for w in frame_warnings), ask_report(res, cfg)]))))
 
-    # ---- the fix loop
-    def _fix(self, hint: str, auto: bool, show_first: bool, local: bool = False) -> None:
-        why = self.can_fix()
-        if why:
-            raise EditError(why)
-        cfg = self._cfg_for(local, show_first)
-        local = cfg.outbound == "local_only"
-        who = "Glimmer" if local else "Spark"
-        coder = ("Muse Glimmer fixes it on this laptop; nothing leaves it" if local else
-                 "Muse Spark fixes it from the redacted reading")
-        self.post(("question", "Fix code" + (f", with your question: {E.safe_text(hint, multiline=True)}" if hint else "")
-                   + f"\n({coder}" + ("; Auto: edits typed and the file saved without asking for each" if auto else "")
-                   + ")"))
-        extra = ([f"Type Muse {who}'s edits into VS Code on the locked computer without asking for each one, and save "
-                  f"the file once {who} has checked the fix on the screen. Each edit is still shown and checked on the "
-                  "screen; Stop releases every key."] if auto else [])
-        pipe = self._prepare(cfg, extra, margin_s=FIX_MARGIN_S)
-        res = pipe.edit(None, approve_edit=self._approve_edit(auto, who), on_event=self._say,
-                        approve_save=self._approve_save(auto, who), hint=hint or None, stopped=self.stop_event.is_set,
-                        local=local)
-        self.post(("report", fix_report(res, cfg)))
-
     def _typing_allowed(self) -> bool:
         self.used_keys = self.job_typed = True
         return True
 
-    # ---- Do it: a task in any program
+    # ---- Fix it: a task in any program
     def _do(self, task: str, auto: bool, spark: bool, show_first: bool) -> None:
         if not self.base_cfg.control:
             raise EditError("keyboard/mouse control is off (control = false in nanokvm.toml)")
@@ -360,13 +322,14 @@ class AssistSession:
         cfg = self._cfg_for(not use_spark, show_first)
         planner = ("Muse Spark plans from the redacted reading" if use_spark else
                    "Muse Glimmer plans on this laptop; nothing leaves it")
-        self.post(("question", f"Do it: {E.safe_text(task, multiline=True)}\n({planner}"
+        self.post(("question", f"Fix it: {E.safe_text(task, multiline=True)}\n({planner}"
                                + ("; Auto: steps that change nothing run without asking" if auto else "") + ")"))
         self.stop_note = "Stopped: every key was released. Check what the last step did on the locked computer."
         extra = ([f"Do this task on the locked computer without asking for each step: {E.safe_text(task)!r}. Each step "
                   "is still shown, with its target outlined on the picture, a moment before it is done; a step that "
-                  "changes something still asks; Stop ends it."] if auto else [])
-        pipe = self._prepare(cfg, extra, margin_s=FIX_MARGIN_S)      # a task takes minutes, like a fix
+                  "changes something still asks, and so does a fix to code, once, before typing its edits; Stop ends "
+                  "it."] if auto else [])
+        pipe = self._prepare(cfg, extra, margin_s=TASK_MARGIN_S)
         width, height = pipe.screen_size()
         self.steps_done = 0
         if use_spark:
@@ -400,7 +363,7 @@ class AssistSession:
                 self.post(("report", [(f"Stopped early: {type(e).__name__}: {e}", "err"), self._steps_line(nothing)]))
                 return
             if kind == A.FIX_CODE:
-                self._do_fix(pipe, task, step, local=True)
+                self._do_fix(pipe, task, step, auto, local=True)
                 return
             if kind in ("done", "stuck"):
                 verdict = ("Muse Glimmer says the task is done: check it on the screen." if kind == "done" else
@@ -456,7 +419,7 @@ class AssistSession:
                 told = A.TOLD_UNKNOWN_TOOL
                 args = call["arguments"] if isinstance(call["arguments"], dict) else {}
                 if call["name"] == "ui_step" and args.get("action") == A.FIX_CODE:
-                    self._do_fix(pipe, task, str(args.get("note") or ""), local=False,
+                    self._do_fix(pipe, task, str(args.get("note") or ""), auto, local=False,
                                  planned=f"planning: {turns} request(s) to {cfg.spark_model}, store=false, cost "
                                          f"${cost:.4f}; logged in {cfg.run_dir / 'outbound.log'}")
                     return
@@ -489,19 +452,27 @@ class AssistSession:
                 raise                                        # nothing was done: the usual error line
             report((f"Stopped early: {type(e).__name__}: {e}", "err"))
 
-    def _do_fix(self, pipe: Pipeline, task: str, why: str, local: bool, planned: str = "") -> None:
-        """Do it's planner says the task is a change to code in an editor with line numbers: the fix loop does it,
-        with the task as its hint and the planner's model as the coder. Code is edited by line number and each edit
-        checked on the screen, never by clicking into it and typing. Every edit, and the save, still asks, with Auto
-        too: they change something. ``planned``: what planning sent (Spark), for the closing line."""
+    def _do_fix(self, pipe: Pipeline, task: str, why: str, auto: bool, local: bool, planned: str = "") -> None:
+        """Fix it's planner says the task is a change to code in an editor with line numbers: nanokvm fix's loop does
+        it, with the task as its hint and the planner's model as the coder. Code is edited by line number and each edit
+        checked on the screen, never by clicking into it and typing. Each edit and the save ask; with Auto, one
+        approval naming them both covers them instead (a no means asking for each). ``planned``: what planning sent
+        (Spark), for the closing line."""
         who = "Glimmer" if local else "Spark"
         self._say(f"Muse {who} says this is a change to code" + (f" ({E.safe_text(why)})" if why else "")
-                  + f": Muse {who} edits it by line number, each edit shown first and checked on the screen, as Fix "
-                    "code does")
+                  + f": Muse {who} edits it by line number, each edit shown first and checked on the screen")
+        self.stop_note = "Stopped: every key was released. Check the file on the locked computer."
+        if auto:
+            auto = self._confirm(Approval(
+                "auto", "Type the fix without asking for each edit?",
+                f"Type Muse {who}'s edits into VS Code on the locked computer without asking for each one, and save "
+                f"the file once {who} has checked the fix on a fresh reading of the screen. Each edit is still shown "
+                "and checked on the screen; Stop releases every key.", "Type and save without asking",
+                "Ask for each edit"))
         steps = planned or "planned on this laptop, nothing was sent"
         try:
-            res = pipe.edit(None, approve_edit=self._approve_edit(False, who), on_event=self._say,
-                            approve_save=self._approve_save(False, who), hint=task, stopped=self.stop_event.is_set,
+            res = pipe.edit(None, approve_edit=self._approve_edit(auto, who), on_event=self._say,
+                            approve_save=self._approve_save(auto, who), hint=task, stopped=self.stop_event.is_set,
                             local=local)
         except (EditError, OutboundBlocked, GlimmerError, SparkError, ServiceError) as e:
             if not (self.steps_done or planned):

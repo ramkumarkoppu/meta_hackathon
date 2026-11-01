@@ -102,8 +102,8 @@ FIX_REQUEST = ("Find what is wrong in this file and fix it: errors that stop it 
                "as a line continuation, and if a line that needs changing can't be edited, say so instead. Leave "
                "what you change tidy: indented like the code around it. If nothing needs fixing, say so without "
                "calling the tool.")
-# The viewer's Fix it: the person's own question, after FIX_REQUEST (both are left out of the leak scan; the question
-# itself is redacted and scanned).
+# The viewer's Fix it, handing a change to code over: the person's task, after FIX_REQUEST (both are left out of the leak
+# scan; the task itself is redacted and scanned).
 HINT_INTRO = "The user's own question about the screen: "
 # nanokvm fix: sent with a fresh reading of the screen once Spark says it's done, so the fix is checked on the screen.
 # FIXED is the word nanokvm looks for before it saves the file (confirms_fix).

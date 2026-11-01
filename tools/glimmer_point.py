@@ -1,6 +1,6 @@
 """Can Muse Glimmer point at things on a screen? A synthetic 1920x1080 window of a made-up requirements tool (dummy
-names only, no real screen), with the true box of everything on it, and Glimmer asked for each target with Do it's own
-prompt (acting.GROUND_PROMPT): a hit is a box whose middle, where Do it would click, falls inside the true box.
+names only, no real screen), with the true box of everything on it, and Glimmer asked for each target with Fix it's own
+prompt (acting.GROUND_PROMPT): a hit is a box whose middle, where Fix it would click, falls inside the true box.
 
     .venv\\Scripts\\python tools\\glimmer_point.py            (Glimmer running: tools\\run-glimmer.ps1)
 
