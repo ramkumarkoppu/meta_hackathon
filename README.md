@@ -107,9 +107,10 @@ Developer track, theme *Build for Your World*).
   window, its prompt box for asking about the screen and having a task done there (Fix it), Glimmer as
   a coder on the AI computer, and the simulated VS Code the tests type into.
 
-[HACKATHON.md](HACKATHON.md) has the details, change by change. Demos use a stand-in PC showing dummy
-code, never a real work computer. No NanoKVM or GPU? [Section 12](#12-files-and-testing-without-hardware)
-runs the tests and a simulated screen.
+[HACKATHON.md](HACKATHON.md) has the details, change by change, and [LEARNINGS.md](LEARNINGS.md) what I
+learned about Meta's models along the way. Demos use a stand-in PC showing dummy code, never a real work
+computer. No NanoKVM or GPU? [Section 12](#12-files-and-testing-without-hardware) runs the tests and a
+simulated screen.
 
 ---
 
@@ -135,6 +136,7 @@ runs the tests and a simulated screen.
 13. [Licence](#13-licence)
 
 **Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
+[What I learned building it](LEARNINGS.md) ·
 [Claude Code bridge (built before the event)](docs/claude-code.md)
 
 ---
@@ -1096,6 +1098,7 @@ shows. Folders marked *(not in the repo)* are git-ignored and exist only on the 
 E:\meta_hackathon
 ├── README.md                     this file
 ├── HACKATHON.md                  what was built before and during the hackathon (new)
+├── LEARNINGS.md                  why it's built this way, and what I learned about the models (new)
 ├── LICENSE                       MIT licence (new)
 ├── docs\
 │   ├── wiring.svg                wiring diagram used in this README
