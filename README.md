@@ -91,7 +91,6 @@ work computer.
 13. [Licence](#13-licence)
 
 **Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
-[Hackathon plan (written before the event and on its first day; not kept up to date)](docs/hackathon-plan.md) ·
 [Claude Code bridge (built before the event)](docs/claude-code.md)
 
 ---
@@ -151,8 +150,7 @@ of Ctrl+L (Go to Line stays Ctrl+G). Also:
 
 **The AI computer must run Windows for now:** capture uses DirectShow, so on macOS or Linux it stops
 with *video capture needs Windows on the AI computer*, and the Glimmer launcher is a PowerShell script
-for the Windows CUDA build of llama.cpp. Running it elsewhere is future work
-([hackathon plan, section 8](docs/hackathon-plan.md#8-open-questions-and-risks)).
+for the Windows CUDA build of llama.cpp. Running it elsewhere is future work.
 
 ## 2. What leaves the AI computer
 
@@ -476,8 +474,7 @@ indentation wasn't checked), and a full-screen read in 6.7–7.0 s (image prompt
 about 23 GB of the GPU's 24 GB with the drafter on. To check the files yourself, run `Get-FileHash` on them and compare the SHA-256
 values above. Glimmer is fast only in Turbo mode on the 240 W barrel charger; see *Glimmer is slow*
 in [section 11](#11-troubleshooting). It also needs the NVIDIA GPU to itself, with no display on it
-([section 3](#3-wiring-for-this-desk), setup step 5). More measurements are in
-[the hackathon plan, section 7](docs/hackathon-plan.md#7-schedule-and-status).
+([section 3](#3-wiring-for-this-desk), setup step 5).
 
 **On the real capture (29 Oct, during the event, without the drafter, 20.9 GB of GPU memory):** a
 9-line C++ file in VS Code on the locked computer was transcribed exactly (checked by eye against the
@@ -1008,7 +1005,7 @@ needed.
 | Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Run `nanokvm keytest`: it presses Num Lock twice and checks that the locked computer's Num Lock follows, with no picture taken. If it says *Keyboard OK*, the keys arrive, and an edit that stops at *Go to Line* means VS Code didn't have the focus: click into the file first. Otherwise check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
 | `keyboard/mouse busy` | Another program is typing. Wait for it to finish. |
 | `token` or `port` errors | Run `nanokvm stop`, or end stray `pythonw.exe` processes, then retry. If another program uses the port (8765), set `port` in `nanokvm.toml`. Logs are in `.run\service.log`. |
-| Glimmer is slow (a full-screen read takes much longer than about 7 s) | Use Armoury Crate's **Turbo** mode (**Fn+F5** switches modes; changing the Windows power plan doesn't), on the **240 W barrel charger**, and GPU Mode **Standard** or **Optimized**. Silent mode, battery and USB-C (PD) power hold the GPU to about 55 W; `run-glimmer.ps1` warns about each. Once, in Turbo on the charger, the GPU still stayed near 55 W for a reason not yet found. To see whether that is happening, run `nvidia-smi --query-gpu=power.draw,clocks.gr --format=csv -l 1` during a read. Details: [hackathon plan, section 8](docs/hackathon-plan.md#8-open-questions-and-risks). |
+| Glimmer is slow (a full-screen read takes much longer than about 7 s) | Use Armoury Crate's **Turbo** mode (**Fn+F5** switches modes; changing the Windows power plan doesn't), on the **240 W barrel charger**, and GPU Mode **Standard** or **Optimized**. Silent mode, battery and USB-C (PD) power hold the GPU to about 55 W; `run-glimmer.ps1` warns about each. Once, in Turbo on the charger, the GPU still stayed near 55 W for a reason not yet found. To see whether that is happening, run `nvidia-smi --query-gpu=power.draw,clocks.gr --format=csv -l 1` during a read. |
 | VS Code or the desktop stalls while Glimmer runs | Check whether the NVIDIA GPU also drives a display: `nvidia-smi --query-gpu=display_active --format=csv` says *Enabled*. Then the desktop shares the GPU's 24 GB with Glimmer (21.7 GB with the drafter). Keep the displays off it: Armoury Crate's GPU Mode **Standard**, not *Ultimate* (which wires the panel to the NVIDIA GPU), and any external monitor on a port the Intel GPU drives (on 29 Oct, with Standard mode and the monitor on a DisplayLink USB-C dock, it said *Disabled*). Then Glimmer has the whole GPU. Until then, `run-glimmer.ps1 -NoDFlash` (20.9 GB) leaves the desktop more room, at the cost of slower long answers (describe 13.5 s instead of 6.7 s). |
 
 ## 12. Files and testing without hardware
@@ -1024,8 +1021,7 @@ E:\meta_hackathon
 ├── LICENSE                       MIT licence (new)
 ├── docs\
 │   ├── wiring.svg                wiring diagram used in this README
-│   ├── claude-code.md            the Claude Code bridge, built before the event (new page)
-│   └── hackathon-plan.md         hackathon plan and measurements (written before the event and on 26 Oct)
+│   └── claude-code.md            the Claude Code bridge, built before the event (new page)
 ├── nanokvm.toml                  settings
 ├── .mcp.json, .claude\           the Claude Code bridge's registration and permissions (.claude\ not in the repo)
 ├── pyproject.toml, uv.lock, uv.toml

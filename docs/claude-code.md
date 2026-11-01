@@ -154,8 +154,7 @@ auto mode may skip. These prompts don't apply to other AI tools or to programs t
 directly. With `control = false`, the keyboard/mouse tools disappear and the service refuses
 keyboard/mouse requests from any program.
 
-**Until approvals are owned by the service** (change 1 in
-[the hackathon plan](hackathon-plan.md#3-planned-code-changes), not built yet), use Claude Code's
+**Approvals are Claude Code's prompts, not the service's own**, so use Claude Code's
 default permission mode (not auto mode) in this folder while the locked computer shows anything you
 may not share, and set `control = false` when Claude doesn't need to act.
 
