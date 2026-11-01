@@ -80,7 +80,13 @@ def spark_stream(content: str = "Use i < n.", model: str = "muse-spark-1.3", too
     return "".join(lines) + ("data: [DONE]\n\n" if done else "")
 
 
-def llama_reply(content: str = "1 int x;", finish: str = "stop", reasoning: str = "") -> dict:
-    return {"choices": [{"finish_reason": finish, "message": {"content": content, "reasoning_content": reasoning}}],
+def llama_reply(content: str = "1 int x;", finish: str = "stop", reasoning: str = "",
+                tool_calls: list | None = None) -> dict:
+    """llama-server's answer; ``tool_calls`` as (name, arguments JSON text), the way it returned Glimmer's on 1 Nov."""
+    message = {"content": content, "reasoning_content": reasoning}
+    if tool_calls:
+        message["tool_calls"] = [{"type": "function", "function": {"name": name, "arguments": args}, "id": f"id{i}"}
+                                 for i, (name, args) in enumerate(tool_calls)]
+    return {"choices": [{"finish_reason": finish, "message": message}],
             "usage": {"prompt_tokens": 2700, "completion_tokens": 20},
             "timings": {"prompt_ms": 5000.0, "predicted_per_second": 140.0}}

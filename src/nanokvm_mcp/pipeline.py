@@ -2,7 +2,9 @@
 and only redacted text goes to Muse Spark, through the outbound gate. Spark's code edits are typed back
 into VS Code only after the person at the keyboard approves them: each one, or with --auto all of a run's at
 once, at the share prompt (editing.py, cli.py). nanokvm fix saves the file only after Spark has checked the fix
-on a fresh reading of the screen, and only with the same approval: asked then, or given with --auto.
+on a fresh reading of the screen, and only with the same approval: asked then, or given with --auto. With
+outbound = local_only (or Local only in the viewer), Glimmer is the coder too (localcoder.py): the same loop,
+checks and approvals, with nothing sent.
 
 The pipeline uses its own client id and screen share, approved by the person at the keyboard, and closes
 the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
@@ -19,6 +21,7 @@ from . import editing as E
 from .client import ServiceClient, ServiceError
 from .config import Config
 from .glimmer import SYSTEM, GlimmerClient, GlimmerError
+from .localcoder import LocalCoder
 from .outbound import Answer, OutboundBlocked, OutboundGate, Prepared
 from .spark import SparkClient, SparkError
 
@@ -68,6 +71,11 @@ class EditResult:
     cost_usd: float = 0.0
     checks: int = 0                   # nanokvm fix: fresh readings of the screen Spark checked its fix against
     save: E.SaveOutcome | None = None   # nanokvm fix, once edits were typed: whether the file was saved, and why
+    local: bool = False               # Glimmer was the coder, on this laptop: nothing was sent
+
+    @property
+    def coder(self) -> str:
+        return "Muse Glimmer" if self.local else "Muse Spark"
 
 
 class Pipeline:
@@ -231,11 +239,12 @@ class Pipeline:
              approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper | None = None,
              on_event: Callable[[str], None] | None = None,
              approve_save: Callable[[str], bool] | None = None, hint: str | None = None,
-             stopped: Callable[[], bool] | None = None) -> EditResult:
+             stopped: Callable[[], bool] | None = None, local: bool | None = None) -> EditResult:
         """Read the code on the screen, ask Spark for edits (only redacted text leaves), and type each edit
         the person approves into VS Code, checking the screen before and after. Stops at the first edit
         whose checks fail. If a later request fails after an edit was typed, the session report is still
-        returned, with ``stopped`` saying why.
+        returned, with ``stopped`` saying why. ``local`` (always, with outbound = local_only) has Glimmer plan the
+        edits on this laptop instead (localcoder.py): the same request, tool and checks, nothing sent.
 
         With no ``request`` (nanokvm fix), Glimmer also notes what is wrong on the screen, and Spark gets
         E.FIX_REQUEST, those notes and every code line on the screen (not trimmed), and finds the error itself.
@@ -248,8 +257,8 @@ class Pipeline:
         ``stopped`` (the viewer's Stop) is asked between keys: once it says yes, every key is released and
         KeyboardInterrupt is raised, as Ctrl+C does in the terminal."""
         say = on_event or (lambda _m: None)
-        if self.cfg.outbound == "local_only":
-            raise EditError("nanokvm edit needs Muse Spark, but outbound = local_only: nothing is sent")
+        local = bool(local) or self.cfg.outbound == "local_only"
+        coder, who = ("Muse Glimmer", "Glimmer") if local else ("Muse Spark", "Spark")
         if not self.cfg.control:
             raise EditError("keyboard/mouse control is off (control = false in nanokvm.toml)")
         reading = self.read("code", rect)
@@ -261,18 +270,21 @@ class Pipeline:
         if fix:
             say("asking Muse Glimmer what is wrong on the screen")
             notes = self.read("diagnose", rect).text
-            say("Glimmer noticed (sent to Spark, redacted):\n" + E.safe_text(notes, multiline=True)[:800])
+            say(("Glimmer noticed:\n" if local else "Glimmer noticed (sent to Spark, redacted):\n")
+                + E.safe_text(notes, multiline=True)[:800])
             request = E.FIX_REQUEST + (f"\n\n{E.HINT_INTRO}{hint.strip()}" if (hint or "").strip() else "")
         mac = (self.cfg.locked_os or "").strip().lower() == "macos"
         typer = typer or E.EditTyper(self.svc.act, lambda: self.read_lines(rect), self.read_status, self.read_box,
                                      select_line_key="cmd+l" if mac else "ctrl+l",
                                      chunk=min(E.TYPE_CHUNK, self.cfg.max_text_len),
                                      save_key="cmd+s" if mac else "ctrl+s", stopped=stopped)
-        gate = OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in,
-                            trusted=(E.FIX_REQUEST, E.CHECK_REQUEST, E.HINT_INTRO))
+        gate = (LocalCoder(self.glimmer) if local else
+                OutboundGate(self.cfg, self.glimmer, self.spark(), approve=self.approve_send, stand_in=self.stand_in,
+                             trusted=(E.FIX_REQUEST, E.CHECK_REQUEST, E.HINT_INTRO)))
         prepared = gate.prepare(reading.text, request, reading.frame.get("image_sha256"),
                                 notes=notes, trim=not fix)
-        result = EditResult(reading, prepared, "")
+        result = EditResult(reading, prepared, "", local=local)
+        asking = f"asking {coder}" + (" on this laptop" if local else "")
         history: list[dict] = []
         typed = 0
         typed_at_check = 0                              # typed edits when the screen was last read afresh
@@ -283,8 +295,8 @@ class Pipeline:
             if result.turns >= E.MAX_TURNS:
                 result.stopped = f"stopped after {E.MAX_TURNS} requests to Spark"
                 break
-            say("asking Muse Spark" if not result.turns else
-                "asking Muse Spark whether the screen shows it fixed" if checking else "telling Muse Spark the result")
+            say(asking if not result.turns else
+                f"{asking} whether the screen shows it fixed" if checking else f"telling {coder} the result")
             checking = False
             try:
                 answer = gate.ask(prepared, E.EDIT_SYSTEM, tools=[E.APPLY_EDIT], parallel_tool_calls=False,
@@ -298,10 +310,10 @@ class Pipeline:
             result.cost_usd += answer.reply.cost_usd
             if not answer.tool_calls:
                 result.summary = answer.content
-                why = (f"Muse Spark refused: {E.safe_text(answer.reply.refusal)}" if answer.reply.refusal else
-                       f"Muse Spark's reply was cut off (finish_reason {answer.reply.finish_reason!r})"
+                why = (f"{coder} refused: {E.safe_text(answer.reply.refusal)}" if answer.reply.refusal else
+                       f"{coder}'s reply was cut off (finish_reason {answer.reply.finish_reason!r})"
                        if answer.reply.finish_reason in ("length", "content_filter") else
-                       "Muse Spark sent an empty reply" if not (answer.content or "").strip() else None)
+                       f"{coder} sent an empty reply" if not (answer.content or "").strip() else None)
                 if why:                                 # not "nothing to fix": say why it ended
                     result.stopped = why
                     break
@@ -342,7 +354,7 @@ class Pipeline:
                         "above, once you have its result.")})
                     continue
                 record = self._one_edit(call, screen, prepared.mapping, approve_edit, typer,
-                                        stop or typed >= E.MAX_EDITS, say)
+                                        stop or typed >= E.MAX_EDITS, say, who)
                 told, out = record.told_spark, record.outcome
                 retry = fix and out is not None and out.retry
                 if out is not None:                     # what VS Code measured, kept in step with the line numbers
@@ -368,16 +380,16 @@ class Pipeline:
                 break
         if fix and typed and not result.stopped and approve_save is not None:
             checked = result.checks > 0 and typed == typed_at_check
-            result.save = self._save(confirmed, checked, notes or "", approve_save, typer, say)
+            result.save = self._save(confirmed, checked, notes or "", approve_save, typer, say, who)
         return result
 
     def _save(self, confirmed: bool, checked: bool, notes: str, approve_save: Callable[[str], bool],
-              typer: E.EditTyper, say: Callable[[str], None]) -> E.SaveOutcome:
-        """nanokvm fix's last step: save the file, once Spark has answered FIXED with nothing typed since its last
-        fresh check of the screen."""
+              typer: E.EditTyper, say: Callable[[str], None], who: str = "Spark") -> E.SaveOutcome:
+        """nanokvm fix's last step: save the file, once the coder (``who``) has answered FIXED with nothing typed
+        since its last fresh check of the screen."""
         if not confirmed:
-            return E.SaveOutcome("skipped", "Spark didn't answer FIXED on the fresh reading of the screen"
-                                 if checked else f"Spark's last edit wasn't checked on a fresh reading of the "
+            return E.SaveOutcome("skipped", f"{who} didn't answer FIXED on the fresh reading of the screen"
+                                 if checked else f"{who}'s last edit wasn't checked on a fresh reading of the "
                                                  f"screen (at most {E.MAX_CHECKS} checks a run)")
         name = next((ln.strip() for ln in notes.splitlines() if ln.strip()), "")
         if not approve_save(E.safe_text(name)):
@@ -391,7 +403,7 @@ class Pipeline:
 
     def _one_edit(self, call: dict, screen: dict[int, str], mapping: dict[str, str] | None,
                   approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper, skip: bool,
-                  say: Callable[[str], None]) -> EditRecord:
+                  say: Callable[[str], None], who: str = "Spark") -> EditRecord:
         if call["name"] != "apply_edit":
             return EditRecord(None, False, None, f"Unknown tool {call['name']!r}; only apply_edit exists.")
         if skip:
@@ -402,7 +414,7 @@ class Pipeline:
             args = call["arguments"] if isinstance(call["arguments"], dict) else {}
             wanted = f"lines {args.get('start_line')}-{args.get('end_line')}"
             note = E.safe_text(str(args.get("note") or ""))[:E.MAX_NOTE]
-            say(f"Spark's edit of {wanted}{f' ({note})' if note else ''} can't be typed: {e}")
+            say(f"{who}'s edit of {wanted}{f' ({note})' if note else ''} can't be typed: {e}")
             return EditRecord(None, False, None, f"Not applied: {e}.")
         plan.select_key = typer.select_line_key
         if not approve_edit(plan):

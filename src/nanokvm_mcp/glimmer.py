@@ -93,6 +93,18 @@ class GlimmerReply:
     usage: dict = field(default_factory=dict)
     timings: dict = field(default_factory=dict)
     reasoning_chars: int = 0     # how much it thought; the text itself is dropped
+    tool_calls: list[dict] = field(default_factory=list)   # [{"id", "name", "arguments" (JSON text)}], as Spark's
+
+
+def _tool_calls(msg: dict) -> list[dict]:
+    """llama-server's tool calls (OpenAI's format) as SparkReply has them."""
+    out = []
+    for i, c in enumerate(msg.get("tool_calls") or []):
+        fn = c.get("function") or {}
+        args = fn.get("arguments")
+        out.append({"id": c.get("id") or f"call_{i}", "name": fn.get("name") or "",
+                    "arguments": args if isinstance(args, str) else json.dumps(args or {})})
+    return out
 
 
 class GlimmerClient:
@@ -131,9 +143,12 @@ class GlimmerClient:
             return False
 
     def chat(self, messages: list, *, reasoning: str | None = None, think_tokens: int | None = 0,
-             max_tokens: int = 4096, temperature: float | None = None) -> GlimmerReply:
+             max_tokens: int = 4096, temperature: float | None = None, tools: list[dict] | None = None,
+             parallel_tool_calls: bool | None = None) -> GlimmerReply:
         """One chat request. think_tokens caps Glimmer's thinking (None = uncapped). temperature None keeps the
-        server's sampling (run-glimmer.ps1: 1.0, top-p 0.95, top-k 64, as Meta and Unsloth advise for chat)."""
+        server's sampling (run-glimmer.ps1: 1.0, top-p 0.95, top-k 64, as Meta and Unsloth advise for chat).
+        ``tools`` are function tools in OpenAI's format: llama-server returns Glimmer's calls as structured tool
+        calls (checked on 1 Nov with apply_edit)."""
         reasoning = reasoning or self.cfg.read_reasoning
         if reasoning not in REASONING_LEVELS:
             raise ValueError(f"reasoning must be one of {REASONING_LEVELS}")
@@ -149,16 +164,21 @@ class GlimmerClient:
             body.update(thinking_cap(think_tokens))
         if temperature is not None:
             body["temperature"] = temperature
+        if tools:
+            body["tools"] = tools
+            if parallel_tool_calls is not None:
+                body["parallel_tool_calls"] = parallel_tool_calls
         with self._lock:
             r = self._post("/v1/chat/completions", body, self.cfg.glimmer_timeout_s)
         choice = (r.get("choices") or [{}])[0]
         msg = choice.get("message") or {}
         content, finish = msg.get("content") or "", choice.get("finish_reason") or ""
-        if finish == "length" or not content.strip():
+        calls = _tool_calls(msg)
+        if finish == "length" or not (content.strip() or calls):
             raise GlimmerTruncated(f"Glimmer gave no complete answer (finish_reason {finish!r}); the context "
                                    "or token limit may have run out")
         return GlimmerReply(content, finish, r.get("usage") or {}, r.get("timings") or {},
-                            len(msg.get("reasoning_content") or ""))
+                            len(msg.get("reasoning_content") or ""), calls)
 
     def flush(self) -> None:
         """Replace the server slot's state (the last image's KV cache and the finished task) with a
@@ -238,6 +258,18 @@ class GlimmerClient:
     def editor_tab(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
         """The selected editor tab's file name, and whether it shows unsaved changes (before and after a save)."""
         return self.read_image(image_b64, fmt, TAB_PROMPT, max_tokens=128)
+
+    CODE_THINK_TOKENS = 2048        # the fix loop's coder on this laptop may think this much...
+    CODE_ANSWER_TOKENS = 2048       # ...and still has this much left for its edit or its answer
+
+    def code(self, messages: list, tools: list[dict] | None = None,
+             parallel_tool_calls: bool | None = None) -> GlimmerReply:
+        """Glimmer as the fix loop's coder (localcoder.py): text only, with Spark's own system message and apply_edit
+        tool, at high reasoning, and greedy like the readings, so a run can be repeated. On a synthetic hello.cpp
+        missing std:: (1 Nov) it inserted 'using namespace std;' above main in 7 s."""
+        return self.chat(messages, reasoning="high", think_tokens=self.CODE_THINK_TOKENS,
+                         max_tokens=self.CODE_THINK_TOKENS + self.CODE_ANSWER_TOKENS, temperature=0.0,
+                         tools=tools, parallel_tool_calls=parallel_tool_calls)
 
     def minimise(self, text: str, question: str) -> GlimmerReply:
         """Trim already-redacted screen text to the lines the question needs (high reasoning, capped

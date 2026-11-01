@@ -69,6 +69,24 @@ def test_no_complete_answer_is_an_error_and_still_flushes(setup, payload):
     assert len(fake.bodies(CHAT)) == 2            # the read, then the flush
 
 
+def test_glimmer_as_the_coder_gets_the_tools_and_its_calls_come_back_as_sparks_do(setup):
+    client, fake, replies = setup                   # as llama-server answered on 1 Nov: tool calls, content empty
+    replies.append(llama_reply("", finish="tool_calls", tool_calls=[("apply_edit", '{"start_line": 2, "end_line": 1, '
+                                                                                   '"new_text": "x", "note": "n"}')]))
+    tools = [{"type": "function", "function": {"name": "apply_edit", "parameters": {"type": "object"}}}]
+    reply = client.code([{"role": "user", "content": "fix it"}], tools=tools, parallel_tool_calls=False)
+    assert reply.tool_calls == [{"id": "id0", "name": "apply_edit",
+                                 "arguments": '{"start_line": 2, "end_line": 1, "new_text": "x", "note": "n"}'}]
+    (body,) = fake.bodies(CHAT)                       # text only: no image, so no flush
+    assert body["tools"] == tools and body["parallel_tool_calls"] is False and body["temperature"] == 0.0
+    assert body["chat_template_kwargs"] == {"reasoning_strength": "high"}
+    assert body["max_tokens"] - body["reasoning_budget_tokens"] >= 2048   # room for the edit after thinking
+    replies.append(llama_reply("", finish="tool_calls"))                  # no call and no text: nothing usable
+    with pytest.raises(GlimmerTruncated):
+        client.code([{"role": "user", "content": "fix it"}], tools=tools)
+    assert client.chat([{"role": "user", "content": "hi"}]).tool_calls == [] and "tools" not in fake.bodies(CHAT)[-1]
+
+
 def test_minimise_uses_high_reasoning_with_a_capped_budget(setup):
     client, fake, _ = setup
     client.minimise("12 int total = 0;\n13 for (...)", "why is the sum wrong?")

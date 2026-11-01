@@ -11,6 +11,7 @@
     nanokvm ask "QUESTION"  read locally, send only redacted text to Muse Spark, print its answer
     nanokvm edit "REQUEST"  as ask, then type each edit Spark proposes into VS Code once you approve it
     nanokvm fix             as edit with no request: Spark finds the error on the screen itself
+                            (edit and fix --local-only: Glimmer proposes the edits instead, and nothing is sent)
 """
 from __future__ import annotations
 
@@ -306,18 +307,19 @@ def _region(text: str | None) -> tuple[float, float, float, float] | None:
     return parts[0], parts[1], parts[2], parts[3]
 
 
-def _share_prompt(minutes: int, auto: bool = False, test_content: bool = False, save: bool = False) -> bool:
-    """The one question before the screen is shared. ``auto`` (--auto): the same yes lets this run type Spark's
-    edits without asking for each one (each is still shown and checked on the screen), and with ``save`` (nanokvm
-    fix) save the file once Spark has checked the fix on a fresh reading of the screen.
+def _share_prompt(minutes: int, auto: bool = False, test_content: bool = False, save: bool = False,
+                  who: str = "Spark") -> bool:
+    """The one question before the screen is shared. ``auto`` (--auto): the same yes lets this run type the coder's
+    (``who``'s) edits without asking for each one (each is still shown and checked on the screen), and with ``save``
+    (nanokvm fix) save the file once the coder has checked the fix on a fresh reading of the screen.
     ``test_content``: Meta billing is on free credits and --stand-in wasn't given, so the yes also confirms the
     screen shows only test or dummy content, the only content that may go while Meta can use what is sent."""
     q = f"Share the locked computer's screen with Muse Glimmer on this laptop for {minutes} min"
     if auto and save:
-        q += (", type Muse Spark's edits into VS Code without asking for each one, and save the file once Spark has "
+        q += (f", type Muse {who}'s edits into VS Code without asking for each one, and save the file once {who} has "
               "checked the fix on the screen")
     elif auto:
-        q += ", and type Muse Spark's edits into VS Code without asking for each one"
+        q += f", and type Muse {who}'s edits into VS Code without asking for each one"
     if test_content:
         q += (". Meta billing is on free credits and Meta may use what is sent, so say yes only if the screen shows "
               "test or dummy content. Go ahead")
@@ -482,36 +484,36 @@ def cmd_ask(cl: ServiceClient, args) -> int:
     return 0
 
 
-def _show_edit(plan) -> None:
-    _out(f"\n--- Muse Spark's edit: {plan.span()} ('-' lines go, '+' lines come in their place) ---")
+def _show_edit(plan, who: str = "Spark") -> None:
+    _out(f"\n--- Muse {who}'s edit: {plan.span()} ('-' lines go, '+' lines come in their place) ---")
     _out(plan.diff())
     _out("--- keys sent to the locked computer ---")
     for i, step in enumerate(plan.steps(), 1):
         _out(f"  {i}. {step}")
-    _out(f"Spark's note: {plan.note or '(none)'}")
+    _out(f"{who}'s note: {plan.note or '(none)'}")
     _out("VS Code on the locked computer must have the file focused, with its status bar showing. Don't use its "
          "keyboard or mouse while the edit is typed; Ctrl+C here stops it.")
 
 
-def _approve_edit(plan) -> bool:
-    _show_edit(plan)
+def _approve_edit(plan, who: str = "Spark") -> bool:
+    _show_edit(plan, who)
     return _console_yes("Type this edit?")
 
 
-def _auto_edit(plan) -> bool:
+def _auto_edit(plan, who: str = "Spark") -> bool:
     """--auto: show the edit and type it without asking (allowed once, at the share prompt)."""
-    _show_edit(plan)
+    _show_edit(plan, who)
     _out("--auto: typing it without asking.")
     return True
 
 
-def _approve_save(name: str) -> bool:
-    return _console_yes(f"Spark checked the fix on the screen. Save {name} in VS Code on the locked computer?")
+def _approve_save(name: str, who: str = "Spark") -> bool:
+    return _console_yes(f"{who} checked the fix on the screen. Save {name} in VS Code on the locked computer?")
 
 
-def _auto_save(name: str) -> bool:
+def _auto_save(name: str, who: str = "Spark") -> bool:
     """nanokvm fix --auto: save without asking (allowed once, at the share prompt)."""
-    _out(f"--auto: Spark checked the fix on the screen, so saving {name} without asking.")
+    _out(f"--auto: {who} checked the fix on the screen, so saving {name} without asking.")
     return True
 
 
@@ -521,19 +523,24 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     from .pipeline import EditError, Pipeline
     from .spark import SparkError
     cfg = cl.cfg
-    if args.approve and cfg.outbound == "auto":     # a flag can make nanokvm.toml stricter, never looser
+    if args.local_only:                             # Glimmer is the coder too: nothing is sent
+        cfg.outbound = "local_only"
+    elif args.approve and cfg.outbound == "auto":   # a flag can make nanokvm.toml stricter, never looser
         cfg.outbound = "approve"
+    who = "Glimmer" if cfg.outbound == "local_only" else "Spark"
     test = _asks_test_content(cfg, args.stand_in)
-    fix = args.request is None                      # nanokvm fix: saves once Spark has checked the fix
+    fix = args.request is None                      # nanokvm fix: saves once the coder has checked the fix
+    edit_fn, save_fn = (_auto_edit, _auto_save) if args.auto else (_approve_edit, _approve_save)
     try:
-        with Pipeline(cfg, approve_share=lambda m: _share_prompt(m, auto=args.auto, test_content=test, save=fix),
+        with Pipeline(cfg, approve_share=lambda m: _share_prompt(m, auto=args.auto, test_content=test, save=fix,
+                                                                 who=who),
                       approve_send=_approve_send, stand_in=args.stand_in or test) as pipe:
             if not _glimmer_up(pipe):
                 return 2
             pipe.open(args.minutes)
-            res = pipe.edit(args.request, _region(args.region), approve_edit=_auto_edit if args.auto else _approve_edit,
+            res = pipe.edit(args.request, _region(args.region), approve_edit=lambda plan: edit_fn(plan, who),
                             on_event=lambda m: _out(f"... {m}"),
-                            approve_save=(_auto_save if args.auto else _approve_save) if fix else None)
+                            approve_save=(lambda name: save_fn(name, who)) if fix else None)
     except PermissionError:
         _out("Not shared: nothing was read, sent or typed.")
         return 1
@@ -562,10 +569,12 @@ def cmd_edit(cl: ServiceClient, args) -> int:
     if res.stopped:
         _out(f"\nStopped early: {_shown(res.stopped)}")
     typed = sum(1 for r in res.edits if r.outcome is not None and r.outcome.status != "not_applied")
-    rechecked = f"; Spark checked the fix on {res.checks} fresh reading(s) of the screen" if res.checks else ""
+    rechecked = f"; {who} checked the fix on {res.checks} fresh reading(s) of the screen" if res.checks else ""
+    sent = (f"{res.turns} request(s) to Muse Glimmer on this laptop; nothing was sent" if res.local else
+            f"{res.turns} request(s) to {cfg.spark_model}, store=false, cost ${res.cost_usd:.4f}; logged in "
+            f"{cfg.run_dir / 'outbound.log'}")
     _out(f"\n({typed} edit(s) typed, {sum(1 for r in res.edits if r.outcome and r.outcome.status == 'verified')} "
-         f"checked on the screen{rechecked}; {res.turns} request(s) to {cfg.spark_model}, store=false, cost "
-         f"${res.cost_usd:.4f}; logged in {cfg.run_dir / 'outbound.log'})")
+         f"checked on the screen{rechecked}; {sent})")
     if res.save is not None:
         _out(res.save.report())
     elif typed:
@@ -644,19 +653,23 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("request", help='what to change, for example "fix the off-by-one in sum_first"')
         else:
             p = sub.add_parser("fix", help="as edit, with no request: Glimmer notes what is wrong on the screen, and "
-                                           "Muse Spark finds the error and fixes it")
+                                           "Muse Spark (or with --local-only, Glimmer) finds the error and fixes it")
             p.set_defaults(request=None)
         p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
         p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")
         p.add_argument("--stand-in", action="store_true",
                        help="the screen shows only test or dummy content: answers in advance what the share prompt asks "
                             "while Meta billing is on free credits")
-        p.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
+        mode = p.add_mutually_exclusive_group()
+        mode.add_argument("--approve", action="store_true", help="also show the exact text and ask before each send")
+        mode.add_argument("--local-only", action="store_true",
+                          help="Muse Glimmer on this laptop plans the edits instead of Spark; nothing is sent")
         p.add_argument("--auto", action="store_true",
                        help="type the edits without asking for each one: you allow it once, at the share prompt; "
                             "each edit is still shown and checked on the screen" + (
-                                ", and the file is saved once Spark has checked the fix on a fresh reading of the "
-                                "screen" if name == "fix" else ", and nothing is saved"))
+                                ", and the file is saved once the coder (Spark, or Glimmer with --local-only) has "
+                                "checked the fix on a fresh reading of the screen" if name == "fix" else
+                                ", and nothing is saved"))
         p.set_defaults(fn=cmd_edit)
     args = ap.parse_args(argv)
     cl = ServiceClient(Config.load())

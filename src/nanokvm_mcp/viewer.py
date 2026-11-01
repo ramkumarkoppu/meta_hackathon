@@ -12,8 +12,10 @@ gate doesn't apply: it is for the person at this laptop. Nothing in it is sent t
 ordinary window, so anything that captures this laptop's screen captures the locked computer's too.
 
 The prompt box does nothing until it is used. A question shares the screen with Muse Glimmer (asked in the
-window first) and sends Spark only redacted text, as ``nanokvm ask`` does; Fix it types into the locked computer
-as ``nanokvm fix`` does, with each edit and the save approved in the window (or all at once with Auto).
+window first) and sends Spark only redacted text, as ``nanokvm ask`` does; Fix code types into the locked computer
+as ``nanokvm fix`` does, with each edit and the save approved in the window (or all at once with Auto), and with
+Local only Glimmer is its coder; Do it does a task one step at a time, and hands a change to code over to Fix code's
+loop.
 
 Frames are decoded and scaled on a background thread and the window shows only the newest one, so
 it skips frames rather than falling behind the capture.
@@ -422,6 +424,7 @@ class AskPanel:
         self.session: AssistSession | None = None
         self.approval: Approval | None = None
         self.last_question = ""
+        self.last_question_local = False    # asked with Local only: not a hint for a fix by Spark
         font, small, mono = ("Segoe UI", 10), ("Segoe UI", 9), ("Consolas", 9)
 
         f = self.frame = tk.Frame(win.root, bg=PANEL_BG, width=self.WIDTH)
@@ -460,7 +463,7 @@ class AskPanel:
                            activebackground=PANEL_BG, activeforeground=FG, font=small).grid(row=0, column=col, sticky="w")
         self.local_var = tk.BooleanVar(value=self.cfg.outbound == "local_only")
         self.show_var = tk.BooleanVar(value=self.cfg.outbound == "approve")
-        self.local_box = tk.Checkbutton(opts, text="Local only: Glimmer answers, nothing leaves this laptop",
+        self.local_box = tk.Checkbutton(opts, text="Local only: Glimmer answers and fixes, nothing leaves this laptop",
                                         variable=self.local_var, command=self.refresh, bg=PANEL_BG, fg=FG,
                                         selectcolor=FIELD_BG, activebackground=PANEL_BG, activeforeground=FG, font=small)
         self.show_box = tk.Checkbutton(opts, text="Show me the exact text before it is sent", variable=self.show_var,
@@ -514,7 +517,8 @@ class AskPanel:
         self.log.tag_configure("ok", foreground=OK_FG)
         self._write("Type a question about what the locked computer shows and press Enter (Shift+Enter: new line), or "
                     "describe a task and press Do it: it is done there one step at a time, each step shown and "
-                    "outlined on the picture first. Fix code fixes a file in VS Code. Auto skips asking for each step "
+                    "outlined on the picture first. Fix code fixes a file in VS Code (with Local only, Glimmer fixes "
+                    "it on this laptop); Do it hands a change to code over to it. Auto skips asking for each step "
                     "(Do it still asks before a step that changes something). Nothing is read or sent until you ask. "
                     "F2 hides this panel.", "say")
         self.refresh()
@@ -545,16 +549,17 @@ class AskPanel:
             return
         local = self.local_var.get()
         if self._session().ask(question, self.kind_var.get(), local, self.show_var.get()):
-            # Fix it reuses only a question that went to Spark: one asked with Local only stays on this laptop
-            self.last_question = "" if local else question
+            self.last_question, self.last_question_local = question, local
             self.prompt.delete("1.0", "end")
         self.refresh()
 
     def submit_fix(self) -> None:
         if self.busy or self.fix_blocked() or not self.shown:
             return
-        hint = self._text() or self.last_question
-        if self._session().fix(hint, self.auto_var.get(), self.show_var.get()):
+        local = self.local_var.get()
+        # a question asked with Local only stayed on this laptop: only a fix on this laptop reuses it as the hint
+        hint = self._text() or (self.last_question if local or not self.last_question_local else "")
+        if self._session().fix(hint, self.auto_var.get(), self.show_var.get(), local):
             self.prompt.delete("1.0", "end")
         self.refresh()
 
@@ -597,10 +602,7 @@ class AskPanel:
         return self.session is not None and self.session.busy
 
     def fix_blocked(self) -> str | None:
-        why = fix_blocked_reason(self.cfg)
-        if why is None and self.local_var.get():
-            why = "it needs Muse Spark: untick Local only"
-        return why
+        return fix_blocked_reason(self.cfg)            # with Local only, Glimmer is the coder
 
     def do_blocked(self) -> str | None:
         return None if self.cfg.control else "keyboard/mouse control is off (control = false in nanokvm.toml)"

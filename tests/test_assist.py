@@ -7,14 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from fakes import spark_stream
+from fakes import llama_reply, spark_stream
 from nanokvm_mcp import acting as A
 from nanokvm_mcp import editing as E
 from nanokvm_mcp.assist import AssistSession, EventQueue
 from nanokvm_mcp.glimmer import WINDOW_PROMPT, GlimmerClient
-from nanokvm_mcp.pipeline import Pipeline
+from nanokvm_mcp.pipeline import EditError, Pipeline
 from nanokvm_mcp.spark import SparkClient
-from test_editing import E_KEY, FILE, FIX, _call, world  # noqa: F401  (world is a fixture)
+from test_editing import E_KEY, FILE, FIX, _call, _local_call, world  # noqa: F401  (world is a fixture)
 
 
 @pytest.fixture(autouse=True)
@@ -155,7 +155,7 @@ def test_the_window_can_make_the_settings_stricter_never_looser(world):
     s, events, _ = _session(w)
     assert s.ask("anything?", local_only=False)                       # nanokvm.toml says local only: it stays so
     _drive(s, events, lambda a: True)
-    assert w.meta.requests == [] and s.can_fix() and "local_only" in s.can_fix()
+    assert w.meta.requests == [] and s.can_fix() is None               # Fix code still works: Glimmer fixes
     w.cfg.outbound = "auto"
     w.replies += [spark_stream("Fine.")]
     s2, events2, _ = _session(w)
@@ -184,6 +184,31 @@ def test_fix_it_types_each_approved_edit_then_saves_with_the_question_as_a_hint(
     assert [tag for line, tag in report if line.startswith("Saved on the locked computer")] == ["ok"]
     assert any("1 edit(s) typed, 1 checked on the screen" in line for line, _tag in report)
     assert [tag for line, tag in report if line.startswith("FIXED")] == [""]   # Spark's own text is never coloured
+
+
+def _coder_requests(w):
+    return [b for b in w.glim.bodies("/v1/chat/completions") if b.get("tools")]
+
+
+def test_fix_code_with_local_only_has_glimmer_fix_it_and_sends_nothing(world):
+    w = world
+    w.coder += [_local_call(start_line=6, end_line=6, new_text=FIX, note="use <"), llama_reply("Done."),
+                llama_reply("FIXED: the loop stops before v[n].")]
+    s, events, _ = _session(w)
+    assert s.fix("why does it read past the end?", local=True)
+    seen = _drive(s, events, lambda a: True)
+    share, edit, save = _approvals(seen)
+    assert share.kind == "share" and "test or dummy" not in share.text          # nothing is sent: no such question
+    assert edit.title == "Type Glimmer's edit of line 6?" and "Glimmer's note: use <" in edit.text
+    assert save.text.startswith("Glimmer checked the fix on the screen.")
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 1 and w.meta.requests == []
+    (question,) = _texts(seen, "question")
+    assert "(Muse Glimmer fixes it on this laptop; nothing leaves it)" in question
+    report = _texts(seen, "report")[0]
+    assert any("3 request(s) to Muse Glimmer on this laptop; nothing was sent" in line for line, _t in report)
+    assert not any("Spark" in line for line, _t in report)
+    first = _coder_requests(w)[0]["messages"][1]["content"]
+    assert first.startswith(E.FIX_REQUEST + "\n\nThe user's own question about the screen: why does it read past")
 
 
 def test_fix_it_with_auto_asks_once_naming_the_typing_and_the_save(world):
@@ -329,6 +354,70 @@ def test_do_it_plans_on_this_laptop_and_each_step_is_outlined_then_approved(worl
     assert report[1] == ("the button was pressed", "") and "nothing was sent" in report[2][0]
     assert w.meta.requests == []
     assert "1. Click the 'Button' at the top right: done" in _plan_prompts(w)[1]   # the next plan saw what happened
+    assert "step 1 done: Click the 'Button' at the top right" in _texts(seen, "say")  # and the log keeps it
+
+
+def test_do_it_hands_a_change_to_code_to_the_fix_loop_on_this_laptop(world):
+    w = world                                       # seen live on 1 Nov: clicked into the code and typed, a line off
+    w.plans += ["ACTION: fix_code\nWHY: the loop reads past the end of v"]
+    w.coder += [_local_call(start_line=6, end_line=6, new_text=FIX, note="use <"), llama_reply("Done."),
+                llama_reply("FIXED: the loop stops before v[n].")]
+    s, events, _ = _session(w)
+    assert s.do("Whats wrong with this and fix it", auto=True)
+    seen = _drive(s, events, lambda a: True)
+    assert [a.kind for a in _approvals(seen)] == ["share", "edit", "save"]   # with Auto too: these change something
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 1 and w.meta.requests == []
+    assert w.env.desk.button_presses == 0 and _texts(seen, "target") == []  # nothing clicked or outlined
+    assert "Muse Glimmer says this is a change to code (the loop reads past the end of v)" in " ".join(_texts(seen, "say"))
+    first = _coder_requests(w)[0]["messages"][1]["content"]
+    assert first.startswith(E.FIX_REQUEST + "\n\nThe user's own question about the screen: Whats wrong with this")
+    (report,) = _texts(seen, "report")
+    assert any("nothing was sent" in line for line, _t in report) and report[-1][0].startswith("Saved on the locked")
+
+
+def test_do_it_with_spark_hands_a_change_to_code_to_sparks_fix_loop(world):
+    w = world
+    w.replies += [_ui_step(action="fix_code", changes=True, note="the loop bound"),
+                  _call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Done."),
+                  spark_stream("FIXED: the loop bound.")]
+    s, events, _ = _session(w)
+    assert s.do("fix the crash", spark=True)
+    seen = _drive(s, events, lambda a: True)
+    assert [a.kind for a in _approvals(seen)] == ["share", "edit", "save"]
+    assert _approvals(seen)[1].title == "Type Spark's edit of line 6?" and len(w.meta.requests) == 4
+    assert w.ed.lines == FILE[:5] + [FIX] + FILE[6:] and w.ed.saves == 1 and _coder_requests(w) == []
+    (report,) = _texts(seen, "report")
+    assert report[-1][0].startswith("(0 step(s) done; planning: 1 request(s) to muse-spark")   # what planning sent
+
+
+def test_a_fix_loop_that_cant_start_after_a_step_says_what_was_done(world, monkeypatch):
+    w = world
+    w.plans += ["ACTION: click\nTARGET: the Button\nCHANGES: no\nWHY: open the file", "ACTION: fix_code\nWHY: fix it"]
+
+    def no_code(self, *_a, **_k):
+        raise EditError("no numbered code lines on the screen: show the file in VS Code with line numbers on")
+    monkeypatch.setattr(Pipeline, "edit", no_code)
+    s, events, _ = _session(w)
+    assert s.do("open it and fix it")
+    seen = _drive(s, events, lambda a: True)
+    (report,) = _texts(seen, "report")
+    assert report[0] == ("Stopped early: the fix loop: EditError: no numbered code lines on the screen: show the file "
+                         "in VS Code with line numbers on", "err")
+    assert report[1] == ("(1 step(s) done; planned on this laptop, nothing was sent)", "")
+    assert _texts(seen, "error") == [] and w.env.desk.button_presses == 1
+    w.plans += ["ACTION: fix_code\nWHY: fix it"]                   # nothing done first: the usual line
+    assert s.do("fix it")
+    assert "Nothing was sent or typed: no numbered code lines" in _texts(_drive(s, events, lambda a: True), "error")[0]
+
+
+def test_the_planner_hands_code_over_and_never_clicks_into_it():
+    assert A.parse_plan("ACTION: fix_code\nWHY: line 5 uses cout without std") == (A.FIX_CODE, "line 5 uses cout "
+                                                                                              "without std")
+    assert A.parse_plan("**ACTION:** Fix code\n**WHY:** x") == (A.FIX_CODE, "x")
+    assert A.FIX_CODE not in A.ACTIONS                         # never a step that is clicked or typed
+    assert "Never change code by clicking into it and typing" in A.PLAN_PROMPT and "fix_code" in A.PLAN_PROMPT
+    assert A.FIX_CODE in A.UI_STEP["function"]["parameters"]["properties"]["action"]["enum"]
+    assert "fix_code" in A.ACT_SYSTEM
 
 
 def test_auto_runs_steps_that_change_nothing_and_asks_before_one_that_does(world):
