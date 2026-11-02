@@ -335,7 +335,8 @@ Notes:
   DisplayPort. Going from HDMI to DisplayPort needs an active converter (passive cables only work the
   other way), so cable 2 is an active HDMI-to-DisplayPort adapter.
 - **Why Monitor B goes through a dock.** The dock (a StarTech.com 116N-USBC-DOCK, which uses
-  DisplayLink) keeps Monitor B off the NVIDIA GPU. A display on that GPU takes some of the memory
+  DisplayLink) has a DisplayPort output, so Monitor B needs no adapter, and it keeps Monitor B off
+  the NVIDIA GPU. A display on that GPU takes some of the memory
   Glimmer needs, and the desktop then stalls while Glimmer runs.
 - **Monitor A depends on the AI computer.** The NanoKVM is powered through cable 3. If the
   AI computer is off or cable 3 is unplugged, Monitor A goes dark. To use the locked computer
@@ -363,13 +364,15 @@ The NanoKVM-USB came with **no cables**. Ordered on Amazon UK on 2026-10-07:
 **Display** (*Settings > System > Display* on Windows 11; for macOS and Linux see
 [section 1a](#1a-operating-systems)):
 
-- Use **Extend** mode, so the laptop's own screen and Monitor A show different things. Only Monitor A
-  is captured and shared with the AI computer: put the work you want help with there, and keep
-  everything else on the laptop's own screen, which isn't shared.
+- Use **Extend** mode, so the laptop's own screen and Monitor A show different things. In my tests the
+  laptop's own screen was the main display and Monitor A the extended one. Only Monitor A is captured
+  and shared with the AI computer: put the work you want help with there, and keep everything else on
+  the laptop's own screen, which isn't shared.
 - Typed edits (`edit`, `fix`, and code that Fix it hands to the fix loop) use only the keyboard, so
-  they work whichever display is the main one. Fix it's clicks are different: the NanoKVM's mouse
-  lands on the main display, so for steps that click, make Monitor A the main display (select it and
-  tick *Make this my main display*).
+  they work in that setup. Fix it's clicks most likely don't: the NanoKVM's mouse targets the main
+  display, so a click aimed at Monitor A lands elsewhere (on 1 Nov one didn't put the cursor where it
+  aimed). For steps that click, Monitor A would have to be the main display (select it and tick *Make
+  this my main display*), which I haven't tested yet.
 - Set Monitor A to its **native resolution at 60 Hz**. The NanoKVM accepts up to 4K at 30 Hz and
   delivers 1920x1080 to the AI computer, so a 1920x1080 monitor gives Glimmer the sharpest picture.
 - If Monitor A is **1920x1200** (16:10), the picture is squashed. Add `display_aspect = "16:10"` to
@@ -865,8 +868,10 @@ has the focus, keys such as Ctrl+C or Enter, or a scroll.
 
 **A change to code goes to `fix`'s loop, not to clicks and typing.** On 1 Nov, asked *Whats wrong
 with this and fix it* about a C++ file, the task button (then called *Do it*) clicked into the code and
-typed `using namespace std;`, and it landed below `main` instead of above it: VS Code's rows are about
-19 pixels apart on the stand-in PC, and nothing checked where the cursor went. So the planner is told
+typed `using namespace std;`, and it landed below `main` instead of above it. Nothing checked where the
+cursor went, and the click most likely never reached the line it aimed at: Monitor A was the stand-in
+PC's extended display, not its main one, and the NanoKVM's mouse targets the main display (even there,
+VS Code's rows are only about 19 pixels apart). So the planner is told
 never to click into code and type: when the task is a change to code shown in an editor with line
 numbers, it hands the task over to `fix`'s loop ([section 6](#6-using-it-read-ask-edit-and-fix)), and
 that ends its part (ask again for anything after the change). Your task is the coder's request: it does

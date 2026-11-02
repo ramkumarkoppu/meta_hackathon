@@ -147,10 +147,12 @@ So far:
   the NanoKVM's keys: it presses Num Lock twice and takes no picture.
 - **Code by line number, not by a click, and Glimmer as the coder (1 Nov, `localcoder.py`).** Asked
   *Whats wrong with this and fix it* about hello.cpp, Do it typed `using namespace std;` below `main`
-  instead of above it: it had clicked into the code and typed, VS Code's rows are about 19 pixels apart
-  on the stand-in PC, and nothing checked where the cursor landed (on a synthetic copy of the screen
-  Glimmer's plan was right, so the click most likely hit the wrong line). Now its planner is told never
-  to click into code: for a change to code shown with line numbers, it hands the task to the fix loop
+  instead of above it: it had clicked into the code and typed, and nothing checked where the cursor
+  landed. On a synthetic copy of the screen Glimmer's plan was right, so the click was at fault, most
+  likely because Monitor A was the stand-in PC's extended display, not its main one, and the NanoKVM's
+  mouse targets the main display (VS Code's rows are only about 19 pixels apart anyway). Now its
+  planner is told never to click into code: for a change to code shown with line numbers, it hands the
+  task to the fix loop
   (edits by line number, each approved and checked on the screen, *FIXED* on a fresh reading, then the
   save), with the task itself as the request. The coder is the planner's model, and Glimmer can now be
   it, on my GPU: it gets the same instructions and `apply_edit` tool as Spark, through llama-server's

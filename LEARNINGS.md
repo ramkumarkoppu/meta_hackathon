@@ -178,11 +178,13 @@ fix and then the one wrong change, a second '}', which passed every check.
   the first key or click after the link opens or a quiet minute, the service taps Scroll Lock until the
   locked computer's light, as reported back through the KVM, follows, then taps it back (29f8a60).
   Whether that cured it isn't recorded.
-- **Clicking into code wasn't precise enough.** On 1 Nov on the stand-in PC, asked what was wrong with
-  hello.cpp and to fix it, the task button (then called Do it) clicked into the code and typed
-  `using namespace std;`, which landed below `main` instead of above it. VS Code's rows there are about
-  19 pixels apart, nothing checked where the cursor landed, and the same plan was right on a synthetic
-  copy of the screen, so the click most likely hit the wrong line. Now the planner is told to hand a
+- **A click into code didn't land where it aimed.** On 1 Nov on the stand-in PC, asked what was wrong
+  with hello.cpp and to fix it, the task button (then called Do it) clicked into the code and typed
+  `using namespace std;`, which landed below `main` instead of above it. The same plan was right on a
+  synthetic copy of the screen, and nothing checked where the cursor landed. The likeliest cause is the
+  setup: Monitor A was the stand-in PC's extended display, not its main one, and the KVM's mouse
+  targets the main display, so the click never reached the line (and VS Code's rows are only about 19
+  pixels apart, even on the main display). Now the planner is told to hand a
   change to code to the fix loop, which edits by line number (4108952), and since that rests on its
   choice, every typing step asks first, even under Auto, and says where the cursor is when the status
   bar shows it (0bd6b07). Later that day, on the stand-in PC, Fix it made the right fix to hello.cpp
@@ -194,8 +196,8 @@ fix and then the one wrong change, a second '}', which passed every check.
   models use outside the computer tool. On a synthetic 1920x1080 screen with dummy names (30 Oct), it
   found 8 of 8 targets as points and as boxes, and answered NONE for a button that wasn't there
   (6b82d8c). So Fix it has Glimmer find every target on the AI computer and clicks the middle of its
-  box, though on the stand-in PC a click into code most likely hit the wrong row
-  ([Typing blind](#typing-blind)).
+  box, though on the stand-in PC, where Monitor A wasn't the main display, a click into code most
+  likely missed ([Typing blind](#typing-blind)).
 - **Glimmer can be a coder.** On 1 Nov llama-server returned Glimmer's tool calls as structured calls,
   so it gets the same request, system message and `apply_edit` tool as Spark. As planner and coder on a
   simulated VS Code drawn like the stand-in PC's, it made the right fix to hello.cpp from two starting

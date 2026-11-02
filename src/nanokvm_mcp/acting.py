@@ -18,9 +18,10 @@ planner says so, or it is a key such as Delete or Ctrl+V), which still asks. Tex
 instructions: the prompts say so, a step's target is only ever looked up, and a box that covers most of the screen is
 refused.
 
-Clicking into code and typing is how a change to code goes wrong: in VS Code's 19-pixel rows a click a line off puts
-the text on the wrong line (seen live on 1 Nov: 'using namespace std;' typed below main, not above it). So the planner
-is told never to do it: for a change to code in an editor that shows line numbers it answers fix_code, and the fix
+Clicking into code and typing is how a change to code goes wrong: the click has to land on the right one of VS Code's
+19-pixel rows, and the KVM's mouse targets the locked computer's main display, which may not be the captured one (seen
+live on 1 Nov: 'using namespace std;' typed below main, not above it, with Monitor A as an extended display). So the
+planner is told never to do it: for a change to code in an editor that shows line numbers it answers fix_code, and the fix
 loop does the task instead (Pipeline.edit, as nanokvm fix does), which ends the planner's part: whole lines replaced
 by their numbers, each edit shown and approved, then checked on the screen, the change checked on a fresh reading,
 and the file saved after a yes, with the planner's model as the coder (Glimmer when it plans, so still nothing leaves
