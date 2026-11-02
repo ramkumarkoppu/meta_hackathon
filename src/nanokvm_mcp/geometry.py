@@ -1,12 +1,13 @@
-"""Coordinate spaces and frame helpers.
+"""Coordinate spaces and frame helpers. The service uses them to crop and encode frames for Glimmer and the live
+view, and to turn a point on the screen into the KVM's absolute mouse position.
 
 Spaces:
-  * capture px   - pixels of the HDMI frame delivered by the NanoKVM (e.g. 1920x1080)
+  * capture px   - pixels of the HDMI frame delivered by the USB KVM (e.g. 1920x1080)
   * region       - the part of the capture frame that shows the locked computer desktop (normally the
                    whole frame; smaller if the GPU adds black bars, set with ``region`` in nanokvm.toml)
   * screen coords- the region scaled to ``shot_width`` wide (nanokvm status shows the size as Screen);
                    this is the ONLY space pointer actions accept
-  * abs          - the NanoKVM absolute-mouse grid, 0..4095 on each axis, spanning the target's
+  * abs          - the KVM's absolute-mouse grid, 0..4095 on each axis, spanning the target's
                    primary display (= the region)
 """
 from __future__ import annotations
@@ -22,6 +23,7 @@ from .protocol import ABS_MAX, ABS_RANGE
 
 @dataclass(frozen=True)
 class Region:
+    """The part of the capture frame that shows the locked computer's screen, in capture pixels."""
     x: int
     y: int
     w: int
@@ -74,6 +76,7 @@ def screen_rect_to_capture(rect: tuple[float, float, float, float], region: Regi
 
 # ---------------------------------------------------------------- frames
 def resize(img: np.ndarray, w: int, h: int) -> np.ndarray:
+    """``img`` at w x h: area averaging to shrink, which keeps small text legible, and bicubic to enlarge."""
     if img.shape[1] == w and img.shape[0] == h:
         return img
     interp = cv2.INTER_AREA if (w < img.shape[1] or h < img.shape[0]) else cv2.INTER_CUBIC
@@ -105,6 +108,7 @@ VISION_MAX_TOKENS = 4096  # its per-image limit; llama.cpp shrinks larger images
 
 
 def vision_tokens(w: int, h: int, cell: int = VISION_CELL) -> int:
+    """Glimmer's visual tokens for a w x h image."""
     return math.ceil(w / cell) * math.ceil(h / cell)
 
 

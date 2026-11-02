@@ -539,7 +539,8 @@ class AssistSession:
 
     def _cursor_note(self, pipe: Pipeline) -> str:
         """Where typed text goes: the cursor position from VS Code's status bar (Glimmer reads the bottom of the
-        screen), as on 1 Nov, when 'using namespace std;' went to line 8 instead of line 2; or a reminder to look."""
+        screen), or a reminder to look. Typed text goes wherever the cursor is: 'using namespace std;' once went to
+        line 8 instead of line 2."""
         try:
             st = E.parse_status(pipe.read_status())
         except (GlimmerError, ServiceError):

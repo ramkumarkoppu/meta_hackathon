@@ -3,6 +3,9 @@
 HID usages are the keyboard page (0x07) of the USB HID Usage Tables, checked against Sipeed's
 NanoKVM-USB app (v1.1.4). Typing text follows the ``keyboard_layout`` setting ("us" or "uk"; HID
 usages are physical key positions; the target's layout decides which character a key produces).
+
+The service turns /api/act's keys and type requests into these strokes for hid.py. acting.py and editing.py
+check a step's keys and an edit's text with the same tables, so what is checked is what gets sent.
 """
 from __future__ import annotations
 
@@ -113,6 +116,7 @@ LAYOUTS["uk"] = {
 
 
 def layout_table(layout: str) -> dict[str, tuple[int, int]]:
+    """The character table for ``layout``. An unknown layout raises KeyError_."""
     table = LAYOUTS.get((layout or "us").strip().lower())
     if table is None:
         raise KeyError_(f"unknown keyboard_layout {layout!r} in nanokvm.toml; use one of: "
@@ -126,6 +130,7 @@ class KeyError_(ValueError):
 
 @dataclass(frozen=True)
 class Combo:
+    """One chord: the modifier bits, up to six key usages, and the text it was parsed from."""
     modifiers: int
     keys: tuple[int, ...]
     text: str
@@ -189,6 +194,7 @@ def parse_sequence(keys: str, layout: str = "us") -> list[Combo]:
 
 @dataclass
 class Keystrokes:
+    """The strokes for some text, and the characters the layout can't type."""
     strokes: list[tuple[int, int]]   # (modifiers, usage)
     skipped: list[str]               # characters that cannot be typed (non-ASCII etc.)
 

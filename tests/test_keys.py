@@ -1,3 +1,5 @@
+"""Key names and text to HID keystrokes (keys.py), for the US and UK layouts. Every edit typed through the KVM's
+keyboard goes through these tables, so a wrong usage here types the wrong character on the locked computer."""
 import pytest
 
 from nanokvm_mcp import protocol as P
@@ -93,5 +95,6 @@ def test_unknown_layout_is_reported():
 
 
 def test_caps_lock_compensation():
+    """With Caps Lock on at the locked computer, letters go with Shift flipped so the text comes out as written."""
     ks = text_to_keystrokes("aB1", caps_lock=True)
     assert ks.strokes == [(P.MOD_LSHIFT, 0x04), (0, 0x05), (0, 0x1E)]

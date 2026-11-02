@@ -1,9 +1,14 @@
 """Client for the local Muse Glimmer server (llama.cpp's llama-server, started by tools\\run-glimmer.ps1).
 
+Glimmer is the reader in the chain: the pipeline fetches a frame from the nanokvm service and Glimmer turns it into
+text, which is all that can go on towards Spark. It also finds Fix it's targets, plans Fix it's steps on this
+laptop, and can be the fix loop's coder (localcoder.py).
+
 Everything stays on this laptop: the server listens on 127.0.0.1 and needs the key in .run\\llama_api_key.
 Images go only as data: URIs (llama-server would itself download an http URL). Glimmer's thinking text is
 dropped, since it can contain the whole transcription, and the server's slot is flushed after every image.
-Text read from the screen is untrusted data, never instructions.
+Text-only requests (the coder, the trimming) aren't flushed. Text read from the screen is untrusted data, never
+instructions.
 """
 from __future__ import annotations
 
@@ -81,8 +86,8 @@ MINIMISE_PROMPT = ("Below are lines of text read from a screen, then a question 
 def thinking_cap(tokens: int) -> dict:
     """Per-request cap on Glimmer's thinking. llama.cpp b10976 ignores thinking_budget_tokens and
     --reasoning-budget for Glimmer (its chat handler sets no thinking tags, PR #27475), so the budget is
-    sent with Glimmer's own thinking tags. Measured 24 Oct: with 0, a transcription read gave the same
-    223 tokens every time. Re-test after upgrading llama.cpp."""
+    sent with Glimmer's own thinking tags. Measured with 0: a transcription read gave the same 223 tokens
+    every time. Re-test after upgrading llama.cpp."""
     return {"reasoning_budget_tokens": int(tokens), "reasoning_budget_start_tag": " to=self<|message|>",
             "reasoning_budget_end_tags": ["<|eom|>"], "reasoning_budget_message": ""}
 
@@ -101,6 +106,7 @@ class GlimmerTruncated(GlimmerError):
 
 @dataclass
 class GlimmerReply:
+    """One answer from Glimmer. Its thinking text is dropped; only its length is kept."""
     content: str
     finish_reason: str
     usage: dict = field(default_factory=dict)
@@ -121,6 +127,8 @@ def _tool_calls(msg: dict) -> list[dict]:
 
 
 class GlimmerClient:
+    """Glimmer's llama-server on 127.0.0.1, one request at a time."""
+
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.url = f"http://127.0.0.1:{cfg.glimmer_port}"
@@ -161,7 +169,7 @@ class GlimmerClient:
         """One chat request. think_tokens caps Glimmer's thinking (None = uncapped). temperature None keeps the
         server's sampling (run-glimmer.ps1: 1.0, top-p 0.95, top-k 64, as Meta and Unsloth advise for chat).
         ``tools`` are function tools in OpenAI's format: llama-server returns Glimmer's calls as structured tool
-        calls (checked on 1 Nov with apply_edit)."""
+        calls (checked with apply_edit)."""
         reasoning = reasoning or self.cfg.read_reasoning
         if reasoning not in REASONING_LEVELS:
             raise ValueError(f"reasoning must be one of {REASONING_LEVELS}")
@@ -211,7 +219,7 @@ class GlimmerClient:
         """Ask Glimmer about one image (sent as a data: URI); the server is flushed afterwards. Greedy
         (temperature 0): a reading of the screen should be the most likely one, and the same every time, so the
         checks before and after typing compare like with like (at the server's 1.0 a re-read could differ by a
-        space of indentation; seen live on 29 Oct). The drafter also accepts more of its drafts."""
+        space of indentation). The drafter also accepts more of its drafts."""
         mime = "png" if fmt == "png" else "jpeg"
         messages = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": [
@@ -221,7 +229,7 @@ class GlimmerClient:
             return self.chat(messages, reasoning=reasoning, think_tokens=think_tokens, max_tokens=max_tokens,
                              temperature=0.0)
         finally:
-            del messages
+            del messages                        # this copy of the picture goes before the flush
             self.flush()
 
     def transcribe_code(self, image_b64: str, fmt: str = "png") -> GlimmerReply:
@@ -253,10 +261,10 @@ class GlimmerClient:
     PLAN_ANSWER_TOKENS = 512        # ...and still has this much left for the step itself (thinking counts in max_tokens)
 
     def plan_step(self, image_b64: str, fmt: str, prompt: str) -> GlimmerReply:
-        """Fix it, planned on this laptop: the next step towards a task, from the screenshot (acting.PLAN_PROMPT).
+        """Fix it, planned on this laptop: the next step towards a task, from the frame (acting.PLAN_PROMPT).
         Some thinking is allowed here, unlike the readings; it is dropped with the rest of the reply's reasoning.
-        The thinking counts towards max_tokens, so the answer gets its own room on top (seen live on 30 Oct: with
-        1024 thinking tokens and max_tokens 400, every plan was cut off)."""
+        The thinking counts towards max_tokens, so the answer gets its own room on top: with 1024 thinking tokens
+        and max_tokens 400, every plan was cut off."""
         return self.read_image(image_b64, fmt, prompt, reasoning="medium", think_tokens=self.PLAN_THINK_TOKENS,
                                max_tokens=self.PLAN_THINK_TOKENS + self.PLAN_ANSWER_TOKENS)
 
@@ -280,7 +288,7 @@ class GlimmerClient:
              parallel_tool_calls: bool | None = None) -> GlimmerReply:
         """Glimmer as the fix loop's coder (localcoder.py): text only, with Spark's own system message and apply_edit
         tool, at high reasoning, and greedy like the readings, so a run can be repeated. On a synthetic hello.cpp
-        missing std:: (1 Nov) it inserted 'using namespace std;' above main in 7 s."""
+        missing std:: it inserted 'using namespace std;' above main in 7 s."""
         return self.chat(messages, reasoning="high", think_tokens=self.CODE_THINK_TOKENS,
                          max_tokens=self.CODE_THINK_TOKENS + self.CODE_ANSWER_TOKENS, temperature=0.0,
                          tools=tools, parallel_tool_calls=parallel_tool_calls)

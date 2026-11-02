@@ -6,8 +6,12 @@ on a fresh reading of the screen, and only with the same approval: asked then, o
 outbound = local_only (and in the viewer's Fix it, unless Spark plans), Glimmer is the coder too (localcoder.py):
 the same loop, checks and approvals, with nothing sent.
 
-The pipeline uses its own client id and screen share, approved by the person at the keyboard, and closes
-the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
+This is the middle of the chain, for nanokvm read, ask, edit and fix and for the viewer's prompt box: it fetches
+frames from the nanokvm service, has Glimmer read them, sends the text through the outbound gate (or to
+localcoder.py), and drives editing.py's typer.
+
+The pipeline uses its own client id and screen share, approved by the person at the keyboard or in the viewer,
+and closes the share when done. Frames stay in memory: each is dropped as soon as Glimmer has read it, before
 anything is sent to Spark.
 """
 from __future__ import annotations
@@ -33,6 +37,7 @@ ASK_SYSTEM = ("You help a developer with what is on their screen. The user's mes
 
 @dataclass
 class Reading:
+    """One reading of the screen by Glimmer: its text and the frame's metadata."""
     text: str
     kind: str                         # code, describe, errors, diagnose, window or ui
     seconds: float
@@ -41,6 +46,7 @@ class Reading:
 
 @dataclass
 class AskResult:
+    """An answer to a question, and what was sent for it (nothing when local only)."""
     reading: Reading
     answer: str
     local_only: bool
@@ -54,6 +60,7 @@ class EditError(RuntimeError):
 
 @dataclass
 class EditRecord:
+    """One of the coder's tool calls in the fix loop: the plan, the approval, the typing and what the coder was told."""
     plan: E.EditPlan | None           # None when the coder's call was rejected before it could be shown
     approved: bool
     outcome: E.EditOutcome | None     # None when nothing was typed
@@ -62,6 +69,7 @@ class EditRecord:
 
 @dataclass
 class EditResult:
+    """One run of the fix loop, for the closing report."""
     reading: Reading
     prepared: Prepared
     summary: str                      # the coder's closing message (Spark's with its placeholders restored)
@@ -79,6 +87,8 @@ class EditResult:
 
 
 class Pipeline:
+    """One run's screen share, Glimmer and Spark clients, and the fix loop."""
+
     def __init__(self, cfg: Config, *, glimmer: GlimmerClient | None = None, spark: SparkClient | None = None,
                  svc: ServiceClient | None = None, approve_share: Callable[[int], bool] | None = None,
                  approve_send: Callable[[str], bool] | None = None, stand_in: bool = False) -> None:
@@ -96,6 +106,7 @@ class Pipeline:
 
     # ---- screen share (approved by the person at the keyboard)
     def open(self, minutes: int = 5) -> None:
+        """Ask for the screen share (``approve_share``) and open it on the service. A no raises PermissionError."""
         if self._shared:
             return
         if not (self.approve_share and self.approve_share(minutes)):
@@ -146,6 +157,7 @@ class Pipeline:
         return frame
 
     def read(self, kind: str = "code", rect: tuple[float, float, float, float] | None = None) -> Reading:
+        """Glimmer's reading of one fresh frame, of the whole screen or ``rect``."""
         readers = {"code": self.glimmer.transcribe_code, "describe": self.glimmer.describe_screen,
                    "errors": self.glimmer.extract_errors, "diagnose": self.glimmer.diagnose_screen,
                    "window": self.glimmer.read_window, "ui": self.glimmer.describe_ui}
@@ -179,12 +191,14 @@ class Pipeline:
 
     # ---- asking
     def spark(self) -> SparkClient:
+        """The Spark client, made on first use, so a run that sends nothing never makes one."""
         if self._spark is None:
             self._spark = SparkClient(self.cfg)
         return self._spark
 
     def ask(self, question: str, rect: tuple[float, float, float, float] | None = None,
             kind: str = "code", on_event: Callable[[str], None] | None = None) -> AskResult:
+        """Glimmer reads the screen, then Spark answers from the redacted text, or Glimmer itself when local only."""
         say = on_event or (lambda _m: None)
         say("reading the screen with Muse Glimmer")
         reading = self.read(kind, rect)
@@ -204,7 +218,7 @@ class Pipeline:
         sent = gate.ask(prepared, ASK_SYSTEM)
         return AskResult(reading, sent.content, False, prepared, sent)
 
-    # ---- editing (milestone 2)
+    # ---- editing (the fix loop)
     def read_lines(self, rect: tuple[float, float, float, float] | None = None) -> dict[int, str]:
         """The numbered lines on the screen, leaving out any whose reading is ambiguous (strict). The whole
         reading is kept in ``last_code``: after a typed edit it is the screen as it is now."""
@@ -407,6 +421,7 @@ class Pipeline:
     def _one_edit(self, call: dict, screen: dict[int, str], mapping: dict[str, str] | None,
                   approve_edit: Callable[[E.EditPlan], bool], typer: E.EditTyper, skip: bool,
                   say: Callable[[str], None], who: str = "Spark") -> EditRecord:
+        """One tool call: checked against the screen (plan_edit), approved, then typed and checked on the screen."""
         if call["name"] != "apply_edit":
             return EditRecord(None, False, None, f"Unknown tool {call['name']!r}; only apply_edit exists.")
         if skip:

@@ -1,4 +1,5 @@
-"""The outbound gate (outbound.py): redact, trim, check, audit, send, restore."""
+"""The outbound gate (outbound.py), the only path from screen text to Muse Spark: redact, trim, check, audit, send,
+restore. A mock Meta Model API plays Spark, and no request to it may carry an image."""
 import json
 
 import pytest
@@ -23,6 +24,8 @@ SCREEN = """\
 
 
 class StubGlimmer:
+    """Glimmer's trimming step only. It keeps ``picked`` (every line if None), or fails as if Glimmer were down."""
+
     def __init__(self, picked: str | None = None, fail: bool = False):
         self.picked, self.fail, self.calls = picked, fail, []
 

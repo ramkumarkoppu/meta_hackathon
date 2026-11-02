@@ -1,8 +1,8 @@
 """``nanokvm`` command line: diagnostics, service control, the live viewer, and the Glimmer/Spark commands.
 
-    nanokvm diag            check the NanoKVM devices, the video and the service (saves nothing)
+    nanokvm diag            check the USB KVM, the video and the service (saves nothing)
     nanokvm start | stop | status
-    nanokvm keytest         check that the locked computer takes the NanoKVM's keystrokes (Num Lock, no picture)
+    nanokvm keytest         check that the locked computer takes the KVM's keystrokes (Num Lock, no picture)
     nanokvm viewer          watch the screen live in a window, and ask about it or have a task done there
     nanokvm serve           run the service in the foreground (debugging)
     nanokvm read            read the screen with Muse Glimmer on this laptop (nothing leaves)
@@ -10,6 +10,9 @@
     nanokvm edit "REQUEST"  as ask, then type each edit Spark proposes into VS Code once you approve it
     nanokvm fix             as edit with no request: Spark finds the error on the screen itself
                             (edit and fix --local-only: Glimmer proposes the edits instead, and nothing is sent)
+
+Every command talks to the nanokvm service through client.py, which starts the service when it isn't running.
+read, ask, edit and fix go through pipeline.py, and every approval they need is asked here at the keyboard.
 """
 from __future__ import annotations
 
@@ -28,8 +31,9 @@ def _out(msg: str = "") -> None:
 
 
 def cmd_status(cl: ServiceClient, args) -> int:
+    """Print the service's status, or its raw JSON with --json. Returns 1 if the service isn't running."""
     if not cl.is_running():
-        _out("NanoKVM service: not running (it starts automatically when a nanokvm command needs it, or "
+        _out("nanokvm service: not running (it starts automatically when a nanokvm command needs it, or "
              "run 'nanokvm start').")
         return 1
     st = cl.status()
@@ -58,12 +62,12 @@ def cmd_start(cl: ServiceClient, args) -> int:
 
 def cmd_stop(cl: ServiceClient, args) -> int:
     if not cl.is_running():
-        _out("NanoKVM service was not running.")
+        _out("The nanokvm service was not running.")
         return 0
     if cl.stop():
-        _out("NanoKVM service stopped.")
+        _out("The nanokvm service stopped.")
         return 0
-    _out("NanoKVM service did not stop within 20 s: end its pythonw.exe process, then check with 'nanokvm status'.")
+    _out("The nanokvm service did not stop within 20 s: end its pythonw.exe process, then check with 'nanokvm status'.")
     return 1
 
 
@@ -71,9 +75,9 @@ KEYTEST_WAIT_S = 5.5       # the service re-reads the keyboard chip's Num Lock s
 
 
 def cmd_keytest(cl: ServiceClient, args) -> int:
-    """Press Num Lock twice through the NanoKVM and check that the locked computer's Num Lock state follows each
-    time: proof that its operating system takes the NanoKVM's keystrokes. No picture is taken, and Num Lock ends
-    as it started."""
+    """Press Num Lock twice through the KVM and check that the locked computer's Num Lock state follows each time.
+    That proves its operating system takes the KVM's keystrokes. No picture is taken, and Num Lock ends as it
+    started. The state comes back from the keyboard chip, which reports the locked computer's LEDs."""
     def num_lock() -> bool | None:
         info = (cl.status().get("control") or {}).get("device_info")
         return info.get("num_lock") if isinstance(info, dict) else None
@@ -82,7 +86,7 @@ def cmd_keytest(cl: ServiceClient, args) -> int:
     time.sleep(KEYTEST_WAIT_S)
     states = [num_lock()]
     if states[0] is None:
-        _out("No Num Lock state from the NanoKVM's keyboard chip: check cable 4, then 'nanokvm status'.")
+        _out("No Num Lock state from the KVM's keyboard chip: check cable 4, then 'nanokvm status'.")
         return 1
     for _ in range(2):
         cl.act({"action": "keys", "keys": "numlock"})
@@ -90,11 +94,11 @@ def cmd_keytest(cl: ServiceClient, args) -> int:
         states.append(num_lock())
     shown = ", then ".join("on" if s else "off" if s is not None else "unknown" for s in states)
     if states[1] == (not states[0]) and states[2] == states[0]:
-        _out(f"Keyboard OK: the locked computer switched Num Lock at each press from the NanoKVM ({shown}).")
+        _out(f"Keyboard OK: the locked computer switched Num Lock at each press from the KVM ({shown}).")
         return 0
     if states[0] == states[1] == states[2]:
-        _out(f"The locked computer didn't react to the NanoKVM's Num Lock key ({shown}), so it isn't taking "
-             "keystrokes from the NanoKVM. Check cable 4 (the NanoKVM's TARGET USB-C to a USB-A port of the "
+        _out(f"The locked computer didn't react to the KVM's Num Lock key ({shown}), so it isn't taking "
+             "keystrokes from the KVM. Check cable 4 (the KVM's TARGET USB-C to a USB-A port of the "
              "locked computer). A managed laptop can also block new USB keyboards by policy.")
         return 1
     _out(f"Num Lock didn't change as expected ({shown}): check it on the locked computer.")
@@ -122,6 +126,9 @@ def _seconds(text: str) -> float:
 
 
 def cmd_diag(cl: ServiceClient, args) -> int:
+    """Check the setup in order: the locked computer's settings, the KVM's video device and serial port (listed,
+    not opened), then the service and its video, judged from the service's status. No picture is fetched or saved.
+    --mouse-test also moves the pointer. Returns 1 if anything needs fixing."""
     from .capture import list_video_devices
     from .hid import list_serial_ports
     cfg = cl.cfg
@@ -145,28 +152,28 @@ def cmd_diag(cl: ServiceClient, args) -> int:
     for d in devices or []:
         tag = ""
         if (d["vid"], d["pid"]) in vids:
-            tag, found_video = "  <-- NanoKVM-USB", True
+            tag, found_video = "  <-- USB KVM", True
         vp = f"{d['vid']:04X}:{d['pid']:04X}" if d["vid"] is not None else "?"
         _out(f"  [{d['index']}] {d['name']}  ({vp}){tag}")
     if devices is not None and not found_video:
         ok = False
-        _out("  !! NanoKVM capture device not found: plug the NanoKVM's HOST-end USB-C into this laptop.")
+        _out("  !! USB KVM capture device not found: plug the KVM's HOST-end USB-C into this laptop.")
     _out("\n== Serial ports ==")
     found_serial = False
     for p in list_serial_ports():
         tag = ""
         if (p["vid"], p["pid"]) in cfg.serial_id_list:
-            tag, found_serial = "  <-- NanoKVM keyboard/mouse", True
+            tag, found_serial = "  <-- USB KVM keyboard/mouse", True
         _out(f"  {p['device']}: {p['description']}{tag}")
     if cfg.control and not found_serial and not cfg.serial_port:
         ok = False
         if sys.platform == "win32":
-            _out("  !! NanoKVM COM port not found. Check that serial_ids in nanokvm.toml lists its chip (CH343\n"
+            _out("  !! USB KVM COM port not found. Check that serial_ids in nanokvm.toml lists its chip (CH343\n"
                  "     1A86:55D3, CH340 1A86:7523), then reseat the HOST-end USB-C cable: video and the serial\n"
                  "     chip use different wires. A CH343 needs no extra driver; a CH340 needs WCH's: Device\n"
                  "     Manager > the unknown 'USB Serial' device > Update driver > Search automatically.")
         else:
-            _out("  !! NanoKVM serial port not found: check the HOST-end USB-C cable. If it is plugged in, set\n"
+            _out("  !! USB KVM serial port not found: check the HOST-end USB-C cable. If it is plugged in, set\n"
                  "     serial_port in nanokvm.toml (Linux: \"/dev/ttyACM0\"; macOS: \"/dev/cu.usbmodem...\").")
     _out("\n== Service ==")
     try:
@@ -236,11 +243,13 @@ def _shown(text: str) -> str:
 
 
 def _approve_send(text: str) -> bool:
+    """Show the exact text that would go to Spark and ask (outbound = "approve", or --approve)."""
     _out("\n--- exactly this text would go to Muse Spark (Meta) ---\n" + _shown(text) + "\n--- end ---")
     return _console_yes("Send it?")
 
 
 def _region(text: str | None) -> tuple[float, float, float, float] | None:
+    """--region as (x, y, w, h), or None for the whole screen."""
     if not text:
         return None
     parts = [float(p) for p in text.replace(" ", "").split(",")]
@@ -357,6 +366,7 @@ def _frame_warnings(frame: dict) -> None:
 
 
 def cmd_read(cl: ServiceClient, args) -> int:
+    """nanokvm read: Glimmer reads the screen and the text is printed here. Nothing leaves this laptop."""
     from .glimmer import GlimmerError
     from .pipeline import Pipeline
     if args.check and args.kind != "code":
@@ -387,6 +397,8 @@ def cmd_read(cl: ServiceClient, args) -> int:
 
 
 def cmd_ask(cl: ServiceClient, args) -> int:
+    """nanokvm ask: Glimmer reads the screen, and Spark answers from the redacted text that passes the outbound
+    gate. With --local-only Glimmer answers and nothing is sent."""
     from .glimmer import GlimmerError
     from .outbound import OutboundBlocked
     from .pipeline import Pipeline
@@ -427,6 +439,7 @@ def cmd_ask(cl: ServiceClient, args) -> int:
 
 
 def _show_edit(plan, who: str = "Spark") -> None:
+    """Print one proposed edit: the diff, the keys that will be sent and the coder's note."""
     _out(f"\n--- Muse {who}'s edit: {plan.span()} ('-' lines go, '+' lines come in their place) ---")
     _out(plan.diff())
     _out("--- keys sent to the locked computer ---")
@@ -460,6 +473,9 @@ def _auto_save(name: str, who: str = "Spark") -> bool:
 
 
 def cmd_edit(cl: ServiceClient, args) -> int:
+    """nanokvm edit, and nanokvm fix when there is no request: the fix loop in pipeline.py, with every approval
+    asked at the keyboard. Returns 4 if the loop stopped early, or if fix reached the save and the file
+    wasn't saved for any reason but a no."""
     from .glimmer import GlimmerError
     from .outbound import OutboundBlocked
     from .pipeline import EditError, Pipeline
@@ -533,7 +549,7 @@ def cmd_serve(cl: ServiceClient, args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="nanokvm", description="Locked Computer Assist: AI help for the locked "
-                                                             "computer through a NanoKVM-USB")
+                                                             "computer through a USB KVM")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("status", help="show service, video and keyboard/mouse status")
     p.add_argument("--json", action="store_true")
@@ -542,14 +558,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_start)
     sub.add_parser("stop", help="stop the background service").set_defaults(fn=cmd_stop)
-    sub.add_parser("keytest", help="press Num Lock twice through the NanoKVM and check that the locked computer "
+    sub.add_parser("keytest", help="press Num Lock twice through the KVM and check that the locked computer "
                                    "follows (no picture taken)").set_defaults(fn=cmd_keytest)
     p = sub.add_parser("viewer", help="watch the locked computer's screen live in a window, and ask about it (or have "
                                       "a task done there) from the prompt box beside the picture")
     p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
     p.add_argument("--close-after", type=_seconds, metavar="SECONDS", help="close the window after this long")
     p.set_defaults(fn=cmd_viewer)
-    p = sub.add_parser("diag", help="check the NanoKVM hardware, the video and the service (saves nothing)")
+    p = sub.add_parser("diag", help="check the USB KVM hardware, the video and the service (saves nothing)")
     p.add_argument("--wait", type=float, default=10.0, help="seconds to wait for video (default 10)")
     p.add_argument("--mouse-test", action="store_true", help="also move the locked computer pointer in a small square")
     p.set_defaults(fn=cmd_diag)

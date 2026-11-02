@@ -1,8 +1,11 @@
-"""The shared NanoKVM service: the ONLY process that opens the NanoKVM-USB.
+"""The nanokvm service: the ONLY process that opens the USB KVM.
 
-It captures HDMI continuously, drives keyboard/mouse over serial, and serves a small HTTP API and
-the live picture on 127.0.0.1, so every nanokvm command and the ``nanokvm viewer`` window can share
-the device.
+It captures HDMI continuously (capture.py), drives the keyboard and mouse over serial (hid.py), and serves a small
+HTTP API and the live picture on 127.0.0.1, so every nanokvm command and the ``nanokvm viewer`` window can share
+the KVM. GET /stream.mjpg is the live view and GET /api/status the state. POST /api/frame hands a full-resolution
+frame to a client that holds a screen share, which is how Glimmer gets the screen. /api/act does a keyboard or
+mouse action, /api/share and /api/unshare start and end a share, and /api/shutdown stops the service. No picture
+is written to disk.
 
 Security: bound to 127.0.0.1 only, exclusive port bind, Host header must be localhost (blocks
 DNS rebinding), and every request needs the random token stored in .run/token (header
@@ -44,12 +47,16 @@ SERVICE_NAME = "nanokvm"
 
 
 class ServiceError(Exception):
+    """A refused request. The message goes back to the client as JSON, with ``status`` as the HTTP status."""
+
     def __init__(self, message: str, status: int = 400) -> None:
         super().__init__(message)
         self.status = status
 
 
 def load_or_create_token(run_dir: Path) -> str:
+    """The service's secret token from run_dir/token. It is created once with O_EXCL, so two services starting at
+    the same moment end up with the same token."""
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / "token"
     try:
@@ -72,6 +79,9 @@ def _clock(wall: float) -> str:
 
 
 class Service:
+    """The devices and their state, without the HTTP layer: the capture, the keyboard/mouse (opened on first use),
+    the screen's region, the screen shares and the live view's cached picture."""
+
     def __init__(self, cfg: Config, capture: CaptureSource, link_factory: Callable[[], Link] | None) -> None:
         self.cfg = cfg
         self.capture = capture
@@ -93,9 +103,11 @@ class Service:
 
     # ------------------------------------------------------------ bookkeeping
     def touch(self) -> None:
+        """Note a request, which puts off the idle exit."""
         self._activity = time.monotonic()
 
     def idle_seconds(self) -> float:
+        """Seconds since the last request. Zero while anyone watches the live view, so the idle exit waits."""
         return 0.0 if self.viewers else time.monotonic() - self._activity
 
     def close(self) -> None:
@@ -114,6 +126,8 @@ class Service:
             return None
 
     def region_for(self, frame_w: int, frame_h: int) -> tuple[G.Region, str]:
+        """Where the locked computer's screen sits in the frame, and where that came from: nanokvm.toml's region,
+        else a calibration.json saved for this frame size, else the whole frame."""
         manual = self.cfg.region_tuple
         if manual:
             return G.Region(*manual).clamp_to(frame_w, frame_h), "manual (nanokvm.toml region)"
@@ -125,6 +139,7 @@ class Service:
         return G.Region.full(frame_w, frame_h), "full frame"
 
     def coord_space(self, frame: Frame | None = None) -> tuple[G.Region, int, int, str]:
+        """The region, the size of the screen's coordinate space (shot_width wide) and the region's source."""
         frame = frame or self.capture.latest()
         if frame is not None:
             fh, fw = frame.image.shape[:2]
@@ -140,6 +155,7 @@ class Service:
         return f"capture state '{st.get('state')}': {st.get('error') or 'no frames yet'}"
 
     def _require_frame(self, timeout: float = 4.0) -> Frame:
+        """A frame under a second old, waiting for the next one if need be."""
         f = self.capture.latest()
         if f is not None and time.monotonic() - f.t < 1.0:
             return f
@@ -150,7 +166,7 @@ class Service:
         if g is not None:
             return g
         if f is not None:
-            return f   # stale but better than nothing; meta reports its age
+            return f   # stale but better than nothing; frame() warns about its age
         raise ServiceError("No video from the locked computer yet - " + self._capture_problem(), 503)
 
     def frame(self, rect: tuple[float, float, float, float] | None = None, fmt: str = "png",
@@ -158,7 +174,7 @@ class Service:
         """The screen at full capture resolution, for the LOCAL vision model (Muse Glimmer): the whole
         region, or a screen-coordinate rectangle of it. Not scaled to the coordinate space (shot_width);
         shrunk only if it would exceed max_tokens visual tokens. Nothing is written to disk, and the
-        cropped copy is zeroed once encoded."""
+        cropped pixels are zeroed once encoded (the encoded bytes are freed, not wiped)."""
         if fmt not in ("png", "jpeg"):
             raise ServiceError("format must be 'png' or 'jpeg'")
         max_tokens = max(64, min(int(max_tokens), G.VISION_MAX_TOKENS))
@@ -222,10 +238,13 @@ class Service:
             return True
 
     def require_share(self, client: str | None) -> None:
+        """Refuse with 403 unless ``client`` may capture."""
         if not self.share_active(client):
             raise ServiceError(self.SHARE_REFUSED, 403)
 
     def share(self, client: str | None, minutes: int) -> dict:
+        """Let ``client`` capture the screen for ``minutes``, capped at MAX_SHARE_MINUTES. The clients ask the
+        person at this laptop before they call it."""
         if not client:
             raise ServiceError("screen sharing needs a client id (X-NanoKVM-Client header)")
         minutes = max(1, min(int(minutes), self.MAX_SHARE_MINUTES))
@@ -251,6 +270,7 @@ class Service:
             return len(self._shares)
 
     def share_info(self, client: str | None) -> dict | None:
+        """This client's share for /api/status, or None for a request without a client id."""
         if client is None:
             return None
         if not self.share_active(client):
@@ -263,6 +283,7 @@ class Service:
 
     # ------------------------------------------------------------ status
     def status(self, client: str | None = None) -> dict:
+        """What nanokvm status and the viewer show. It never opens the serial port or waits for a running action."""
         region, sw, sh, source = self.coord_space()
         control: dict = {"enabled": self.cfg.control}
         if self.cfg.control:
@@ -303,6 +324,7 @@ class Service:
 
     # ------------------------------------------------------------ keyboard / mouse
     def hid(self) -> Hid:
+        """The keyboard/mouse, opened by the first action that needs it."""
         if not self.cfg.control:
             raise ServiceError("keyboard/mouse control is disabled (control = false in nanokvm.toml)", 403)
         if self._link_factory is None:
@@ -314,6 +336,8 @@ class Service:
             return self._hid
 
     def act(self, body: dict) -> dict:
+        """Do one keyboard or mouse action. x and y are in the screen's coordinate space, and the reply's summary
+        says what was done, including a stop part-way through."""
         action = str(body.get("action", ""))
         _region, sw, sh, _ = self.coord_space()
 
@@ -418,6 +442,7 @@ class Service:
             return jpg
 
     def placeholder_jpeg(self) -> bytes:
+        """The "no video" picture for the live view, with the capture's state and error written on it."""
         w = self.cfg.viewer_width
         img = np.full((w * 9 // 16, w, 3), 30, np.uint8)
         st = self.capture.status()
@@ -433,6 +458,7 @@ class Service:
 
 # ====================================================================== HTTP layer
 class KvmHTTPServer(ThreadingHTTPServer):
+    """The HTTP server on 127.0.0.1, with an exclusive bind of its port."""
     daemon_threads = True
     allow_reuse_address = False   # on Windows SO_REUSEADDR would allow port hijacking
 
@@ -448,12 +474,14 @@ class KvmHTTPServer(ThreadingHTTPServer):
         super().server_bind()
 
     def request_stop(self) -> None:
+        """Stop serving. shutdown() runs on its own thread: called from a request's thread it would deadlock."""
         if not self.stopping.is_set():
             self.stopping.set()
             threading.Thread(target=self.shutdown, name="http-shutdown", daemon=True).start()
 
 
 class Handler(BaseHTTPRequestHandler):
+    """One HTTP request. Every route checks the Host header and the token first."""
     server: KvmHTTPServer
     server_version = "nanokvm/" + __version__
     timeout = 30   # socket timeout: a stalled live-view client must not pin a thread (and the service) forever
@@ -474,6 +502,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
 
     def _authorised(self) -> bool:
+        """The Host header must name localhost (against DNS rebinding) and the token must match."""
         host = (self.headers.get("Host") or "").lower()
         port = self.server.server_address[1]
         if host not in (f"127.0.0.1:{port}", f"localhost:{port}"):
@@ -486,6 +515,7 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def _client(self) -> str | None:
+        """The X-NanoKVM-Client id that ties a capture to a share, or None (the live view sends none)."""
         c = (self.headers.get("X-NanoKVM-Client") or "").strip()
         return c[:64] or None
 
@@ -636,6 +666,7 @@ class Handler(BaseHTTPRequestHandler):
 
 # ====================================================================== process entry
 def build_service(cfg: Config) -> Service:
+    """The service on the real KVM, or on the simulated locked computer when ``simulate`` is set."""
     if cfg.simulate:
         from .simulator import SimCapture, SimDesktop, SimLink
         desk = SimDesktop(cfg.capture_width, cfg.capture_height)
@@ -662,6 +693,7 @@ def _setup_logging(cfg: Config, foreground: bool) -> None:
 
 
 def serve(cfg: Config, foreground: bool = False) -> int:
+    """Run the service until it is stopped or has been idle for idle_exit_min. Returns 3 if the port is taken."""
     _setup_logging(cfg, foreground)
     token = load_or_create_token(cfg.run_dir)
     # Bind first: if another service already owns the port, exit before touching any device.

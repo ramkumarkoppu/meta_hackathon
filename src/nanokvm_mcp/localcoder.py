@@ -27,6 +27,7 @@ class LocalCoder:
                         frame_sha256=frame_sha256)
 
     def screen_blocks(self, _p: Prepared | None, screen_text: str, notes: str | None = None) -> str:
+        """The <screen_notes> and <screen_text> blocks, with screen text that can't close them or end the turn."""
         block = f"<screen_notes>\n{defang(quote_safe(notes))}\n</screen_notes>\n\n" if notes else ""
         return f"{block}<screen_text>\n{defang(quote_safe(screen_text))}\n</screen_text>"
 

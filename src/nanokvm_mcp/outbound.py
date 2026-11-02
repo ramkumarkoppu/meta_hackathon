@@ -1,5 +1,8 @@
 """The outbound gate: the only path from screen text to Muse Spark.
 
+Its input is Glimmer's text reading of a frame (from pipeline.py), never a picture, and what passes goes to
+spark.py. With Glimmer as the coder, localcoder.py takes its place and nothing is sent.
+
 1. Redact the screen text and the question (built-in patterns plus .run/redact_terms.txt).
 2. Glimmer, on this laptop, trims the redacted text to the lines the question needs. The excerpt is
    rebuilt from the redacted lines themselves, so it can only contain text that was on the screen.
@@ -49,6 +52,7 @@ class OutboundBlocked(RuntimeError):
 
 @dataclass
 class Prepared:
+    """The first message, redacted, with the placeholder mapping that never leaves this laptop."""
     text: str                                   # exactly what would go to Meta (redacted, trimmed)
     question: str                               # the redacted question, included in text
     mapping: dict[str, str] = field(default_factory=dict)
@@ -60,6 +64,7 @@ class Prepared:
 
 @dataclass
 class Answer:
+    """Spark's reply, with its content and tool calls restored here."""
     prepared: Prepared
     reply: SparkReply
     content: str                                # Spark's answer, placeholders restored (local only)
@@ -71,6 +76,7 @@ def _sha(text: str) -> str:
 
 
 def _restore_json(value, mapping: dict[str, str]):
+    """Placeholders restored inside parsed tool arguments, at any depth."""
     if isinstance(value, str):
         return R.restore(value, mapping)
     if isinstance(value, list):
@@ -100,6 +106,8 @@ def excerpt(source: str, picked: str) -> str:
 
 
 class OutboundGate:
+    """Every request to Spark goes through ``ask``, which runs ``check`` and logs the exact text before sending."""
+
     def __init__(self, cfg: Config, glimmer: GlimmerClient, spark: SparkClient,
                  approve: Callable[[str], bool] | None = None, stand_in: bool = False,
                  trusted: tuple[str, ...] = ()) -> None:
@@ -125,6 +133,7 @@ class OutboundGate:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def spent_usd(self) -> float:
+        """What the audit log says has been spent on Spark so far."""
         total = 0.0
         try:
             for line in self.log_path.read_text(encoding="utf-8").splitlines():
@@ -188,6 +197,7 @@ class OutboundGate:
 
     # ---- checks and sending
     def check(self, p: Prepared, history: list[dict] | None = None) -> None:
+        """Raise OutboundBlocked if ``p`` and ``history`` may not go: step 4 above, apart from the approval."""
         text = p.text + ("\n" + history_text(history) if history else "")
         if self.cfg.outbound == "local_only":
             raise OutboundBlocked("outbound = local_only: nothing is sent to Meta")

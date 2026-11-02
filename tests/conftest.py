@@ -1,3 +1,6 @@
+"""Shared fixtures: a real nanokvm service on a free local port, wired to the simulated locked computer (a
+simulated desktop, serial link and HDMI capture). Every test that goes through the service starts here, so
+nothing needs the USB KVM, a GPU or a key."""
 import socket
 import threading
 
@@ -18,6 +21,9 @@ def free_port() -> int:
 
 
 class SimEnv:
+    """The service and its HTTP server running in this process on the simulated desktop, link and capture, with
+    a ServiceClient that talks to it. Keys are held for a millisecond and clicks for five, so the tests run fast."""
+
     def __init__(self, tmp_path, bars=(0, 0), caps_lock=False, port=None, editor_lines=None, **cfg_overrides):
         cfg_overrides.setdefault("wake_after_s", 0)      # off: most tests count the exact keys sent (test_hid has it on)
         self.cfg = Config(home=tmp_path, port=port or free_port(), simulate=True, idle_exit_min=0,
@@ -32,7 +38,7 @@ class SimEnv:
                                        daemon=True)
         self.thread.start()
         self.client = ServiceClient(self.cfg)
-        assert self.capture.wait_frame(0, timeout=5) is not None
+        assert self.capture.wait_frame(0, timeout=5) is not None     # a frame is in before any test asks for one
 
     def close(self):
         self.server.stopping.set()
@@ -43,6 +49,7 @@ class SimEnv:
 
 @pytest.fixture
 def sim(tmp_path):
+    """One simulated setup with the default settings, closed after the test."""
     env = SimEnv(tmp_path)
     yield env
     env.close()
@@ -50,6 +57,7 @@ def sim(tmp_path):
 
 @pytest.fixture
 def sim_factory(tmp_path):
+    """Makes simulated setups with their own settings, each in its own folder. All are closed after the test."""
     envs = []
 
     def make(**kw):

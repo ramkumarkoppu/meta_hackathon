@@ -4,7 +4,7 @@ Reads the key from E:\\meta_hackathon\\.run\\meta_api_key (one line; never print
   1. GET /v1/status (no key) and GET /v1/models: the key works and muse-spark-1.3 is enabled.
   2. A plain chat completion with store=false: status 200, the reply names exactly the Standard model we asked for
      (Meta's terms say requests "may" be routed to a Contributor model, whose content can be used for training).
-  3. Structured output (strict json_schema) and streaming with usage, which the pipeline will use.
+  3. Structured output (strict json_schema), and streaming with usage as the pipeline uses it.
 Any failed check stops the run with exit code 1. It prints token use and the cost at muse-spark-1.3 Standard
 prices; a full run costs well under one cent.
 
@@ -30,6 +30,7 @@ KEY_RE = re.compile(r"LLM_\d+_[!-~]+")  # Meta's documented form LLM_<numeric id
 
 
 def load_key() -> str:
+    """The key from .run/meta_api_key. A missing or malformed file stops the run without showing its contents."""
     path = ROOT / ".run" / "meta_api_key"
     if not path.exists():
         sys.exit(f"No key file. Create a key at dev.meta.ai, save it as the only line of {path} "
@@ -60,6 +61,7 @@ OPENER = urllib.request.build_opener(_NoRedirect)  # TLS certificate checks stay
 
 def request(method: str, path: str, key: str | None, body: dict | None = None, timeout: float = 120.0,
             accept: str = "application/json"):
+    """Open one request to Meta's API. The key goes in an unredirected header, and redirects are refused."""
     req = urllib.request.Request(BASE_URL + path, method=method,
                                  headers={"Accept": accept, "User-Agent": "nanokvm-spark-smoke/1"})
     if key:
@@ -85,6 +87,7 @@ def call_json(method: str, path: str, key: str | None, body: dict | None = None)
 
 
 def explain(status: int, payload: dict) -> str:
+    """An HTTP error in one line, with a hint for the usual codes."""
     err = payload.get("error", payload)
     hint = {401: "the key was rejected", 402: "billing: add a payment method or credits",
             403: "not allowed for this account or region", 404: "unknown path or model",
@@ -100,6 +103,7 @@ def check_model(reply: dict) -> str:
 
 
 def cost(usage: dict) -> float:
+    """A request's cost in USD at muse-spark-1.3 Standard prices."""
     cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0
     fresh = (usage.get("prompt_tokens", 0) or 0) - cached
     out = usage.get("completion_tokens", 0) or 0
@@ -116,6 +120,7 @@ def chat_body(messages: list, **extra) -> dict:
 
 
 def run_checks(key: str) -> int:
+    """The checks in the module docstring, in order. Returns 1 at the first that fails."""
     total = 0.0
 
     status, payload, _ = call_json("GET", "/status", None)

@@ -1,5 +1,5 @@
-"""A simulated locked computer: synthetic HDMI frames plus a fake serial link that reacts to the
-same keyboard/mouse packets the real NanoKVM receives. Used by the tests and by
+"""A simulated locked computer: synthetic HDMI frames plus a simulated serial link that reacts to the
+same keyboard/mouse packets the real USB KVM receives. Used by the tests and by
 ``NANOKVM_SIMULATE=1`` so the whole chain can be exercised without hardware. Keystrokes are
 decoded with the US layout, so with keyboard_layout = "uk" symbols such as " @ # £ come out wrong."""
 from __future__ import annotations
@@ -28,7 +28,7 @@ class SimEditor:
     """A tiny stand-in for VS Code, for the edit tests: numbered lines, a cursor, Ctrl+G (Go to Line, cursor at
     column 1), Ctrl+L (expand line selection), Ctrl+S (save), Backspace, Escape, Enter and typing (US layout), a
     status bar like VS Code's ("Ln 25, Col 1 (61 selected)") and the file's tab, with a dot while there are
-    unsaved changes. Typing replaces a selection; auto-indent and auto-closing are off, as README section 7
+    unsaved changes. Typing replaces a selection; auto-indent and auto-closing are off, as README section 4
     asks."""
 
     VISIBLE = 30                                   # rows on the screen
@@ -82,6 +82,7 @@ class SimEditor:
 
     # ---- input
     def key(self, mods: int, usage: int) -> None:
+        """One key press as VS Code would take it. While the Go to Line box is open, it gets the keys."""
         ctrl, shift = bool(mods & _CTRL), bool(mods & _SHIFT)
         ch = _REVERSE.get((usage, shift))
         if self.goto is not None:                  # the Go to Line box has the keyboard
@@ -193,6 +194,9 @@ class SimEditor:
 
 
 class SimDesktop:
+    """The simulated screen: a Notepad-like window (or a SimEditor), a button and the pointer, changed by the
+    keyboard/mouse packets. ``bars`` adds black bars round it, as a GPU's pillarbox or letterbox would."""
+
     def __init__(self, width: int = 1920, height: int = 1080, bars: tuple[int, int] = (0, 0),
                  editor_lines: list[str] | None = None) -> None:
         self.frame_w, self.frame_h = width, height
@@ -218,6 +222,7 @@ class SimDesktop:
 
     # ---- input
     def apply(self, frame: bytes) -> None:
+        """One keyboard or mouse packet, taken as the locked computer would take it."""
         cmd, data = frame[3], frame[5:5 + frame[4]]
         with self.lock:
             if cmd == P.CMD_KEYBOARD:
@@ -256,6 +261,7 @@ class SimDesktop:
 
     # ---- output
     def render(self) -> np.ndarray:
+        """The frame the KVM would capture now."""
         with self.lock:
             frame = np.zeros((self.frame_h, self.frame_w, 3), np.uint8)
             desk = np.zeros((self.desk_h, self.desk_w, 3), np.uint8)
@@ -304,7 +310,7 @@ class SimDesktop:
 
 
 class SimLink:
-    """Fake serial link: applies packets to the SimDesktop and answers GET_INFO."""
+    """The simulated serial link: applies packets to the SimDesktop and answers GET_INFO with its lock lights."""
 
     def __init__(self, desktop: SimDesktop, caps_lock: bool = False) -> None:
         self.desktop = desktop
@@ -325,7 +331,7 @@ class SimLink:
         return None
 
     def describe(self) -> str:
-        return "simulated NanoKVM serial link"
+        return "simulated USB KVM serial link"
 
     def close(self) -> None:
         pass

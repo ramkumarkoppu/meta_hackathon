@@ -1,4 +1,8 @@
-"""HDMI capture from the NanoKVM-USB (MacroSilicon MS2131 UVC device) via OpenCV DirectShow.
+"""HDMI capture from the USB KVM (its MacroSilicon MS2131 UVC chip) through OpenCV's DirectShow backend.
+
+This is the first link of the chain. The nanokvm service owns one HdmiCapture and hands its frames to the live view
+and, through /api/frame, to Glimmer. Only the newest frame is kept, in memory, and it is forgotten when the video
+stops. Nothing here writes a picture to disk.
 
 Rules (from OpenCV's cap_dshow.cpp):
   * Only open a device whose DirectShow path carries an allowed VID:PID. Never fall back to
@@ -25,6 +29,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class Frame:
+    """One captured frame, held in memory only."""
     image: np.ndarray   # BGR uint8, HxWx3
     t: float            # time.monotonic() when captured
     wall: float         # time.time() when captured
@@ -32,6 +37,7 @@ class Frame:
 
 
 class CaptureSource(Protocol):
+    """What the service needs from a capture: HdmiCapture on the real hardware, the simulator's in the tests."""
     def wait_frame(self, after_seq: int = 0, timeout: float = 3.0) -> Frame | None: ...
     def latest(self) -> Frame | None: ...
     def status(self) -> dict: ...
@@ -48,6 +54,7 @@ class FrameStore:
         self._fps = 0.0
 
     def put(self, image: np.ndarray) -> Frame:
+        """Make ``image`` the newest frame and wake every waiter. The fps is a smoothed running average."""
         now = time.monotonic()
         with self._cond:
             if self._latest is not None:
@@ -65,12 +72,14 @@ class FrameStore:
             return self._latest
 
     def wait_frame(self, after_seq: int = 0, timeout: float = 3.0) -> Frame | None:
+        """The newest frame once its seq is past ``after_seq``, or None after ``timeout``."""
         with self._cond:
             self._cond.wait_for(lambda: self._latest is not None and self._latest.seq > after_seq, timeout)
             f = self._latest
             return f if f is not None and f.seq > after_seq else None
 
     def wake(self) -> None:
+        """Wake every waiter now, so closing doesn't wait out their timeouts."""
         with self._cond:
             self._cond.notify_all()
 
@@ -86,6 +95,7 @@ class FrameStore:
 
 
 def fourcc_to_str(value: float) -> str:
+    """OpenCV's FOURCC property as its four letters, such as MJPG."""
     v = int(value)
     return "".join(chr((v >> (8 * i)) & 0xFF) for i in range(4))
 
@@ -111,6 +121,7 @@ def list_video_devices() -> list[dict]:
 
 
 def find_capture_device(ids: list[tuple[int, int]]) -> dict | None:
+    """The first DirectShow device whose USB VID:PID is in ``ids``, or None."""
     hits = [d for d in list_video_devices() if (d["vid"], d["pid"]) in ids]
     if len(hits) > 1:
         log.warning("several capture devices match %s, using the first: %r", ids, hits)
@@ -118,7 +129,8 @@ def find_capture_device(ids: list[tuple[int, int]]) -> dict | None:
 
 
 class HdmiCapture:
-    """Continuously captures the NanoKVM HDMI input in a background thread."""
+    """Captures the KVM's HDMI input continuously in a background thread, and reopens the device when it is lost or
+    stops sending video."""
 
     def __init__(self, ids: list[tuple[int, int]], index: int | None = None, width: int = 1920,
                  height: int = 1080, fps: int = 30, fourcc: str = "MJPG",
@@ -179,7 +191,7 @@ class HdmiCapture:
             if info is None:
                 want = ", ".join(f"{v:04X}:{p:04X}" for v, p in self.ids)
                 raise RuntimeError(
-                    f"NanoKVM capture device not found (USB VID:PID {want}). Plug the NanoKVM's "
+                    f"USB KVM capture device not found (USB VID:PID {want}). Plug the KVM's "
                     "HOST-end USB-C into this laptop.")
             idx, name = info["index"], f"{info['name']} (DirectShow index {info['index']})"
         cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
@@ -204,7 +216,7 @@ class HdmiCapture:
             cap.release()
             raise RuntimeError(
                 "the capture device opened but sent no video. Another program may be using it "
-                "(NanoKVM-USB app, usbkvm.sipeed.com tab, Camera app, OBS, Teams), or the locked computer "
+                "(the KVM's own app or web page, Camera app, OBS, Teams), or the locked computer "
                 "has its HDMI output off.")
         with self._lock:
             self._device = name

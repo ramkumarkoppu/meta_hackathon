@@ -1,6 +1,7 @@
-"""Milestone 2: Muse Spark's edits, approved at the console, typed into the simulated VS Code and checked on the
-screen. A fake Glimmer "reads" the simulated editor (and, with Local only, is the coder); a fake Meta Model API
-plays Spark."""
+"""The fix loop (editing.py, nanokvm edit and fix): the coder's edits, approved at the console, typed through the
+KVM's keyboard into the simulated VS Code and checked on the screen before each step that can't be undone and after
+the typing. Spark is the coder through the outbound gate, or Glimmer with Local only. A mock Glimmer "reads" the
+simulated editor and a mock Meta Model API plays Spark."""
 import _thread
 import json
 import threading
@@ -44,12 +45,15 @@ def _local_call(**args):
 
 @pytest.fixture
 def world(tmp_path):
+    """The simulated desktop with VS Code showing FILE as sum.cpp, and mock Glimmer and Meta servers. Queue Spark's
+    replies in ``replies``, Glimmer's plans in ``plans`` and its answers as the coder in ``coder``. ``run`` runs the
+    fix loop once, with no pauses between keys."""
     env = SimEnv(tmp_path, editor_lines=FILE)
     ed = env.desk.editor
     ed.name = "sum.cpp"
-    # Fix it: plans (Glimmer's answers to PLAN_PROMPT, in turn) and where each target is (per mille; the simulated
-    # desktop's button is at 781 148 937 231), plus the window described for Spark
-    # Glimmer as the coder (Local only): its answers, in turn, to the fix loop's requests (they carry the tools)
+    # Fix it: Glimmer's answers to PLAN_PROMPT in turn, where it finds each target (per mille, and the simulated
+    # desktop's button is at 781 148 937 231), and the window as described for Spark.
+    # Glimmer as the coder (Local only): its answers in turn to the fix loop's requests, which carry the tools.
     w = SimpleNamespace(env=env, ed=ed, replies=[], status_override=None, tab_override=None, cfg=env.cfg,
                         diagnosis="VS Code, sum.cpp\nNo errors shown.", plans=[], ui_text="Window: Simulated tool\n"
                         "Button: 'Button x0' (top right)", locate=lambda target: "781 148 937 231", coder=[])
@@ -196,7 +200,7 @@ def test_cli_fix_auto_asks_once_then_types_without_asking(world, monkeypatch, ca
     monkeypatch.setattr(cli.Config, "load", classmethod(lambda c, *a, **k: w.cfg))
     asked = []
     monkeypatch.setattr(cli, "_console_yes", lambda q: asked.append(q) or True)
-    monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the fake Meta API, never the real one
+    monkeypatch.setattr("nanokvm_mcp.pipeline.SparkClient",                # the mock Meta API, never the real one
                         lambda cfg: SparkClient(cfg, base_url=f"http://127.0.0.1:{w.meta.port}"))
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="use <"), spark_stream("Fixed line 6."),
                   spark_stream("FIXED: the loop no longer reads v[n].")]
@@ -243,7 +247,7 @@ def _misread_first(w, monkeypatch, wrong):
 
 
 def test_fix_tries_again_from_the_screen_as_read_now(world, monkeypatch):
-    w = world                                       # seen live on 30 Oct: line 8 read differently the second time
+    w = world                                       # a line can read differently the second time
     _misread_first(w, monkeypatch, "    for (int i = 0; i <= n; ++j) {")
     w.replies += [_call(start_line=6, end_line=6, new_text=FIX, note="loop bound"),
                   _call(start_line=6, end_line=6, new_text=FIX, note="loop bound, from the screen read again"),
@@ -426,7 +430,7 @@ def test_the_files_last_line_can_be_edited(world):
 
 
 def test_fix_deletes_garbage_on_the_last_line_then_saves(world):
-    w = world                                       # seen live on 30 Oct: hello.cpp with junk typed on its last line
+    w = world                                       # as with hello.cpp, which had junk typed on its last line
     w.ed.lines.append("sdfg sdfg;;")
     w.replies += [_call(start_line=11, end_line=11, new_text="", note="delete the junk"), spark_stream("Done."),
                   spark_stream("FIXED: the junk on line 11 is gone.")]
@@ -474,7 +478,7 @@ def test_a_new_line_read_with_other_indentation_is_verified_by_the_status_bar(wo
 
 
 def test_fix_plans_again_with_the_indentation_the_editor_measured(world, monkeypatch):
-    w = world                                       # seen live on 30 Oct: the old line read with the wrong indentation
+    w = world                                       # the old line can read with the wrong indentation
     real = w.ed.transcription
     monkeypatch.setattr(w.ed, "transcription", lambda: real().replace("6 " + FILE[5], "6 " + FILE[5].lstrip()))
     unindented = FIX.lstrip()                                     # what Spark writes from that reading
@@ -713,6 +717,7 @@ def test_approve_flag_makes_the_setting_stricter_never_looser(world, monkeypatch
 
 # ---------------------------------------------------------------- pieces
 def E_KEY(name):
+    """The HID usage for a key name or a character."""
     from nanokvm_mcp.keys import CHARS, KEYS
     return KEYS[name] if name in KEYS else CHARS[name][0]
 
@@ -791,6 +796,7 @@ def test_keys_cut_short_by_release_all_stop_the_edit():
 
 
 def test_ctrl_c_is_seen_while_the_service_is_still_typing():
+    """Ctrl+C mustn't wait for a long type request to finish: every key is released at once."""
     screen = {6: FILE[5], 7: FILE[6]}
     plan = E.plan_edit({"start_line": 6, "end_line": 6, "new_text": FIX, "note": ""}, screen, "us")
     statuses = iter(["Ln 6, Col 1", "Ln 6, Col 5", "Ln 7, Col 1 (36 selected)"])   # Go to Line, End+Home, Ctrl+L

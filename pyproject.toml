@@ -1,7 +1,7 @@
 [project]
 name = "nanokvm-mcp"
 version = "0.1.0"
-description = "AI help for a locked computer through a Sipeed NanoKVM-USB: Muse Glimmer reads the screen on the local GPU, Muse Spark gets only redacted text, and approved edits are typed back"
+description = "AI help for a locked computer through a USB KVM: Muse Glimmer reads the screen on the local GPU, Muse Spark gets only redacted text, and approved edits are typed back"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

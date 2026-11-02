@@ -3,7 +3,7 @@ beside it for questions about the screen (assist.py).
 
 The live view itself is read-only:
   * it plays the service's MJPEG live stream (/stream.mjpg) and polls /api/status, so the service
-    stays the only process that opens the NanoKVM;
+    stays the only process that opens the USB KVM;
   * it never makes the service open the keyboard/mouse link and sends nothing to the locked
     computer: keys and clicks in the window stay on this laptop;
   * frames live only in memory; nothing is written to disk.
@@ -106,6 +106,7 @@ def fit_size(w: int, h: int, box_w: int, box_h: int) -> tuple[int, int]:
 
 @dataclass
 class Picture:
+    """One frame of the live stream, decoded and scaled for the window."""
     ppm: bytes                       # binary PPM, the format Tk's PhotoImage reads fastest
     width: int                       # size as shown
     height: int
@@ -203,7 +204,7 @@ class LiveFeed:
 
 class StatusPoller:
     """Fetches /api/status about once a second on a background thread, so the window never waits on
-    HTTP. Also looks for the NanoKVM's COM port (listed only, never opened). /api/status itself never
+    HTTP. Also looks for the KVM's COM port (listed only, never opened). /api/status itself never
     opens the keyboard/mouse link."""
 
     def __init__(self, client: ServiceClient, period: float = 1.0) -> None:
@@ -237,7 +238,7 @@ class StatusPoller:
 
 
 def find_serial_port(cfg: Config) -> tuple[str | None, bool]:
-    """(port, present): the NanoKVM keyboard/mouse COM port(s) by USB ID as in nanokvm diag, or the
+    """(port, present): the KVM's keyboard/mouse COM port(s) by USB ID as in nanokvm diag, or the
     serial_port set in nanokvm.toml and whether it exists. Ports are listed, never opened."""
     try:
         from .hid import list_serial_ports
@@ -264,6 +265,7 @@ class ViewStats:
         self.scale = 1.0                 # shown size / streamed size of the last picture
 
     def record(self, pic: Picture) -> None:
+        """Count a picture shown and, for a real frame, its delay from capture to window."""
         now = time.monotonic()
         self.shown += 1
         self._recent.append(now)
@@ -312,11 +314,11 @@ def video_line(status: dict | None, status_error: str | None, feed, stats: ViewS
     and ``start_error`` describe a service start requested with R."""
     if feed.state != "streaming":
         if starting:
-            return "Starting the NanoKVM service…", FG
+            return "Starting the nanokvm service…", FG
         if start_error:
             first = start_error.splitlines()[0].split(". ")[0].rstrip(".:")
-            return f"Couldn't start the NanoKVM service: {first} – press R to try again", BAD_FG
-        why = feed.error or status_error or "Connecting to the NanoKVM service…"
+            return f"Couldn't start the nanokvm service: {first} – press R to try again", BAD_FG
+        why = feed.error or status_error or "Connecting to the nanokvm service…"
         if feed.unreachable:
             why += " – press R to start it"
         return why, (FG if feed.state == "connecting" else BAD_FG)
@@ -347,7 +349,7 @@ def video_line(status: dict | None, status_error: str | None, feed, stats: ViewS
 
 
 def keyboard_text(control: dict, serial: tuple[str | None, bool]) -> str:
-    """``serial`` is find_serial_port's (port, present)."""
+    """The keyboard/mouse part of the second status line. ``serial`` is find_serial_port's (port, present)."""
     if not control.get("enabled"):
         return "Keyboard/mouse: off (control = false)"
     if control.get("link"):                        # opened by a keyboard/mouse action
@@ -364,7 +366,7 @@ def keyboard_text(control: dict, serial: tuple[str | None, bool]) -> str:
         return f"Keyboard/mouse: {port} found (opens on the first keyboard/mouse action)"
     if port:
         return f"Keyboard/mouse: {port} (serial_port in nanokvm.toml) is not present"
-    return "Keyboard/mouse: NanoKVM COM port not found (check the HOST-end USB-C cable)"
+    return "Keyboard/mouse: USB KVM COM port not found (check the HOST-end USB-C cable)"
 
 
 def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[str, str]:
@@ -561,6 +563,7 @@ class AskPanel:
             self._drop_card()
 
     def decide(self, yes: bool) -> None:
+        """The person's click on the approval card's yes or no button."""
         a = self.approval
         if a is None or self.session is None:
             return
@@ -580,6 +583,7 @@ class AskPanel:
         return self.session is not None and self.session.busy
 
     def do_blocked(self) -> str | None:
+        """Why Fix it can't run, or None."""
         return None if self.cfg.control else "keyboard/mouse control is off (control = false in nanokvm.toml)"
 
     def refresh(self) -> None:
@@ -673,6 +677,9 @@ class AskPanel:
 
 
 class ViewerWindow:
+    """The Tk window: the live picture, two status lines and the prompt box. Tk runs on the main thread; the
+    stream, the status poll and the prompt box's work each have their own thread and hand over through queues
+    and slots that ``_tick`` reads."""
     TICK_MS = 8                     # how often the window looks for a new picture
 
     def __init__(self, client: ServiceClient, fps: int = DEFAULT_FPS, close_after: float | None = None) -> None:
@@ -699,7 +706,7 @@ class ViewerWindow:
         self.canvas.pack(side="top", fill="both", expand=True)
         self.image_item = self.canvas.create_image(0, 0, anchor="nw")
         self.note_item = self.canvas.create_text(0, 0, fill=FG, font=("Segoe UI", 12),
-                                                 text="Connecting to the NanoKVM service…")
+                                                 text="Connecting to the nanokvm service…")
         # A Fix it step's target, outlined on the picture before the step is done (per mille of the screen)
         self.target_item = self.canvas.create_rectangle(0, 0, 0, 0, outline=TARGET_FG, width=3, state="hidden")
         self.target: tuple[int, int, int, int] | None = None
@@ -752,6 +759,7 @@ class ViewerWindow:
         self.root.mainloop()
 
     def close(self) -> None:
+        """Close the prompt box's session first (see AssistSession.close), then the threads and the window."""
         if self.closed:
             return
         self.closed = True
@@ -772,6 +780,7 @@ class ViewerWindow:
         self.photo = None
 
     def summary(self) -> str:
+        """The line printed in the terminal when the window closes."""
         text = self.stats.summary()
         if self.feed.reconnects:
             text += f" The stream reconnected {self.feed.reconnects} time(s)."

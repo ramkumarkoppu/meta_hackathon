@@ -1,3 +1,5 @@
+"""Coordinate spaces (geometry.py): screen coordinates to the KVM's absolute mouse grid and to capture pixels,
+and the check for a blank picture. Every click the service sends and every crop Glimmer reads goes through these."""
 import cv2
 import numpy as np
 
@@ -24,8 +26,8 @@ def test_screen_to_abs_corners_and_centre():
 
 
 def test_target_pixel_lands_where_the_click_was_aimed():
-    # the target maps abs a -> desktop pixel floor(a * W / 4096); a click at screen-coordinate pixel x on a
-    # 1280-wide image of a 1920-wide desktop must land within 1 desktop pixel of x * 1.5
+    # the locked computer maps abs a to desktop pixel floor(a * W / 4096). A click at screen coordinate x, in a
+    # 1280-wide space over a 1920-wide desktop, must land within 1 desktop pixel of x * 1.5
     for x in range(0, 1280, 37):
         ax, _ = G.screen_to_abs(x, 0, 1280, 720)
         desk = ax * 1920 // 4096

@@ -1,4 +1,6 @@
-"""The live view window (nanokvm viewer) and the stream it plays, against the simulated locked computer."""
+"""The live view window (nanokvm viewer) and the stream it plays, against the simulated locked computer. On its
+own the window only watches: it never opens the KVM's serial link or writes a picture to disk. The service drops
+its cached picture once nobody watches. Also the window's prompt box and the status, stop and keytest commands."""
 import argparse
 import gc
 import io
@@ -33,6 +35,7 @@ def _free_tk_on_the_main_thread():
 
 
 def _part(body, extra=b""):
+    """One part of the service's MJPEG stream, with ``extra`` header lines."""
     return (b"--frame\r\nContent-Type: image/jpeg\r\n" + extra + b"Content-Length: %d\r\n\r\n" % len(body)
             + body + b"\r\n")
 
@@ -57,6 +60,7 @@ def _wait_picture(feed, size=None, timeout=10.0):
 
 
 def _window(sim, **kw):
+    """A viewer window on the simulated setup, kept hidden. The test is skipped where Tk can't make one."""
     tk = pytest.importorskip("tkinter")
     try:
         win = V.ViewerWindow(sim.client, fps=30, **kw)
@@ -232,6 +236,7 @@ def test_status_never_opens_the_keyboard_mouse_link(tmp_path):
 
 
 def _status(**over):
+    """A service status answer as the viewer polls it, with ``over`` replacing top-level keys."""
     st = {"simulated": False, "shares_active": 0,
           "capture": {"state": "streaming", "mode": "1920x1080 MJPG (requested 1920x1080@30)", "fps": 30.4,
                       "frame_size": [1920, 1080], "blank": False, "error": None},
@@ -260,7 +265,7 @@ def test_status_lines_report_the_setup():
     assert "waiting for the service status" in text and "None" not in text and colour == V.FG
     old = _status()
     del old["shares_active"]                                           # a service started from older code
-    down = SimpleNamespace(state="reconnecting", error="cannot reach the NanoKVM service", unreachable=True)
+    down = SimpleNamespace(state="reconnecting", error="cannot reach the nanokvm service", unreachable=True)
     assert "press R" in V.video_line(None, None, down, stats)[0]
 
     text, colour = V.other_line(_status(), ("COM5", True))
@@ -400,20 +405,20 @@ def test_r_starts_the_service_once_and_says_why_it_failed(sim, monkeypatch):
     def failing_start():
         calls.append(1)
         release.wait(5)
-        raise ServiceError("the NanoKVM service did not start within 25s. Last lines of x\\service.log:\nBOOM")
+        raise ServiceError("the nanokvm service did not start within 25s. Last lines of x\\service.log:\nBOOM")
     monkeypatch.setattr(win.client, "ensure_running", failing_start)
-    down = SimpleNamespace(state="reconnecting", error="cannot reach the NanoKVM service", unreachable=True)
+    down = SimpleNamespace(state="reconnecting", error="cannot reach the nanokvm service", unreachable=True)
     try:
         for _ in range(5):                    # a held R key repeats
             win.start_service()
         assert win.starting
         assert V.video_line(None, None, down, win.stats, win.starting, win.start_error) == \
-            ("Starting the NanoKVM service…", V.FG)
+            ("Starting the nanokvm service…", V.FG)
         release.set()
         win._starter.join(5)
         assert calls == [1]
         text, colour = V.video_line(None, None, down, win.stats, win.starting, win.start_error)
-        assert text == ("Couldn't start the NanoKVM service: the NanoKVM service did not start within 25s "
+        assert text == ("Couldn't start the nanokvm service: the nanokvm service did not start within 25s "
                         "– press R to try again") and colour == V.BAD_FG
     finally:
         release.set()

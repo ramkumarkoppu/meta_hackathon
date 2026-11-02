@@ -1,4 +1,9 @@
-"""Client for the shared NanoKVM service; starts the service in the background when needed."""
+"""Client for the nanokvm service, used by every command and the viewer. It starts the service in the background
+when needed.
+
+Every request carries the token from run_dir/token. A client made with a client id (the pipeline's) also sends
+X-NanoKVM-Client, so the service lets it capture only while its screen share lasts.
+"""
 from __future__ import annotations
 
 import http.client
@@ -42,6 +47,8 @@ def _is_timeout(exc: BaseException) -> bool:
 
 
 class ServiceClient:
+    """HTTP to the service on 127.0.0.1, never through a proxy."""
+
     def __init__(self, cfg: Config, client_id: str | None = None) -> None:
         self.cfg = cfg
         self.client_id = client_id   # set by the pipeline: captures then need an approved screen share
@@ -55,6 +62,8 @@ class ServiceClient:
 
     # ---- raw HTTP
     def request(self, method: str, path: str, body: dict | None = None, timeout: float = 15.0) -> dict:
+        """One JSON request. A refusal raises ServiceError with the service's own message; nothing listening raises
+        ServiceUnreachable, and no answer in time ServiceTimeout. A 401 is tried once more."""
         data = None if body is None else json.dumps(body).encode("utf-8")
         for attempt in (0, 1):
             req = urllib.request.Request(self.cfg.base_url + path, data=data, method=method)
@@ -78,11 +87,11 @@ class ServiceClient:
                 raise ServiceError(msg, status=e.code) from None
             except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
                 if _is_timeout(e):
-                    raise ServiceTimeout(f"the NanoKVM service did not answer within {timeout:.0f}s "
+                    raise ServiceTimeout(f"the nanokvm service did not answer within {timeout:.0f}s "
                                          f"({method} {path})") from None
                 reason = getattr(e, "reason", e)
                 raise ServiceUnreachable(
-                    f"cannot reach the NanoKVM service at {self.cfg.base_url}: {reason}") from None
+                    f"cannot reach the nanokvm service at {self.cfg.base_url}: {reason}") from None
             except (http.client.HTTPException, ValueError) as e:
                 raise ServiceError(f"unexpected answer from {self.cfg.base_url}{path}: "
                                    f"{type(e).__name__}: {e}. Is another program using port "
@@ -104,12 +113,12 @@ class ServiceClient:
             resp = conn.getresponse()
         except ConnectionRefusedError:
             conn.close()
-            raise ServiceUnreachable(f"cannot reach the NanoKVM service at {self.cfg.base_url}: "
+            raise ServiceUnreachable(f"cannot reach the nanokvm service at {self.cfg.base_url}: "
                                      "connection refused (is it running?)") from None
         except (OSError, http.client.HTTPException) as e:
             conn.close()
             if _is_timeout(e):
-                raise ServiceTimeout(f"the NanoKVM service did not answer within {timeout:.0f}s "
+                raise ServiceTimeout(f"the nanokvm service did not answer within {timeout:.0f}s "
                                      "(GET /stream.mjpg)") from None
             raise ServiceError(f"cannot open the live stream at {self.cfg.base_url}: "
                                f"{type(e).__name__}: {e}") from None
@@ -136,16 +145,18 @@ class ServiceClient:
         except ServiceError as e:
             if e.status == 401:
                 raise ServiceError(
-                    f"a NanoKVM service on port {self.cfg.port} rejected the token in "
+                    f"a nanokvm service on port {self.cfg.port} rejected the token in "
                     f"{self.cfg.run_dir / 'token'}; it was probably started from another folder. "
                     "Stop it (nanokvm stop there, or end its pythonw.exe process) and retry.") from None
-            raise ServiceError(f"port {self.cfg.port} answers but not as the NanoKVM service ({e}); "
+            raise ServiceError(f"port {self.cfg.port} answers but not as the nanokvm service ({e}); "
                                "set a different port in nanokvm.toml") from None
         if st.get("service") != "nanokvm":
             raise ServiceError(f"port {self.cfg.port} is used by another program; set port in nanokvm.toml")
         return True
 
     def ensure_running(self, start_timeout: float = 25.0) -> None:
+        """Start the service unless it answers, and wait up to ``start_timeout`` for it. If it doesn't come up, the
+        error ends with the last lines of service.log."""
         if self.is_running():
             return
         self.spawn()
@@ -160,7 +171,7 @@ class ServiceClient:
             tail = "\n".join(log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-8:])
         except OSError:
             pass
-        raise ServiceError(f"the NanoKVM service did not start within {start_timeout:.0f}s. "
+        raise ServiceError(f"the nanokvm service did not start within {start_timeout:.0f}s. "
                            f"Last lines of {log_path}:\n{tail}")
 
     def spawn(self) -> None:
@@ -188,7 +199,7 @@ class ServiceClient:
                 subprocess.Popen(cmd, start_new_session=True, **kwargs)
         finally:
             out.close()
-        log.info("started NanoKVM service: %s", " ".join(cmd))
+        log.info("started the nanokvm service: %s", " ".join(cmd))
 
     def stop(self, wait_s: float = 20.0) -> bool:
         """Ask the service to exit; returns once the camera and COM port are released."""
@@ -207,6 +218,7 @@ class ServiceClient:
 
     # ---- API wrappers (all auto-start the service)
     def call(self, method: str, path: str, body: dict | None = None, timeout: float = 15.0) -> dict:
+        """``request``, starting the service first if nothing is listening."""
         try:
             return self.request(method, path, body, timeout)
         except ServiceUnreachable:
@@ -225,6 +237,8 @@ class ServiceClient:
         return self.call("POST", "/api/frame", body, timeout=25.0)
 
     def act(self, body: dict) -> dict:
+        """One keyboard or mouse action. The timeout grows with the text or keys, since the service answers only
+        once they are all sent."""
         timeout = 30.0
         if body.get("action") == "type":
             per_char = (self.cfg.key_hold_ms + 2 * self.cfg.key_gap_ms) / 1000.0

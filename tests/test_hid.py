@@ -1,3 +1,6 @@
+"""Keyboard and mouse output through the KVM's serial link (hid.py), the last step before a key or click reaches
+the locked computer. A recording link keeps the packets sent. The simulated desktop checks the wake-up taps that
+go before the first keys after a quiet spell."""
 import threading
 import time
 
@@ -9,6 +12,9 @@ from nanokvm_mcp.keys import parse_sequence
 
 
 class RecordingLink:
+    """A serial link that keeps every packet written. With ``fail_after`` it fails from then on, as an unplugged
+    KVM would."""
+
     def __init__(self, fail_after=None, info=None):
         self.frames = []
         self.fail_after = fail_after
@@ -73,6 +79,7 @@ def test_release_all_releases_a_held_button_in_place():
 
 
 def test_busy_instead_of_queueing():
+    """A queued action would run later, after its caller gave up, so a second one fails with HidBusy."""
     link = RecordingLink()
     h = Hid(link, key_hold_ms=0, key_gap_ms=0, click_hold_ms=0, busy_timeout=0.2)
     h._lock.acquire()                               # another action holds the device
@@ -211,8 +218,9 @@ def test_unknown_button():
 
 # ---------------------------------------------------------------- waking the locked computer before the first keys
 class LossyLink:
-    """The simulated locked computer, but the first ``lose`` keyboard reports never arrive: as seen live, the
-    first Ctrl+G after the link opened (or after an idle hour) did nothing."""
+    """The simulated locked computer, except that the first ``lose`` keyboard reports never arrive. On the real
+    setup the first Ctrl+G after the link opened, or after an idle hour, did nothing. With ``leds_follow`` off the
+    KVM always reports the lock lights off."""
     def __init__(self, lose=0, leds_follow=True):
         from nanokvm_mcp.simulator import SimDesktop, SimLink
         self.desk = SimDesktop()

@@ -2,6 +2,9 @@
 
 Precedence (highest first): environment variable ``NANOKVM_<FIELD>`` > ``nanokvm.toml`` > default.
 Example: ``NANOKVM_SERIAL_PORT=COM5`` or, in nanokvm.toml, ``serial_port = "COM5"``.
+
+Every part takes its settings from a Config: the service, the commands, the viewer, the Glimmer and Spark clients
+and the outbound gate.
 """
 from __future__ import annotations
 
@@ -41,11 +44,12 @@ def _parse_bool(text: str) -> bool:
 
 @dataclass
 class Config:
+    """Every setting and its default."""
     # --- local service (shared by every nanokvm command and the viewer window) ---
     port: int = 8765                     # always bound to 127.0.0.1
     idle_exit_min: float = 60.0          # service exits after this long without clients (0 = never)
 
-    # --- HDMI capture (NanoKVM-USB host side, MacroSilicon MS2131 UVC device) ---
+    # --- HDMI capture (the USB KVM's host side, its MacroSilicon MS2131 UVC chip) ---
     video_ids: str = "345F:2131,345F:2133"  # VID:PID list; the AI computer's own webcam is never matched
     video_index: int | None = None       # explicit DirectShow index override (use with care)
     capture_width: int = 1920
@@ -59,7 +63,7 @@ class Config:
     serial_ids: str = "1A86:7523"
     keyboard_layout: str = "us"         # layout set on the locked computer: "us" or "uk" (PC layouts)
     locked_os: str = "windows"           # the locked computer's OS: "windows", "macos" or "linux"
-    baud: int = 57600                    # official NanoKVM-USB apps use 57600
+    baud: int = 57600                    # the KVM maker's own apps use 57600
 
     # --- the pointer coordinate space (Fix it's clicks, --region) ---
     shot_width: int = 1280               # width of the pointer coordinate space; Glimmer reads full-resolution frames
@@ -94,7 +98,7 @@ class Config:
     meta_budget_usd: float = 25.0        # stop sending once the local audit log adds up to this much
 
     # --- testing ---
-    simulate: bool = False               # synthetic screen + fake keyboard/mouse (no hardware)
+    simulate: bool = False               # simulated locked computer: synthetic screen and keyboard/mouse (no hardware)
 
     home: Path = field(default=_DEFAULT_HOME)
 
@@ -113,6 +117,7 @@ class Config:
 
     @property
     def region_tuple(self) -> tuple[int, int, int, int] | None:
+        """``region`` as (x, y, w, h) in capture pixels, or None when it isn't set."""
         if not self.region:
             return None
         parts = [int(float(p)) for p in self.region.replace(" ", "").split(",")]
@@ -122,6 +127,7 @@ class Config:
 
     @property
     def locked_os_name(self) -> str:
+        """``locked_os`` in lower case. A value that isn't in LOCKED_OSES raises ValueError."""
         name = (self.locked_os or "").strip().lower()
         if name not in LOCKED_OSES:
             raise ValueError(f"locked_os must be one of {', '.join(LOCKED_OSES)}, got {self.locked_os!r}")
@@ -138,6 +144,7 @@ class Config:
 
     @property
     def aspect_value(self) -> float | None:
+        """``display_aspect`` as a number ("16:10" is 1.6), or None when it isn't set."""
         if not self.display_aspect:
             return None
         a, _, b = self.display_aspect.partition(":")
@@ -149,6 +156,7 @@ class Config:
 
     @classmethod
     def load(cls, home: Path | None = None, env: dict[str, str] | None = None) -> "Config":
+        """The defaults, then nanokvm.toml, then NANOKVM_* variables. NANOKVM_HOME picks the project folder."""
         env = dict(os.environ if env is None else env)
         home = Path(env.get("NANOKVM_HOME") or home or _DEFAULT_HOME)
         cfg = cls(home=home)
@@ -169,6 +177,7 @@ class Config:
 
 
 def _coerce(name: str, value: object, default: object) -> object:
+    """A value from nanokvm.toml or the environment, as the type of the field's default."""
     if value is None:
         return None
     if isinstance(default, bool):

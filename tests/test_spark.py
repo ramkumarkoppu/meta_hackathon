@@ -1,4 +1,5 @@
-"""Client for Muse Spark (spark.py), against a fake Meta Model API."""
+"""Client for Muse Spark (spark.py), against a mock Meta Model API. It sits behind the outbound gate and sends
+text only, with store=false. A reply from any model other than the standard one is discarded."""
 import json
 
 import pytest

@@ -4,7 +4,8 @@ prompt (acting.GROUND_PROMPT): a hit is a box whose middle, where Fix it would c
 
     .venv\\Scripts\\python tools\\glimmer_point.py            (Glimmer running: tools\\run-glimmer.ps1)
 
-On 30 Oct this found 8 of 8 targets, and NONE for a button that isn't on the screen.
+It found 8 of 8 targets, and NONE for a button that isn't on the screen. Nothing here touches the KVM or the
+nanokvm service: only Glimmer is asked.
 """
 from __future__ import annotations
 
@@ -69,6 +70,8 @@ def screen() -> tuple[np.ndarray, dict[str, tuple[int, int, int, int]]]:
 
 
 def main() -> int:
+    """Ask for each target and for one that isn't there. Exit code 0 only if every target is hit and the absent
+    one is NONE."""
     img, boxes = screen()
     b64 = base64.b64encode(cv2.imencode(".png", img)[1].tobytes()).decode("ascii")
     glimmer = GlimmerClient(Config.load())

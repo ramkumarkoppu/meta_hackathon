@@ -1,5 +1,7 @@
 """Client for Muse Spark through Meta's Model API: text only, Standard models only, store=false.
 
+In the project only the outbound gate (outbound.py) calls it, with text that is already redacted and checked.
+
 Safeguards, from Meta's documentation (checked 24 Oct 2026):
 - Standard model IDs only. Content sent to them isn't used to train Meta's models (Terms of Service
   5.1); -contributor IDs are refused. Meta's terms say a request "may" be routed to a Contributor
@@ -41,6 +43,7 @@ class SparkModelMismatch(SparkError):
 
 @dataclass
 class SparkReply:
+    """One reply, put together from the stream. Glimmer's replies as the coder use the same shape."""
     content: str
     finish_reason: str
     model: str
@@ -51,6 +54,7 @@ class SparkReply:
 
 
 def cost_usd(model: str, usage: dict) -> float:
+    """What a request cost, from the reply's token counts and PRICES."""
     p_in, p_cached, p_out = PRICES.get(model, PRICES["muse-wonder-1.0"])
     cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0
     fresh = (usage.get("prompt_tokens", 0) or 0) - cached
@@ -58,11 +62,14 @@ def cost_usd(model: str, usage: dict) -> float:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect, so the request and its key never go anywhere else."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise urllib.error.HTTPError(req.full_url, code, "redirect refused", headers, fp)
 
 
 class SparkClient:
+    """Spark's Chat Completions endpoint, with the safeguards above."""
+
     def __init__(self, cfg: Config, base_url: str | None = None) -> None:
         if base_url is not None and not cfg.simulate:
             raise ValueError("the Meta API address can only be changed in simulate mode (tests)")
@@ -89,6 +96,7 @@ class SparkClient:
 
     @staticmethod
     def _text_only(messages: list[dict]) -> None:
+        """Refuse a message part that isn't text, or text with an inline image in it."""
         for m in messages:
             content = m.get("content")
             parts = content if isinstance(content, list) else [content]
@@ -105,6 +113,7 @@ class SparkClient:
     def chat(self, messages: list[dict], *, tools: list[dict] | None = None, reasoning_effort: str | None = None,
              max_completion_tokens: int | None = None, parallel_tool_calls: bool | None = None,
              timeout: float = 600.0) -> SparkReply:
+        """One streamed request. A 429 or 503 is tried again up to twice, after its Retry-After (60 s at most)."""
         self._text_only(messages)
         effort = reasoning_effort or self.cfg.spark_reasoning
         if effort not in EFFORTS:
@@ -141,6 +150,7 @@ class SparkClient:
             raise SparkModelMismatch(f"asked for {self.model} but the reply came from {got!r}; reply discarded")
 
     def _read_stream(self, resp) -> SparkReply:
+        """The reply from the server-sent events. Every chunk that names a model must name ours."""
         content: list[str] = []
         refusal: list[str] = []
         calls: dict[int, dict] = {}

@@ -1,4 +1,7 @@
-"""Keyboard/mouse output to the locked computer through the NanoKVM-USB serial port.
+"""Keyboard/mouse output to the locked computer through the USB KVM's serial port.
+
+The nanokvm service owns one Hid. Every typed edit, every Fix it step and nanokvm keytest go through it, as
+/api/act requests, so this is where the chain's keys leave the laptop.
 
 Safety rules:
   * every public operation ends with all keys up and all buttons up (also on errors); buttons
@@ -10,7 +13,7 @@ Safety rules:
     actions that were already waiting are cancelled (HidAborted);
   * before the first key or click after the link opened, or after ``wake_after_s`` without any, the locked
     computer is woken and checked: Scroll Lock is tapped until its light (which the target's operating system
-    reports back to the chip) follows, then tapped back. Seen live: the first Ctrl+G after a fresh start, or
+    reports back to the chip) follows, then tapped back. Without it, the first Ctrl+G after a fresh start, or
     after an idle hour, did nothing, every time.
 """
 from __future__ import annotations
@@ -37,14 +40,15 @@ class HidError(RuntimeError):
 
 
 class HidBusy(HidError):
-    pass
+    pass                       # another action still holds the keyboard/mouse
 
 
 class HidAborted(HidError):
-    pass
+    pass                       # release_all cancelled the action
 
 
 class Link(Protocol):
+    """The byte link Hid talks through: SerialLink on the real KVM, the simulator's link in the tests."""
     def write(self, frame: bytes) -> None: ...
     def transact(self, frame: bytes, timeout: float = 0.5) -> bytes | None: ...
     def describe(self) -> str: ...
@@ -61,20 +65,22 @@ def _winerror(exc: Exception) -> int | None:
 
 
 def list_serial_ports() -> list[dict]:
+    """The serial ports present (enumeration only; nothing is opened)."""
     from serial.tools import list_ports
     return [{"device": p.device, "description": p.description, "hwid": p.hwid,
              "vid": p.vid, "pid": p.pid} for p in list_ports.comports()]
 
 
 def find_serial_port(ids: list[tuple[int, int]]) -> str:
+    """The one COM port whose USB VID:PID is in ``ids``. None, or several, raises HidError saying what to check."""
     ports = list_serial_ports()
     hits = [p for p in ports if (p["vid"], p["pid"]) in ids]
     if not hits:
         seen = "; ".join(f"{p['device']} ({p['description']})" for p in ports) or "none"
         want = ", ".join(f"{v:04X}:{p:04X}" for v, p in ids)
         raise HidError(
-            f"NanoKVM keyboard/mouse COM port not found (looking for USB VID:PID {want}; ports present: "
-            f"{seen}). Check that serial_ids in nanokvm.toml lists the NanoKVM's serial chip (CH343 "
+            f"USB KVM keyboard/mouse COM port not found (looking for USB VID:PID {want}; ports present: "
+            f"{seen}). Check that serial_ids in nanokvm.toml lists the KVM's serial chip (CH343 "
             "1A86:55D3, CH340 1A86:7523), then the HOST-end USB-C cable: video and the serial chip use "
             "different wires. A CH343 works with Windows' built-in driver; a CH340 needs WCH's: open "
             "Device Manager, find the unknown 'USB Serial' device and choose Update driver > Search "
@@ -86,6 +92,8 @@ def find_serial_port(ids: list[tuple[int, int]]) -> str:
 
 
 class SerialLink:
+    """The KVM's serial port, opened on first use. A failed write reopens it once before giving up."""
+
     def __init__(self, port: str | None, ids: list[tuple[int, int]], baud: int = 57600,
                  video_ids: list[tuple[int, int]] | None = None):
         self._fixed = port
@@ -109,11 +117,11 @@ class SerialLink:
         if self._fixed:
             return self._fixed
         # 1A86:7523 is the generic CH340 ID (Arduinos, printers, ...): only auto-select it when the
-        # NanoKVM itself is attached, and never guess between several.
+        # KVM itself is attached, and never guess between several.
         if self._video_ids:
             from .capture import find_capture_device
             if find_capture_device(self._video_ids) is None:
-                raise HidError("the NanoKVM is not detected (its video device is missing), so no COM port "
+                raise HidError("the USB KVM is not detected (its video device is missing), so no COM port "
                                "was auto-selected. Plug its HOST-end USB-C into this laptop, or set "
                                "serial_port in nanokvm.toml.")
         return find_serial_port(self._ids)
@@ -132,10 +140,10 @@ class SerialLink:
             code = _winerror(e)
             if code == 5:
                 raise HidError(
-                    f"{dev} is in use by another program. Close the NanoKVM-USB desktop app, any "
-                    "usbkvm.sipeed.com browser tab, or serial terminal, then retry.") from e
+                    f"{dev} is in use by another program. Close the KVM's own app or web page, or any "
+                    "serial terminal, then retry.") from e
             if code == 2:
-                raise HidError(f"{dev} does not exist (NanoKVM unplugged?)") from e
+                raise HidError(f"{dev} does not exist (USB KVM unplugged?)") from e
             raise HidError(f"cannot open {dev}: {e}") from e
         try:   # a previous session may have died mid-keypress: start from a clean state
             ser.write(P.RELEASE_KEYBOARD + P.RELEASE_MOUSE_REL)
@@ -168,10 +176,11 @@ class SerialLink:
                     log.warning("serial write failed (%s), reopening", e)
                     self._drop()
                     if attempt:
-                        raise HidError(f"serial link failed: {e} (NanoKVM unplugged?)") from e
+                        raise HidError(f"serial link failed: {e} (USB KVM unplugged?)") from e
                     time.sleep(0.3)
 
     def transact(self, frame: bytes, timeout: float = 0.5) -> bytes | None:
+        """Send ``frame`` and wait up to ``timeout`` for the chip's reply to that command, or None."""
         import serial
         with self._lock:
             try:
@@ -189,7 +198,7 @@ class SerialLink:
                 return None
             except (serial.SerialException, OSError) as e:
                 self._drop()
-                raise HidError(f"serial link failed: {e} (NanoKVM unplugged?)") from e
+                raise HidError(f"serial link failed: {e} (USB KVM unplugged?)") from e
 
     def close(self) -> None:
         with self._lock:
@@ -198,6 +207,8 @@ class SerialLink:
 
 # ---------------------------------------------------------------- controller
 class Hid:
+    """The keyboard and mouse, under the safety rules in the module docstring."""
+
     def __init__(self, link: Link, key_hold_ms: int = 25, key_gap_ms: int = 15,
                  click_hold_ms: int = 60, busy_timeout: float = 3.0, wake_after_s: float = 0.0):
         self.link = link
@@ -273,7 +284,7 @@ class Hid:
             if self._wait_for(lambda: self._scroll_lock() not in (None, start), gen):
                 break
         else:
-            self.wake_note = ("the locked computer's Scroll Lock light didn't follow the NanoKVM's taps, so its keys "
+            self.wake_note = ("the locked computer's Scroll Lock light didn't follow the KVM's taps, so its keys "
                               "may not be getting through: check cable 4, or run 'nanokvm keytest'")
             log.warning("wake-up: %s", self.wake_note)
             return
@@ -336,6 +347,7 @@ class Hid:
             self._lock.release()
 
     def release_all(self) -> None:
+        """Stop running actions between keystrokes, cancel waiting ones, and release every key and button."""
         with self._gen_lock:
             self._gen += 1                 # running actions stop between keystrokes
         if not self._lock.acquire(timeout=10.0):
@@ -416,6 +428,7 @@ class Hid:
                 self._release()
 
     def click(self, ax: int, ay: int, button: str = "left", count: int = 1) -> None:
+        """Move to (ax, ay) on the absolute grid and click ``count`` times."""
         bit = P.BUTTONS.get(button)
         if bit is None:
             raise HidError(f"unknown mouse button {button!r} (use left, right or middle)")

@@ -1,5 +1,6 @@
-"""The whole path (pipeline.py, nanokvm read/ask) against the simulated locked computer, a fake Glimmer
-server and a fake Meta Model API."""
+"""The read and ask path end to end (pipeline.py, nanokvm read and ask): a share approved at the console, the
+frame from the service, Glimmer's reading, then the outbound gate to Spark. Runs against the simulated locked
+computer, a mock Glimmer server and a mock Meta Model API. Also the --check comparison against a dummy file."""
 import json
 
 import pytest
@@ -19,6 +20,7 @@ SCREEN = ("19 // maintainer: jane.doe@example.org\n21 int sum_first(const std::v
 
 @pytest.fixture
 def world(sim):
+    """The simulated setup with mock Glimmer and Meta servers. Yields a Pipeline maker, both mocks and the settings."""
     def llama(path, body):
         if path == "/health":
             return 200, {"status": "ok"}
@@ -137,6 +139,7 @@ def test_read_summarises_line_numbers_and_checks_a_dummy_file(tmp_path):
 
 
 def test_the_check_never_repeats_the_text_read(tmp_path):
+    """Only line numbers and counts come out, so the report can't carry anything else that was on the screen."""
     ref = tmp_path / "ref.cpp"
     ref.write_text("// live check\n#include <vector>\n\nint f(int n) {\n    int total = 0;\n", encoding="utf-8")
     read = ("```cpp\n1 // live check\n2 #include <vector>\n3\n4 int g(int n) { // TOKEN_abc\n5 int total = 0;\n"

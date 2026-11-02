@@ -1,4 +1,6 @@
-"""The HTTP service against the simulated locked computer."""
+"""The nanokvm service's HTTP API against the simulated locked computer. The service is the only process that
+opens the USB KVM. It checks the token and the Host header, maps screen coordinates to the KVM's mouse, types and
+clicks, streams the live view, and hands out frames only to a client with an active screen share."""
 import json
 import threading
 import time
@@ -29,11 +31,13 @@ def test_rejects_missing_or_wrong_token(sim):
 
 
 def test_rejects_foreign_host_header(sim):
+    """Only a localhost Host header is served, which blocks DNS rebinding."""
     code, _ = raw(sim, "/api/status", {"X-NanoKVM-Token": sim.token, "Host": "evil.example:80"})
     assert code == 403
 
 
 def test_post_from_web_page_without_token_cannot_type(sim):
+    """A web page can send a text/plain POST without a CORS preflight, so the token is what stops it typing."""
     body = json.dumps({"action": "type", "text": "pwned"}).encode()
     code, _ = raw(sim, "/api/act", {"Content-Type": "text/plain"}, method="POST", data=body)
     assert code == 401
@@ -108,7 +112,7 @@ def test_manual_region_maps_clicks_into_a_pillarbox(sim_factory):
 
 
 def test_an_existing_calibration_file_still_sets_the_region(tmp_path):
-    # Calibration itself was removed, but a machine that has a calibration file must keep the same
+    # There's no calibrate tool any more, but a machine that has a calibration file must keep the same
     # coordinate space, so clicks and --region don't shift.
     from conftest import SimEnv
     from nanokvm_mcp.config import Config

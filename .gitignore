@@ -1,4 +1,4 @@
-# Secrets, logs and screenshots: service token, model-server and Meta API keys, outbound log, redaction terms
+# Secrets and logs: service token, model-server and Meta API keys, outbound and service logs, redaction terms
 .run/
 
 # Local environments and caches
@@ -15,12 +15,10 @@ models/
 tools/llama.cpp/
 tools/downloads/
 
-# Screen captures and A/B results saved inside the repo by mistake (tools\capture_frame.py,
-# tools\glimmer_ab.py, nanokvm screenshot FILE); images meant for the docs go in docs\
+# Screen captures or photos saved inside the repo by mistake; images meant for the docs go in docs\
 *.png
 *.jpg
 *.jpeg
-*.jsonl
 !docs/*.png
 !docs/*.jpg
 !docs/*.jpeg

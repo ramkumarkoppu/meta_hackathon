@@ -1,4 +1,5 @@
-"""NanoKVM-USB keyboard/mouse serial protocol (CH9329-compatible).
+"""The USB KVM's keyboard/mouse serial protocol (CH9329-compatible). hid.py sends these frames over the serial
+link, and the simulator decodes them.
 
 Verified against sipeed/NanoKVM-USB v1.1.4 (browser/src/libs/device/proto.ts, libs/mouse/index.ts)
 and the WCH "CH9329 serial communication protocol V1.0":
@@ -49,6 +50,7 @@ def checksum(data: bytes) -> int:
 
 
 def build_frame(cmd: int, payload: bytes = b"", addr: int = ADDR) -> bytes:
+    """One frame: header, address, command, length, payload, checksum."""
     if len(payload) > 255:
         raise ValueError("payload too long")
     body = HEAD + bytes([addr & 0xFF, cmd & 0xFF, len(payload)]) + bytes(payload)
@@ -127,6 +129,8 @@ RELEASE_MOUSE_REL = mouse_rel_frame(0, 0, 0)
 # ---------------------------------------------------------------- GET_INFO reply
 @dataclass(frozen=True)
 class DeviceInfo:
+    """The chip's GET_INFO reply: its version, whether the locked computer enumerated it, and the lock lights that
+    the locked computer's operating system reports to it."""
     chip_version: str
     target_connected: bool
     num_lock: bool

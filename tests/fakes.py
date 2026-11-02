@@ -1,4 +1,5 @@
-"""Fake HTTP servers standing in for the local Glimmer server and Meta's Model API in tests."""
+"""Mock HTTP servers for the two models: llama-server, where Muse Glimmer reads the screen on the laptop, and
+Meta's Model API, where Muse Spark answers from redacted text. With these the tests need no GPU and no key."""
 from __future__ import annotations
 
 import json
@@ -56,6 +57,7 @@ class FakeServer:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def bodies(self, path: str) -> list[dict]:
+        """The JSON bodies posted to ``path``, oldest first."""
         return [b for p, _h, b in self.requests if p == path and b is not None]
 
     def close(self) -> None:
@@ -82,7 +84,7 @@ def spark_stream(content: str = "Use i < n.", model: str = "muse-spark-1.3", too
 
 def llama_reply(content: str = "1 int x;", finish: str = "stop", reasoning: str = "",
                 tool_calls: list | None = None) -> dict:
-    """llama-server's answer; ``tool_calls`` as (name, arguments JSON text), the way it returned Glimmer's on 1 Nov."""
+    """llama-server's answer. ``tool_calls`` are (name, arguments JSON text) pairs, the form it returns Glimmer's in."""
     message = {"content": content, "reasoning_content": reasoning}
     if tool_calls:
         message["tool_calls"] = [{"type": "function", "function": {"name": name, "arguments": args}, "id": f"id{i}"}

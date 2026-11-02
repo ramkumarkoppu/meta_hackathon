@@ -1,7 +1,8 @@
 """Smoke test for the local Muse Glimmer server (llama-server started by tools\\run-glimmer.ps1).
 
 Renders a DUMMY C++ file as a 1920x1080 image (nothing from either laptop's screen), asks Glimmer to
-transcribe it, and reports accuracy against the source, speed and GPU memory.
+transcribe it, and reports accuracy against the source, speed and GPU memory. It talks to llama-server directly,
+without the project's Glimmer client.
 
 Usage:  E:\\meta_hackathon\\.venv\\Scripts\\python.exe E:\\meta_hackathon\\tools\\glimmer_smoke.py [--port 8001] [--label unsloth]
 """
@@ -24,8 +25,8 @@ NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 # Thinking budget 0 for reading tasks. On llama.cpp b10976 the documented thinking_budget_tokens and
 # --reasoning-budget are ignored for Glimmer (its chat handler sets no thinking tags, PR #27475), so the
-# budget fields go in each request with Glimmer's own thinking tags. Measured 24 Oct on the dummy code:
-# 223 output tokens on every run and 27/27 lines, against 279-610 tokens without it. Re-test after upgrading.
+# budget fields go in each request with Glimmer's own thinking tags. Measured on the dummy code: 223 output
+# tokens on every run and 27/27 lines, against 279-610 tokens without it. Re-test after upgrading.
 NO_THINKING = {"reasoning_budget_tokens": 0, "reasoning_budget_start_tag": " to=self<|message|>",
                "reasoning_budget_end_tags": ["<|eom|>"], "reasoning_budget_message": ""}
 
@@ -71,6 +72,7 @@ def render(code: str) -> bytes:
 
 
 def call(port: int, key: str, path: str, body: dict | None = None, timeout: float = 600.0) -> dict:
+    """One request to llama-server: GET without a body, POST with one."""
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}",
                                  data=None if body is None else json.dumps(body).encode(),
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -101,6 +103,7 @@ def chat(port: int, key: str, reasoning: str, content, max_tokens: int, extra: d
 
 
 def normalise(text: str) -> list[str]:
+    """The transcription's lines with runs of spaces made one, and code fences dropped."""
     lines = []
     for line in text.strip().splitlines():
         line = line.strip().strip("`")
@@ -110,6 +113,7 @@ def normalise(text: str) -> list[str]:
 
 
 def main() -> int:
+    """Wait for the server, then run a text test and the image test."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8001)
     ap.add_argument("--label", default="glimmer")

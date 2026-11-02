@@ -1,4 +1,5 @@
-"""Client for the local Muse Glimmer server (glimmer.py), against a fake llama-server."""
+"""Client for the local Muse Glimmer server (glimmer.py), against a mock llama-server. Glimmer reads every frame
+on this laptop and, with Local only, is the coder too. Each image is flushed from the server's slot after the read."""
 import pytest
 
 from fakes import FakeServer, free_port, llama_reply
@@ -39,12 +40,12 @@ def test_read_sends_reasoning_cap_and_data_uri_then_flushes(setup):
     assert read["cache_prompt"] is False
     image = read["messages"][1]["content"][1]["image_url"]["url"]
     assert image == "data:image/png;base64,QUJD"
-    assert flush["max_tokens"] == 1 and "image_url" not in str(flush)
+    assert flush["max_tokens"] == 1 and "image_url" not in str(flush)   # replaces the screen in the server's slot
     assert all(h.get("Authorization") == f"Bearer {KEY}" for _p, h, _b in fake.requests)
 
 
 def test_planning_leaves_room_for_the_answer_after_thinking(setup):
-    client, fake, _ = setup                         # seen live on 30 Oct: thinking ate max_tokens, every plan cut off
+    client, fake, _ = setup                         # with no room left after thinking, every plan was cut off
     client.plan_step("QUJD", "png", "plan the next step")
     plan, _flush = fake.bodies(CHAT)
     assert plan["reasoning_budget_tokens"] == client.PLAN_THINK_TOKENS
@@ -70,7 +71,7 @@ def test_no_complete_answer_is_an_error_and_still_flushes(setup, payload):
 
 
 def test_glimmer_as_the_coder_gets_the_tools_and_its_calls_come_back_as_sparks_do(setup):
-    client, fake, replies = setup                   # as llama-server answered on 1 Nov: tool calls, content empty
+    client, fake, replies = setup                   # as llama-server answers: tool calls, content empty
     replies.append(llama_reply("", finish="tool_calls", tool_calls=[("apply_edit", '{"start_line": 2, "end_line": 1, '
                                                                                    '"new_text": "x", "note": "n"}')]))
     tools = [{"type": "function", "function": {"name": "apply_edit", "parameters": {"type": "object"}}}]

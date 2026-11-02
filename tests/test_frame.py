@@ -1,4 +1,5 @@
-"""Full-resolution frames for the local vision model (/api/frame)."""
+"""The service's /api/frame: the full-resolution frame Glimmer reads. It goes only to a client with an active
+share, fits Glimmer's visual-token budget and is never written to disk."""
 import base64
 import hashlib
 
@@ -29,7 +30,7 @@ def test_frame_needs_an_active_share(sim):
     assert e.value.status == 403
     pipe.share(5)
     r = pipe.frame()
-    assert (r["width"], r["height"]) == (1920, 1080)          # native capture size, not the 1280 screenshot
+    assert (r["width"], r["height"]) == (1920, 1080)          # native capture size, not the 1280-wide screen
     assert r["visual_tokens"] == 69 * 39
     assert r["format"] == "png"
     assert _decode(r).shape == (1080, 1920, 3)
@@ -41,7 +42,7 @@ def test_frame_needs_an_active_share(sim):
 def test_frame_rectangle_is_in_screen_coordinates(sim):
     pipe = ServiceClient(sim.cfg, client_id="pipeline-test")
     pipe.share(5)
-    r = pipe.frame((100, 50, 200, 100))                       # screen space is 1280x720 here
+    r = pipe.frame((100, 50, 200, 100))                       # screen coordinates are 1280x720 here
     assert r["capture_rect"] == [150, 75, 300, 150]           # x1.5 into the 1920x1080 capture
     assert (r["width"], r["height"]) == (300, 150)
     assert _decode(r).shape == (150, 300, 3)

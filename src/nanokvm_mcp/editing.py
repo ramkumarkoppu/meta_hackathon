@@ -1,15 +1,18 @@
-"""Milestone 2: Muse Spark proposes code edits, the person at the keyboard approves each one (or, with --auto, all
-of a run's at once, at the share prompt), and the approved edit is typed into VS Code on the locked computer
-through the NanoKVM keyboard. With --local-only, and in the viewer's Fix it unless Spark plans, Muse Glimmer on
-this laptop is the coder instead (localcoder.py): the same request, tool and checks, with nothing sent or
-redacted. Below, "Spark" stands for either coder, except in what is said about redaction.
+"""Code edits, from the coder's proposal to the keys typed and checked: the end of the chain.
+
+Muse Spark proposes code edits, the person approves each one (or, with --auto, all of a run's at once, at the share
+prompt), and the approved edit is typed into VS Code on the locked computer through the KVM's keyboard. With
+--local-only, and in the viewer's Fix it unless Spark plans, Muse Glimmer on this laptop is the coder instead
+(localcoder.py): the same request, tool and checks, with nothing sent or redacted. pipeline.py runs the loop and
+talks to the coder; this module checks each edit, types it and checks the result. Below, "Spark" stands for either
+coder, except in what is said about redaction.
 
 Spark only sees redacted text (through the outbound gate) and answers with one tool, apply_edit, which replaces
 whole numbered lines. Its text is checked here before anything is typed: placeholders restored on this laptop
 and none left over, no tab characters, every character typeable on the locked computer's keyboard layout, the
-lines on the screen and read unambiguously, and within the size limits. Then, only after a yes at the console
-(for this edit, or with --auto for the run), it is typed keyboard-only, with a local read by Muse Glimmer before
-each irreversible step:
+lines on the screen and read unambiguously, and within the size limits. Then, only after a yes for this edit (or
+with --auto for the run), at the console or in the viewer, it is typed keyboard-only, with a local read by Muse
+Glimmer before each irreversible step:
 
   1. Escape, Ctrl+G                     close any widget or pending chord, open Go to Line
   2. check: VS Code's Go to Line box (":") is open; digits and Enter typed anywhere else could do harm
@@ -259,11 +262,11 @@ def parse_status(text: str) -> tuple[int, int, int] | None:
 def is_goto_box(text: str) -> bool:
     """Whether Glimmer's reading of VS Code's quick-input box shows Go to Line. Versions differ: VS Code 1.144 opens
     it with ':' already typed ('::' is a different mode) and the hint "Current Line: L, Character: C. Type a line
-    number between 1 and N to navigate to."; the locked computer's VS Code (29 Oct) opens it empty, with "Type a
-    line number to go to (from 1 to N)." So either the ':' or VS Code's wording "Type a line number" counts. Go to
-    Recent Directory (Ctrl+G in VS Code's terminal, "Select a directory to go to"), Quick Open and the command
-    palette never say it, and neither do the Go To dialogs of Notepad ("Line number:"), Visual Studio ("Line
-    number (1 - N):") or Word, which a focused app other than VS Code would open."""
+    number between 1 and N to navigate to."; the VS Code on the spare Windows laptop standing in for the locked
+    computer opens it empty, with "Type a line number to go to (from 1 to N)." So either the ':' or VS Code's
+    wording "Type a line number" counts. Go to Recent Directory (Ctrl+G in VS Code's terminal, "Select a directory
+    to go to"), Quick Open and the command palette never say it, and neither do the Go To dialogs of Notepad ("Line
+    number:"), Visual Studio ("Line number (1 - N):") or Word, which a focused app other than VS Code would open."""
     lines = [ln.strip().strip("'\"`").strip() for ln in (text or "").strip().splitlines()]
     if not lines or lines[0].startswith("::"):
         return False
@@ -294,6 +297,7 @@ def mismatch(screen: dict[int, str], start: int, expected: list[str], indent: bo
 
 @dataclass
 class EditPlan:
+    """One apply_edit call that passed plan_edit: lines start to end are replaced by ``new``."""
     start: int
     end: int                      # start - 1 for an insertion
     old: list[str]                # the lines being replaced, as read from the screen
@@ -305,6 +309,7 @@ class EditPlan:
 
     @property
     def text(self) -> str:
+        """The new lines as typed, each ending with a line break."""
         return "".join(line + "\n" for line in self.new)
 
     @property
@@ -312,6 +317,7 @@ class EditPlan:
         return self.end - self.start + 1
 
     def steps(self) -> list[str]:
+        """The keys that will be sent and the checks between them, in words, for the approval."""
         s = ["Escape, Ctrl+G, then check that VS Code's Go to Line box opened",
              f"type {self.start}, Enter (go to line {self.start}), then check the status bar and the lines"]
         if self.replaced:
@@ -325,6 +331,7 @@ class EditPlan:
         return s
 
     def span(self) -> str:
+        """The lines in words: "line 4", "lines 4-6" or "before line 4"."""
         if not self.replaced:
             return f"before line {self.start}"
         return f"line {self.start}" if self.end == self.start else f"lines {self.start}-{self.end}"
@@ -398,6 +405,7 @@ def plan_edit(args: dict, screen: dict[int, str], layout: str, mapping: dict[str
 
 @dataclass
 class EditOutcome:
+    """What typing one edit did, as the checks on the screen found it."""
     status: str                   # verified, not_applied (only navigation keys were sent) or unverified
     detail: str                   # for the person at the keyboard; words and numbers only
     screen: dict[int, str] = field(default_factory=dict)   # the lines read after the edit (local only)
@@ -426,6 +434,7 @@ class EditOutcome:
 
 @dataclass
 class SaveOutcome:
+    """What the save did, as Glimmer's readings of the editor tab found it."""
     status: str       # saved (checked on the screen), unchecked (Ctrl+S sent, not checkable), failed (Ctrl+S sent,
                       # still unsaved), not_saved (a check before Ctrl+S failed), declined, or skipped (no checked fix)
     detail: str       # for the person at the keyboard
@@ -520,6 +529,7 @@ class EditTyper:
         return parse_status(self.read_status())
 
     def apply(self, plan: EditPlan) -> EditOutcome:
+        """Type ``plan`` with the checks the module docstring lists. Ctrl+C or Stop releases every key first."""
         try:
             return self._apply(plan)
         except KeyboardInterrupt:
@@ -548,7 +558,7 @@ class EditTyper:
         first = ((box or "").strip().splitlines() or [""])[0].strip().strip("'\"`").strip().upper()
         if first in ("", "NONE"):
             return ("Glimmer saw no box at the top of the screen, so VS Code's Go to Line box didn't open: is the "
-                    "file focused in VS Code, and does the locked computer take the NanoKVM's keys (try "
+                    "file focused in VS Code, and does the locked computer take the KVM's keys (try "
                     "'nanokvm keytest')?")
         return ("Glimmer saw a box at the top of the screen, but not VS Code's Go to Line box (':'): is another "
                 "panel or app focused?")
@@ -571,13 +581,13 @@ class EditTyper:
                                               "Col 1 (is the file focused in VS Code, with the status bar on?)")
         screen = self.read_lines()
         expected = plan.old if plan.replaced else ([plan.after] if plan.after is not None else [])
-        # Indentation aside: a re-read gets it wrong more than anything (seen live on 30 Oct: 4 spaces, then 0), and
+        # Indentation aside: a re-read gets it wrong more than anything (a line read with 4 spaces, then 0), and
         # whole lines are replaced whatever their indentation. Any other difference: Spark gets the screen again.
         if not lines_match(screen, plan.start, expected, indent=False):
             return EditOutcome("not_applied", f"the screen no longer shows the expected lines at line {plan.start}: "
                                               + mismatch(screen, plan.start, expected, indent=False), screen, retry=True)
         # 4b. how far VS Code really indents those lines: End, then Home, leaves the cursor on a line's first character,
-        #     and the status bar's Col says where that is. A reading can be spaces off (seen live: 4, then 0); this can't.
+        #     and the status bar's Col says where that is. A reading can be spaces off (4, then 0); this can't.
         measured: dict[int, int] = {}
         for i, line in enumerate(expected[:MAX_MEASURED]):
             k, seen = self._indent_here("end home" if i == 0 else "down end home", plan.start + i)

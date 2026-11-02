@@ -1,10 +1,11 @@
-# Start llama.cpp's llama-server with Muse Glimmer for Locked Computer Assist.
+# Start llama.cpp's llama-server with Muse Glimmer for Locked Computer Assist. Every reading of the locked
+# computer's screen, and every request to Glimmer as the local coder, goes to this server (src\nanokvm_mcp\glimmer.py).
 # Local only: listens on 127.0.0.1, needs the key in .run\llama_api_key, no web UI.
 # Everything stays inside E:\meta_hackathon (models\, tools\llama.cpp\, .run\, .cache\).
 #
 # Usage (PowerShell, from anywhere):
 #   E:\meta_hackathon\tools\run-glimmer.ps1                 # Unsloth UD-Q4_K_XL + BF16 projector + DFlash drafter
-#   E:\meta_hackathon\tools\run-glimmer.ps1 -Model meta     # Meta's own Q4KM files (for the A/B test)
+#   E:\meta_hackathon\tools\run-glimmer.ps1 -Model meta     # Meta's own Q4KM files instead of Unsloth's
 #   E:\meta_hackathon\tools\run-glimmer.ps1 -Projector q4km # Meta's smaller vision projector (same file as Unsloth's kquant)
 #   E:\meta_hackathon\tools\run-glimmer.ps1 -NoDFlash       # without the DFlash speculative drafter
 #   E:\meta_hackathon\tools\run-glimmer.ps1 -DraftMax 8     # draft up to 8 tokens per step (default 15)
@@ -13,7 +14,7 @@
 param(
     [ValidateSet("unsloth", "meta")] [string]$Model = "unsloth",
     [ValidateSet("", "bf16", "q4km")] [string]$Projector = "",   # default: bf16 with unsloth, q4km with meta
-    # DFlash is on by default: measured 24 Oct with the GPU held near 55 W, a full-screen read took 23-26 s
+    # DFlash is on by default: measured with the GPU held near 55 W, a full-screen read took 23-26 s
     # with it (generation 46 tok/s at draft length 15) against 32-34 s without, with the same 27/27 lines.
     [switch]$NoDFlash,
     # Meta's drafter has dflash.block_size 16, so llama.cpp drafts at most 15 tokens per step.
@@ -85,8 +86,8 @@ foreach ($v in @(Get-ChildItem Env: | Where-Object { $_.Name -like "LLAMA_*" -or
 }
 
 # Battery, USB-C (PD) power and a quiet power mode all held this laptop's GPU to about 55 W under load
-# (measured 24 Oct: 1.3 GHz instead of up to 3 GHz). Full power (120 W) needs its 240 W barrel charger.
-# The checks below match this laptop's power plan names; on other laptops they may simply not fire.
+# (measured: 1.3 GHz instead of up to 3 GHz). Full power (120 W) needs its 240 W barrel charger.
+# The checks below match this laptop's power plan names; on other laptops they may not fire.
 $scheme = powercfg /getactivescheme
 $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($battery -and $battery.BatteryStatus -eq 1) {
@@ -104,7 +105,7 @@ $argv = @(
     "-np", "1", "-c", "$Ctx",
     "-ngl", "999", "--fit", "on", "-fa", "auto",
     # Read the files instead of memory-mapping them: from this exFAT drive a cold start took 72 s
-    # instead of 130 s (24 Oct).
+    # instead of 130 s.
     "--load-mode", "none",
     "--image-max-tokens", "4096",
     "--host", "127.0.0.1", "--port", "$Port", "--alias", "muse-glimmer", "--no-webui",
@@ -113,7 +114,7 @@ $argv = @(
     # context checkpoints copied to RAM. The one slot still holds the last request until the next replaces it.
     # --offline does not stop the server fetching an http(s) image URL sent in a request, so clients send
     # images only as data: URIs. There is no --log-file: even at the default level a parse warning can print
-    # model output. Never add -v, -lv 5 or --log-prompts-dir: they log prompts and screenshots.
+    # model output. Never add -v, -lv 5 or --log-prompts-dir: they log prompts and the screen images.
     "--cors-origins", "localhost", "--no-cors-credentials", "--no-slots",
     "--cache-ram", "0", "--ctx-checkpoints", "0", "--offline",
     "--temp", "1.0", "--top-p", "0.95", "--top-k", "64"

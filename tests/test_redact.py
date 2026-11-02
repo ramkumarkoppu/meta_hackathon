@@ -1,4 +1,5 @@
-"""Redaction before text leaves the laptop (redact.py)."""
+"""Redaction (redact.py), the outbound gate's first step: keys, passwords, addresses and the user's own terms in
+the screen text become placeholders before any text goes to Spark, and are put back in its answer on the laptop."""
 import pytest
 
 from nanokvm_mcp.redact import PLACEHOLDER, leaked_values, load_terms, redact, restore

@@ -5,6 +5,9 @@ placeholder, and sharing the mapping keeps them stable across passes. Placeholde
 locally (restore), in Spark's reply or in text typed onto the locked computer. Patterns are deliberately
 narrow so ordinary code survives (std::vector<int>, a->b, 0x2A, [[nodiscard]], self.net, token = next()).
 Redaction can't recognise a secret that looks like ordinary text: list those in .run/redact_terms.txt.
+
+The outbound gate (outbound.py) runs it on Glimmer's reading, the question and its own outgoing text before
+anything goes to Spark.
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ PLACEHOLDER = re.compile(r"\[\[([A-Z]+)_(\d+)\]\]")
 
 
 def _luhn_ok(s: str) -> bool:
+    """A card number passes the Luhn check, so other long runs of digits are left alone."""
     digits = re.sub(r"\D", "", s)
     if not 13 <= len(digits) <= 19:
         return False
@@ -30,12 +34,14 @@ def _luhn_ok(s: str) -> bool:
 
 
 def _ipv6_ok(s: str) -> bool:
+    """Enough groups and a digit to be an IPv6 address, not a C++ name such as abc::def."""
     groups = s.split(":")
     return (s.count("::") <= 1 and sum(1 for g in groups if g) >= 3
             and ("::" in s or len(groups) == 8) and any(c.isdigit() for c in s))
 
 
 def _token_ok(s: str) -> bool:
+    """A long run is a token if it is hex, or mixes digits with both cases; a long identifier isn't."""
     body = s.rstrip("=")
     if re.fullmatch(r"[0-9a-fA-F]{32,}", body):
         return True
@@ -80,6 +86,7 @@ _TERMS_AT = 5   # the user's own terms run after the key and secret patterns, be
 
 @dataclass
 class Redaction:
+    """One pass of redact: the text with placeholders, and what they stand for."""
     text: str
     mapping: dict[str, str] = field(default_factory=dict)   # placeholder -> original
     findings: dict[str, int] = field(default_factory=dict)  # kind -> number replaced in this pass
@@ -96,6 +103,8 @@ def load_terms(path: Path) -> list[str]:
 
 
 def redact(text: str, terms: list[str] | tuple = (), mapping: dict[str, str] | None = None) -> Redaction:
+    """Replace each secret-looking value and each of the user's ``terms`` with a placeholder. An earlier pass's
+    ``mapping`` keeps the same placeholder for the same value; ``mapping`` itself isn't changed."""
     mapping = dict(mapping or {})
     reverse = {v: k for k, v in mapping.items()}
     counters: dict[str, int] = {}

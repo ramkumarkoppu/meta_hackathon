@@ -1,55 +1,50 @@
-# Settings for `nanokvm read`, `ask`, `edit`, `fix` and the viewer, and the NanoKVM service they use
-# (README section 9). Every line is optional; the values shown (commented out) are the defaults, or
-# examples where the comment names the default or says when to use them. A misspelt name is ignored
-# without warning, so check the spelling.
+# Settings for `nanokvm read`, `ask`, `edit`, `fix` and the viewer, and for the nanokvm service they all use
+# (README section 9). Every line is optional. A value shown commented out is the default, unless its comment
+# names the default or says when to use it. A misspelt name is ignored without warning, so check the spelling.
 # Environment variables NANOKVM_<NAME> override this file. Every setting: src\nanokvm_mcp\config.py.
-# After editing: run `.venv\Scripts\nanokvm.exe stop` (the service restarts when it's next needed).
+# After editing, run `.venv\Scripts\nanokvm.exe stop`; the service restarts when it's next needed.
 
 # --- Muse Glimmer and Muse Spark (README sections 2 and 9) ---
 # outbound = "auto"              # text for Muse Spark: "auto" (send after redaction), "approve" (show it and
                                  # ask first) or "local_only" (send nothing)
-# meta_billing = "free_credits"  # only test or dummy content may go to Meta (confirmed at the share
-                                 # prompt, or --stand-in); "paid" once Billing is pay as you go
+# meta_billing = "free_credits"  # only test or dummy content may go to Meta, confirmed at the share prompt
+                                 # or with --stand-in; set "paid" once Billing is pay as you go
 # spark_model = "muse-spark-1.3" # a Standard model ID; -contributor IDs are refused
 # meta_budget_usd = 25.0         # stop sending once the audit log (.run\outbound.log) adds up to this much
 # glimmer_port = 8001            # the local llama-server (always 127.0.0.1), started by tools\run-glimmer.ps1
 
-# --- keyboard / mouse ---
+# --- keyboard and mouse ---
 # control = false makes the setup view-only: `nanokvm edit` and `fix` refuse, the viewer's Fix it is off,
-# and the service refuses keyboard/mouse requests from any program. With control = true, keys reach the
-# locked computer only while the NanoKVM's TARGET USB-C (cable 4) is plugged in (unplug it and the setup
-# is physically view-only). `nanokvm edit` and `fix` type only edits you approve at their prompt (each
-# one, or once per run with --auto), `fix` saves the file only with the same approval once the coder
-# (Spark, or Glimmer with --local-only) has checked the fix on the screen, and the viewer's Fix it does
-# each step only after your click (or one Auto yes; typing and changes still ask).
+# and the service refuses every keyboard and mouse request. With control = true, keys reach the locked
+# computer only while the KVM's TARGET USB-C (cable 4) is plugged in; unplug it and the setup is physically
+# view-only. `edit` and `fix` type only the edits you approve, each one or once per run with --auto. `fix`
+# saves the file only with that same approval, once the coder (Spark, or Glimmer with --local-only) has
+# checked the fix on the screen. The viewer's Fix it does each step only after your click or one Auto yes,
+# and a step that types or changes something still asks.
 control = true
 keyboard_layout = "uk"       # layout set on the locked computer: "uk" or "us" (PC layouts; on a Mac use "us")
 # locked_os = "windows"      # the locked computer's OS: "windows", "macos" or "linux"; with "macos", typed
                              # edits select and save with Cmd+L and Cmd+S, and Fix it's steps may use Cmd
-# serial_port = "COM5"       # default: auto-detect the NanoKVM's serial port by serial_ids (below)
-serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other NanoKVM-USB units) and CH343 (this unit, a Standard edition)
+# serial_port = "COM5"       # default: find the KVM's serial port by serial_ids (below)
+serial_ids = "1A86:7523,1A86:55D3"  # CH340 (other units) and CH343 (this unit, a Standard edition)
 
 # --- video ---
 # capture_width = 1920
 # capture_height = 1080
 # capture_fps = 30
-shot_width = 1456            # width of saved screenshots (nanokvm screenshot, watch, diag) and of the pointer
-                             # coordinate space (Fix it's clicks, --region); Glimmer reads full-resolution frames
-                             # (capped by an image budget: 1456 is the widest at 16:9; at 16:10 it gives 1370)
-# capture_fourcc = "YUY2"    # default "MJPG"; uncompressed = sharpest code text; try it if nanokvm diag
-                             # lists the NanoKVM as USB3 Video
-# viewer_fps = 30            # browser live view frame rate (default 15; the nanokvm viewer window uses --fps)
-# viewer_width = 1920        # live view width (default 1920 = 1:1 with the capture)
-# viewer_quality = 90        # live view JPEG quality (default 90)
-# display_aspect = "16:10"   # only if the locked computer desktop is 16:10 and the picture looks squashed
-# region = "96,0,1728,1080"  # manual active area x,y,w,h in capture pixels (normally leave it unset)
-
-# --- screen sharing ---
-# share_minutes = 60         # share length for a share request that names none (clamped to 1-480); the commands
-                             # name their own (--minutes: 5, or 10 for edit and fix), the viewer's prompt box 30
-# saved_image_minutes = 5    # screenshots saved by the nanokvm command are deleted after this long (min 1)
+shot_width = 1456            # width of the pointer coordinate space that Fix it's clicks and --region use;
+                             # nanokvm status shows it as Screen. Glimmer reads full-resolution frames
+# capture_fourcc = "YUY2"    # default "MJPG"; YUY2 is uncompressed, so code text is sharpest. Try it if
+                             # nanokvm diag lists the KVM as USB3 Video
+# viewer_width = 1920        # width of the viewer window's picture (1920 = 1:1 with the capture);
+                             # its frame rate is nanokvm viewer --fps
+# viewer_quality = 90        # JPEG quality of the viewer window's picture
+# display_aspect = "16:10"   # only if the locked computer's desktop is 16:10 and the picture looks squashed;
+                             # it sets the shape of the pointer coordinate space
+# region = "96,0,1728,1080"  # manual active area x,y,w,h in capture pixels: the part Glimmer reads and the
+                             # pointer coordinate space covers (normally leave it unset)
 
 # --- service ---
-# port = 8765                # live view: http://127.0.0.1:8765/?t=<token from .run\token>
-                             # (run `nanokvm stop` BEFORE changing it, or the old service keeps the NanoKVM busy)
+# port = 8765                # port of the local service (always 127.0.0.1). Run `nanokvm stop` BEFORE
+                             # changing it, or the old service keeps the KVM busy
 # idle_exit_min = 60         # stop the background service after this many idle minutes (0 = never)

@@ -1,5 +1,6 @@
-"""Operating systems: the locked computer's OS is a setting (locked_os: windows, macos or linux);
-capture needs a Windows AI computer."""
+"""Operating systems and the hardware checks. The locked computer's OS is a setting (locked_os: windows, macos or
+linux), and the KVM's capture needs Windows on the AI computer. Also nanokvm diag, which checks the KVM's devices
+and the video and saves nothing, and the capture forgetting its last frame once the video stops."""
 import argparse
 import sys
 import time
@@ -56,6 +57,8 @@ def test_capture_open_checks_the_os_first(monkeypatch):
 
 
 class _NoService:
+    """A service client whose service can't be started."""
+
     def __init__(self, cfg):
         self.cfg = cfg
 
@@ -81,7 +84,7 @@ def test_diag_on_another_os_says_why(tmp_path, monkeypatch, capsys):
 def test_diag_without_capture_devices(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(capture, "list_video_devices", lambda: [])
     rc, out = _diag(tmp_path, monkeypatch, capsys)
-    assert rc == 1 and "NanoKVM capture device not found" in out
+    assert rc == 1 and "USB KVM capture device not found" in out
 
 
 def test_diag_reports_an_invalid_locked_os(tmp_path, monkeypatch, capsys):
@@ -102,6 +105,7 @@ def test_diag_checks_the_picture_without_saving_one(sim, monkeypatch, capsys):
 
 
 def test_capture_forgets_its_last_frame_when_the_video_stops(monkeypatch):
+    """An old picture of the screen is neither kept in memory nor handed out as if it were current."""
     frames = [np.zeros((8, 8, 3), np.uint8) for _ in range(3)]
 
     class Device:                                  # three frames, then no video
