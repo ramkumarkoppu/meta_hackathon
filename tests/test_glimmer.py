@@ -122,3 +122,11 @@ def test_unknown_reasoning_level_is_refused(setup):
     client, _fake, _ = setup
     with pytest.raises(ValueError):
         client.chat([{"role": "user", "content": "hi"}], reasoning="none")
+
+
+def test_a_failed_flush_is_reported(setup, caplog):
+    client, fake, _ = setup
+    fake.handler = lambda path, body: ((500, {"error": "busy"}) if (body or {}).get("max_tokens") == 1
+                                       else (200, llama_reply()))
+    assert client.transcribe_code("QUJD", "png").content == "1 int x;"
+    assert "may still hold the last image" in caplog.text

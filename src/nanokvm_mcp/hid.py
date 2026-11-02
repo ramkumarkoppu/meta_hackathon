@@ -415,7 +415,7 @@ class Hid:
             finally:
                 self._release()
 
-    def click(self, ax: int, ay: int, button: str = "left", count: int = 1, modifiers: int = 0) -> None:
+    def click(self, ax: int, ay: int, button: str = "left", count: int = 1) -> None:
         bit = P.BUTTONS.get(button)
         if bit is None:
             raise HidError(f"unknown mouse button {button!r} (use left, right or middle)")
@@ -425,9 +425,6 @@ class Hid:
                 self._wake(gen)
                 self._mouse(0, (ax, ay))
                 self._sleep(0.03)                   # let hover state settle
-                if modifiers:
-                    self._kb(modifiers, ())
-                    self._sleep(self.gap)
                 for i in range(max(1, count)):
                     if self._stopped(gen):
                         raise HidAborted("click stopped by release_all")
@@ -439,44 +436,14 @@ class Hid:
             finally:
                 self._release()
 
-    def drag(self, start: tuple[int, int], end: tuple[int, int], button: str = "left",
-             steps: int = 20, step_ms: int = 15) -> None:
-        bit = P.BUTTONS.get(button)
-        if bit is None:
-            raise HidError(f"unknown mouse button {button!r} (use left, right or middle)")
-        gen = self._gen
-        with self._acquire(gen):
-            try:
-                self._wake(gen)
-                self._mouse(0, start)
-                self._sleep(0.05)
-                if self._stopped(gen):
-                    raise HidAborted("drag stopped by release_all")
-                self._mouse(bit)
-                self._sleep(0.1)
-                for i in range(1, steps + 1):
-                    if self._stopped(gen):
-                        raise HidAborted("drag stopped by release_all")
-                    t = i / steps
-                    self._mouse(pos=(round(start[0] + (end[0] - start[0]) * t),
-                                     round(start[1] + (end[1] - start[1]) * t)))
-                    self._sleep(step_ms / 1000.0)
-                self._sleep(0.1)
-                self._mouse(0)
-            finally:
-                self._release()
-
-    def scroll(self, ax: int, ay: int, notches: int, horizontal: bool = False) -> None:
-        """Positive notches scroll up (or left when horizontal, which uses Shift+wheel)."""
+    def scroll(self, ax: int, ay: int, notches: int) -> None:
+        """Positive notches scroll up."""
         gen = self._gen
         with self._acquire(gen):
             try:
                 self._wake(gen)
                 self._mouse(0, (ax, ay))
                 self._sleep(0.03)
-                if horizontal:
-                    self._kb(P.MOD_LSHIFT, ())
-                    self._sleep(self.gap)
                 step = 1 if notches > 0 else -1
                 for _ in range(abs(notches)):
                     if self._stopped(gen):

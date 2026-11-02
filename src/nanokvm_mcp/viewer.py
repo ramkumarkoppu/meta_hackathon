@@ -7,8 +7,8 @@ The live view itself is read-only:
   * it never makes the service open the keyboard/mouse link and sends nothing to the locked
     computer: keys and clicks in the window stay on this laptop;
   * frames live only in memory; nothing is written to disk.
-Like the browser live view it uses the service token without a client id, so the screen-sharing gate
-doesn't apply: it is for the person at this laptop. It is an ordinary window, though, so anything that
+It uses the service token without a client id, so the screen-sharing gate doesn't apply: it is for the
+person at this laptop. It is an ordinary window, though, so anything that
 captures this laptop's screen captures the locked computer's too.
 
 The prompt box does nothing until it is used. A question shares the screen with Muse Glimmer (asked in the
@@ -343,9 +343,6 @@ def video_line(status: dict | None, status_error: str | None, feed, stats: ViewS
     if idle is not None and idle > 2:
         parts.append(f"no new frame for {idle:.0f} s")
         colour = WARN_FG
-    if "shares_active" not in status:              # a service process started from older code
-        parts.append("an older service is running (no frame times or --fps): run nanokvm stop, then reopen this")
-        colour = WARN_FG
     return " · ".join(parts), colour
 
 
@@ -372,7 +369,6 @@ def keyboard_text(control: dict, serial: tuple[str | None, bool]) -> str:
 
 def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[str, str]:
     """The second status line (keyboard/mouse, screen sharing, keys) and its colour."""
-    others = 0
     if status is None:
         kb, share = "Keyboard/mouse: ?", "Screen sharing: ?"
     else:
@@ -382,18 +378,13 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
         else:
             kb = keyboard_text(control, serial)
         n = status.get("shares_active")
-        others = n or 0
-        readers = []
-        if status.get("local_shares_active"):
-            readers.append("Muse Glimmer on this laptop can read it (a share for nanokvm read/ask/edit/fix or "
-                           "this prompt box)")
-        if others:
-            readers.append(f"{others} other program{'' if others == 1 else 's'} can read it")
-        share = "Screen sharing: " + ("?" if n is None else "; ".join(readers) or "off")
+        share = "Screen sharing: " + ("?" if n is None else "off" if not n else
+                                      "Muse Glimmer on this laptop can read it (a share for nanokvm "
+                                      "read/ask/edit/fix or this prompt box)")
     keys = ("the picture is view-only; only Fix it clicks or types, after your yes (with Auto, one yes for the task; "
             "typing and changes still ask, and a fix asks once before its edits) · F11 full screen, F2 prompt box, "
             "1 actual pixels, Q quit (click the picture first)")
-    return f"{kb} · {share} · {keys}", (WARN_FG if others else FG)
+    return f"{kb} · {share} · {keys}", FG
 
 
 # ---------------------------------------------------------------- the window
@@ -958,8 +949,8 @@ def run_viewer(client: ServiceClient, fps: int = DEFAULT_FPS, close_after: float
     try:
         win = ViewerWindow(client, fps, close_after)
     except Exception as e:  # noqa: BLE001  (no Tk, or no desktop to open a window on)
-        print(f"error: cannot open the viewer window ({type(e).__name__}: {e}). "
-              "Use 'nanokvm viewer --browser' instead.", file=sys.stderr)
+        print(f"error: cannot open the viewer window ({type(e).__name__}: {e}). It needs a desktop "
+              "and Python with Tk.", file=sys.stderr)
         return 2
     print("The locked computer's screen is open in a window, with a prompt box for questions about it (nothing is "
           "read or sent until you ask). Close it, or click the picture and press Q, to quit.", flush=True)

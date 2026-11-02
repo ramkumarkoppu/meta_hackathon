@@ -431,7 +431,10 @@ def test_fix_deletes_garbage_on_the_last_line_then_saves(world):
     w.replies += [_call(start_line=11, end_line=11, new_text="", note="delete the junk"), spark_stream("Done."),
                   spark_stream("FIXED: the junk on line 11 is gone.")]
     asked = []
+    before = {p for p in w.cfg.home.rglob("*") if p.is_file()}
     res = w.run(None, approve_save=lambda name: asked.append(name) or True)
+    new = {p for p in w.cfg.home.rglob("*") if p.is_file()} - before
+    assert {p.name for p in new} <= {"outbound.log"}            # no picture of the screen is ever written
     assert w.ed.lines == FILE + [""] and res.edits[0].outcome.status == "verified" and res.stopped is None
     assert res.checks == 1 and asked == ["VS Code, sum.cpp"]
     assert res.save.status == "saved" and w.ed.saves == 1 and not w.ed.dirty

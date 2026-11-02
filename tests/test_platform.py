@@ -2,7 +2,9 @@
 capture needs a Windows AI computer."""
 import argparse
 import sys
+import time
 
+import numpy as np
 import pytest
 
 from nanokvm_mcp import capture, cli, hid
@@ -86,3 +88,39 @@ def test_diag_reports_an_invalid_locked_os(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(capture, "list_video_devices", lambda: [])
     rc, out = _diag(tmp_path, monkeypatch, capsys, env={"NANOKVM_LOCKED_OS": "mac"})
     assert rc == 1 and "locked_os must be one of windows, macos, linux, got 'mac'" in out
+
+
+def test_diag_checks_the_picture_without_saving_one(sim, monkeypatch, capsys):
+    from nanokvm_mcp import geometry as G
+    monkeypatch.setattr(capture, "list_video_devices", lambda: [])
+    monkeypatch.setattr(hid, "list_serial_ports", lambda: [])
+    monkeypatch.setattr(G, "blank_stats", lambda img: (True, 0.0, 0.0))      # the service sees a black picture
+    before = {p for p in sim.cfg.home.rglob("*") if p.is_file()}
+    rc = cli.cmd_diag(sim.client, argparse.Namespace(wait=0.0, mouse_test=False))
+    assert rc == 1 and "the picture is uniform" in capsys.readouterr().out
+    assert {p for p in sim.cfg.home.rglob("*") if p.is_file()} == before
+
+
+def test_capture_forgets_its_last_frame_when_the_video_stops(monkeypatch):
+    frames = [np.zeros((8, 8, 3), np.uint8) for _ in range(3)]
+
+    class Device:                                  # three frames, then no video
+        def grab(self):
+            return True
+
+        def retrieve(self):
+            time.sleep(0.01)
+            return (True, frames.pop()) if frames else (False, None)
+
+        def release(self):
+            pass
+    monkeypatch.setattr(capture.HdmiCapture, "_open", lambda self: Device())
+    cap = capture.HdmiCapture([], no_frame_timeout_s=0.2, reopen_after_s=60)
+    try:
+        deadline = time.monotonic() + 5
+        while cap.status()["state"] != "no_frames" and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert cap.status()["state"] == "no_frames"
+        assert cap.latest() is None and cap.status()["frame_size"] is None
+    finally:
+        cap.close()

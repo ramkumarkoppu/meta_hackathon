@@ -90,13 +90,13 @@ def test_waiting_action_cancelled_by_release_all():
     h._lock.acquire()
     out = {}
 
-    def queued_drag():
+    def queued_click():
         try:
-            h.drag((500, 500), (900, 900), steps=3, step_ms=0)
+            h.click(500, 500)
         except HidAborted as e:
             out["err"] = e
 
-    t = threading.Thread(target=queued_drag)
+    t = threading.Thread(target=queued_click)
     t.start()
     time.sleep(0.1)
     rel = threading.Thread(target=h.release_all)
@@ -159,14 +159,13 @@ def test_type_text_uses_caps_lock_state():
     assert P.keyboard_frame(P.MOD_LSHIFT, [0x04]) in kb(link.frames)
 
 
-def test_click_double_with_modifier():
+def test_click_double():
     link = RecordingLink()
-    fast(link).click(100, 200, "left", count=2, modifiers=P.MOD_LCTRL)
+    fast(link).click(100, 200, "left", count=2)
     m = mouse(link.frames)
     downs = [f for f in m if f[6] == P.BTN_LEFT]
     assert len(downs) == 2
     assert all((f[7] | f[8] << 8, f[9] | f[10] << 8) == (100, 200) for f in m)
-    assert P.keyboard_frame(P.MOD_LCTRL, ()) in kb(link.frames)
     assert kb(link.frames)[-1] == P.RELEASE_KEYBOARD
 
 
@@ -177,15 +176,6 @@ def test_scroll_down_sends_signed_notches():
     assert wheels == [0xFF, 0xFF, 0xFF]
 
 
-def test_drag_moves_with_button_held():
-    link = RecordingLink()
-    fast(link).drag((0, 0), (4000, 4000), steps=5, step_ms=0)
-    m = mouse(link.frames)
-    held = [f for f in m if f[6] == P.BTN_LEFT]
-    assert len(held) >= 6
-    last_held = held[-1]
-    assert (last_held[7] | last_held[8] << 8) == 4000
-    assert m[-1][6] == 0 and (m[-1][7] | m[-1][8] << 8) == 4000   # released at the end point
 
 
 def test_errors_still_attempt_release():

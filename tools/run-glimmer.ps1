@@ -13,18 +13,15 @@
 param(
     [ValidateSet("unsloth", "meta")] [string]$Model = "unsloth",
     [ValidateSet("", "bf16", "q4km")] [string]$Projector = "",   # default: bf16 with unsloth, q4km with meta
-    # DFlash is on by default: measured 24 Oct with the GPU held near 55 W, a full-screen read took 23-26 s with it (generation
-    # 46 tok/s at draft length 15) against 32-34 s without, with the same 27/27 lines. -DFlash is kept
-    # for older scripts and changes nothing.
+    # DFlash is on by default: measured 24 Oct with the GPU held near 55 W, a full-screen read took 23-26 s
+    # with it (generation 46 tok/s at draft length 15) against 32-34 s without, with the same 27/27 lines.
     [switch]$NoDFlash,
-    [switch]$DFlash,
     # Meta's drafter has dflash.block_size 16, so llama.cpp drafts at most 15 tokens per step.
     [ValidateRange(1, 15)] [int]$DraftMax = 15,
     [int]$Port = 8001,
     [int]$Ctx = 32768
 )
 $ErrorActionPreference = "Stop"
-if ($NoDFlash -and $DFlash) { throw "-NoDFlash and -DFlash contradict each other" }
 $useDFlash = -not $NoDFlash
 
 # llama.cpp binds its port with SO_REUSEADDR, so on Windows a second server can listen on the same port and

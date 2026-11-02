@@ -53,9 +53,6 @@ class ServiceClient:
         except OSError:
             return ""
 
-    def viewer_url(self) -> str:
-        return f"{self.cfg.base_url}/?t={self._token()}"
-
     # ---- raw HTTP
     def request(self, method: str, path: str, body: dict | None = None, timeout: float = 15.0) -> dict:
         data = None if body is None else json.dumps(body).encode("utf-8")
@@ -94,8 +91,8 @@ class ServiceClient:
 
     def open_stream(self, fps: int, timeout: float = 5.0) -> http.client.HTTPResponse:
         """The live view's MJPEG stream (/stream.mjpg) at up to ``fps`` frames a second, for the viewer
-        window. Like the browser live view it is the user's own view and sends no client id, so a client
-        made with a client_id is refused: its captures need screen sharing.
+        window. It is the user's own view and sends no client id, so a client made with a client_id is
+        refused: its captures need screen sharing.
         The caller reads the parts (viewer.read_parts) and closes the response; a read that waits
         longer than ``timeout`` s fails."""
         if self.client_id:
@@ -219,12 +216,6 @@ class ServiceClient:
     def status(self) -> dict:
         return self.call("GET", "/api/status")
 
-    def screenshot(self) -> dict:
-        return self.call("GET", "/api/screenshot", timeout=25.0)
-
-    def zoom(self, x: float, y: float, w: float, h: float) -> dict:
-        return self.call("POST", "/api/zoom", {"x": x, "y": y, "w": w, "h": h}, timeout=25.0)
-
     def frame(self, rect: tuple[float, float, float, float] | None = None, fmt: str = "png",
               max_tokens: int = 4096) -> dict:
         """Full-resolution frame for the local vision model; needs client_id and an active share."""
@@ -233,15 +224,8 @@ class ServiceClient:
             body.update(zip("xywh", rect))
         return self.call("POST", "/api/frame", body, timeout=25.0)
 
-    def wait_change(self, timeout_s: float, min_change_percent: float, settle_ms: int,
-                    include_shot_on_timeout: bool = False) -> dict:
-        body = {"timeout_s": timeout_s, "min_change_percent": min_change_percent, "settle_ms": settle_ms,
-                "include_shot_on_timeout": include_shot_on_timeout}
-        settle_cap = max(3.0, 6 * settle_ms / 1000.0)       # mirrors Service._wait_change
-        return self.call("POST", "/api/wait_change", body, timeout=timeout_s + settle_cap + 20)
-
     def act(self, body: dict) -> dict:
-        timeout = 30.0 + self.cfg.post_action_ms / 1000.0
+        timeout = 30.0
         if body.get("action") == "type":
             per_char = (self.cfg.key_hold_ms + 2 * self.cfg.key_gap_ms) / 1000.0
             timeout += len(str(body.get("text", ""))) * per_char * 1.5
@@ -249,13 +233,10 @@ class ServiceClient:
             timeout += 2.0 * int(body.get("repeat", 1)) * max(1, len(str(body.get("keys", "")).split()))
         return self.call("POST", "/api/act", body, timeout=timeout)
 
-    def share(self, minutes: int, local: bool = False) -> dict:
-        """local=True marks the share as a reader on this laptop (nanokvm read/ask/edit/fix, the viewer's prompt
-        box), not another program, so the live view reports the two apart."""
-        return self.call("POST", "/api/share", {"minutes": minutes, **({"local": True} if local else {})})
+    def share(self, minutes: int) -> dict:
+        """Let this client (nanokvm read/ask/edit/fix, the viewer's prompt box) capture the screen for
+        ``minutes``."""
+        return self.call("POST", "/api/share", {"minutes": minutes})
 
     def unshare(self) -> dict:
         return self.call("POST", "/api/unshare", {})
-
-    def calibrate(self, reset: bool = False) -> dict:
-        return self.call("POST", "/api/calibrate", {"reset": reset}, timeout=60.0)

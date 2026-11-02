@@ -41,7 +41,7 @@ def _parse_bool(text: str) -> bool:
 
 @dataclass
 class Config:
-    # --- local service (shared by every nanokvm command and live view) ---
+    # --- local service (shared by every nanokvm command and the viewer window) ---
     port: int = 8765                     # always bound to 127.0.0.1
     idle_exit_min: float = 60.0          # service exits after this long without clients (0 = never)
 
@@ -61,14 +61,12 @@ class Config:
     locked_os: str = "windows"           # the locked computer's OS: "windows", "macos" or "linux"
     baud: int = 57600                    # official NanoKVM-USB apps use 57600
 
-    # --- screenshots and the pointer coordinate space ---
-    shot_width: int = 1280               # screenshot width = width of the pointer coordinate space
-    jpeg_quality: int = 80
+    # --- the pointer coordinate space (Fix it's clicks, --region) ---
+    shot_width: int = 1280               # width of the pointer coordinate space; Glimmer reads full-resolution frames
     display_aspect: str | None = None    # e.g. "16:10" if the HDMI picture is stretched to 16:9
     region: str | None = None            # manual active area "x,y,w,h" in capture pixels
 
-    # --- live viewer ---
-    viewer_fps: int = 15                 # browser live view; the nanokvm viewer window asks for its own (--fps)
+    # --- the viewer window's live picture (its frame rate is nanokvm viewer --fps) ---
     viewer_width: int = 1920             # 1920 = 1:1 with the capture (sharpest text)
     viewer_quality: int = 90             # JPEG quality of the live view
 
@@ -79,14 +77,7 @@ class Config:
     wake_after_s: float = 60.0           # before the first key or click after this long without any (or after the
                                          # link opens), tap Scroll Lock until the locked computer's light follows,
                                          # then tap it back: keys can be lost until then (0 = off)
-    post_action_ms: int = 1500           # max wait for the screen to react after an action
     max_text_len: int = 1500
-
-    # --- screen sharing (one approval per share) ---
-    share_minutes: int = 60              # default share length; a request may ask for 1..480 minutes
-
-    # --- screenshots saved by the nanokvm command (screenshot, watch, diag) ---
-    saved_image_minutes: float = 5.0     # deleted automatically after this long (minimum 1)
 
     # --- local reading and the cloud coder (Muse Glimmer on this laptop, Muse Spark through Meta's API) ---
     glimmer_port: int = 8001             # local llama-server started by tools\run-glimmer.ps1 (127.0.0.1 only)

@@ -102,9 +102,9 @@ class SparkClient:
                 if part and "data:image" in part:
                     raise ValueError("refusing to send an inline image (data:image) to Muse Spark")
 
-    def chat(self, messages: list[dict], *, tools: list[dict] | None = None, response_format: dict | None = None,
-             reasoning_effort: str | None = None, max_completion_tokens: int | None = None,
-             parallel_tool_calls: bool | None = None, timeout: float = 600.0) -> SparkReply:
+    def chat(self, messages: list[dict], *, tools: list[dict] | None = None, reasoning_effort: str | None = None,
+             max_completion_tokens: int | None = None, parallel_tool_calls: bool | None = None,
+             timeout: float = 600.0) -> SparkReply:
         self._text_only(messages)
         effort = reasoning_effort or self.cfg.spark_reasoning
         if effort not in EFFORTS:
@@ -116,8 +116,6 @@ class SparkClient:
             body["tools"], body["tool_choice"] = tools, "auto"
             if parallel_tool_calls is not None:
                 body["parallel_tool_calls"] = parallel_tool_calls
-        if response_format:
-            body["response_format"] = response_format
         data = json.dumps(body).encode("utf-8")
         for attempt in range(3):
             req = urllib.request.Request(self.base_url + "/chat/completions", data=data, method="POST",

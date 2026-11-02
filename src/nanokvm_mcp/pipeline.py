@@ -100,7 +100,7 @@ class Pipeline:
             return
         if not (self.approve_share and self.approve_share(minutes)):
             raise PermissionError("screen sharing not approved")
-        self.svc.share(minutes, local=True)
+        self.svc.share(minutes)
         self._shared = True
 
     def close(self, quick: bool = False) -> None:

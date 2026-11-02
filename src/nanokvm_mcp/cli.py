@@ -1,11 +1,9 @@
-"""``nanokvm`` command line: diagnostics, service control, live viewer, screenshots, change watching.
+"""``nanokvm`` command line: diagnostics, service control, the live viewer, and the Glimmer/Spark commands.
 
-    nanokvm diag            check the NanoKVM devices and take a test screenshot
+    nanokvm diag            check the NanoKVM devices, the video and the service (saves nothing)
     nanokvm start | stop | status
     nanokvm keytest         check that the locked computer takes the NanoKVM's keystrokes (Num Lock, no picture)
-    nanokvm viewer          watch the screen live in a window (--browser: in the browser; --no-open: URL)
-    nanokvm screenshot [FILE]
-    nanokvm watch           print one line per screen change (for the user; not gated by screen sharing)
+    nanokvm viewer          watch the screen live in a window, and ask about it or have a task done there
     nanokvm serve           run the service in the foreground (debugging)
     nanokvm read            read the screen with Muse Glimmer on this laptop (nothing leaves)
     nanokvm ask "QUESTION"  read locally, send only redacted text to Muse Spark, print its answer
@@ -16,32 +14,17 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import sys
 import time
-import webbrowser
 from pathlib import Path
 
-from . import saved_images
 from .client import ServiceClient, ServiceError
 from .config import Config
 
 
 def _out(msg: str = "") -> None:
     print(msg, flush=True)
-
-
-def _save_jpeg(shot: dict, path: Path, cfg: Config) -> Path:
-    """Write a locked-computer screenshot; it is deleted automatically after cfg.saved_image_minutes."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(base64.b64decode(shot["jpeg_b64"]))
-    saved_images.remember(cfg.run_dir, path, cfg.saved_image_minutes)
-    return path
-
-
-def _kept_for(cfg: Config) -> str:
-    return f"deleted automatically after {max(1.0, cfg.saved_image_minutes):g} min"
 
 
 def cmd_status(cl: ServiceClient, args) -> int:
@@ -63,10 +46,8 @@ def cmd_status(cl: ServiceClient, args) -> int:
          + (f"\n           {ctl['device_info']}" if ctl.get("device_info") else ""))
     _out(f"Screen:    {scr['width']}x{scr['height']} coordinate space, region {scr['region']} ({scr['region_source']})")
     _out(f"Viewers:   {st['viewers']}")
-    _out(f"Sharing:   {st.get('local_shares_active', '?')} local reader(s) (nanokvm read, ask, edit or fix, or "
-         f"the viewer's prompt box), {st.get('shares_active', '?')} other program(s)")
-    _out(f"Live view: {cl.cfg.base_url}/?t=<token>  (the token is hidden here: 'nanokvm viewer' opens the "
-         "window, and 'nanokvm viewer --no-open' prints the full URL)")
+    _out(f"Sharing:   {st.get('shares_active', '?')} active share(s) (nanokvm read, ask, edit or fix, or the "
+         "viewer's prompt box)")
     return 0
 
 
@@ -122,13 +103,6 @@ def cmd_keytest(cl: ServiceClient, args) -> int:
 
 def cmd_viewer(cl: ServiceClient, args) -> int:
     cl.ensure_running()
-    if args.browser or args.no_open:
-        url = cl.viewer_url()
-        _out(url)
-        _out("In VS Code: Ctrl+Shift+P > 'Simple Browser: Show' and paste the URL above.")
-        if args.browser:
-            webbrowser.open(url)
-        return 0
     from .viewer import run_viewer
     return run_viewer(cl, args.fps, args.close_after)
 
@@ -145,40 +119,6 @@ def _seconds(text: str) -> float:
     if not value > 0:
         raise argparse.ArgumentTypeError("must be more than 0")
     return value
-
-
-def cmd_screenshot(cl: ServiceClient, args) -> int:
-    shot = cl.screenshot()
-    path = _save_jpeg(shot, Path(args.file) if args.file else cl.cfg.run_dir / "screenshot.jpg", cl.cfg)
-    _out(f"saved {path} ({shot['width']}x{shot['height']}, captured {shot['captured_at']}; {_kept_for(cl.cfg)})")
-    for w in shot.get("warnings") or []:
-        _out("WARNING: " + w)
-    return 0
-
-
-def cmd_watch(cl: ServiceClient, args) -> int:
-    """One line per settled screen change; the latest frame is saved to .run/watch/latest.jpg."""
-    out_dir = cl.cfg.run_dir / "watch"
-    _out(f"watching the locked computer screen (min change {args.min_change}%); frames -> {out_dir} "
-         f"({_kept_for(cl.cfg)})")
-    n = 0
-    while True:
-        try:
-            r = cl.wait_change(60.0, args.min_change, args.settle)
-        except ServiceError as e:
-            _out(f"{time.strftime('%H:%M:%S')} error: {e}")
-            time.sleep(5)
-            continue
-        if not r["changed"]:
-            continue
-        n += 1
-        shot = r["shot"]
-        latest = _save_jpeg(shot, out_dir / "latest.jpg", cl.cfg)
-        if args.keep:
-            _save_jpeg(shot, out_dir / f"change-{time.strftime('%Y%m%d-%H%M%S')}-{n:04d}.jpg", cl.cfg)
-        _out(f"{shot['captured_at']} screen changed {r['change_percent']:.1f}% -> {latest}")
-        if args.count and n >= args.count:
-            return 0
 
 
 def cmd_diag(cl: ServiceClient, args) -> int:
@@ -237,15 +177,16 @@ def cmd_diag(cl: ServiceClient, args) -> int:
             time.sleep(0.5)
             st = cl.status()
         cmd_status(cl, argparse.Namespace(json=False))
-        if st["capture"]["state"] == "streaming":
-            shot = cl.screenshot()
-            path = _save_jpeg(shot, cfg.run_dir / "diag.jpg", cfg)
-            _out(f"\nTest screenshot saved: {path} ({_kept_for(cfg)})")
-            for w in shot.get("warnings") or []:
-                ok = False
-                _out("WARNING: " + w)
-        else:
+        cap = st["capture"]
+        if cap["state"] != "streaming":
             ok = False
+        else:                                     # checked from the status: no picture is taken or saved
+            if cap.get("blank"):
+                ok = False
+                _out("WARNING: the picture is uniform - no HDMI signal, display asleep, or a blank screen")
+            if (cap.get("last_frame_age_ms") or 0) > 2000:
+                ok = False
+                _out(f"WARNING: the newest frame is {cap['last_frame_age_ms'] / 1000:.1f} s old")
         if args.mouse_test and cfg.control:
             _out("\nMoving the locked computer's pointer in a small square around the centre...")
             sw, sh = st["screen"]["width"], st["screen"]["height"]
@@ -304,7 +245,7 @@ def _region(text: str | None) -> tuple[float, float, float, float] | None:
         return None
     parts = [float(p) for p in text.replace(" ", "").split(",")]
     if len(parts) != 4:
-        raise SystemExit("--region must be x,y,w,h (in the pixels of a nanokvm screenshot)")
+        raise SystemExit("--region must be x,y,w,h, in the coordinate space nanokvm status shows as Screen")
     return parts[0], parts[1], parts[2], parts[3]
 
 
@@ -607,21 +548,8 @@ def main(argv: list[str] | None = None) -> int:
                                       "a task done there) from the prompt box beside the picture")
     p.add_argument("--fps", type=_fps, default=30, help="frames per second in the window, 1-60 (default 30)")
     p.add_argument("--close-after", type=_seconds, metavar="SECONDS", help="close the window after this long")
-    where = p.add_mutually_exclusive_group()
-    where.add_argument("--browser", action="store_true", help="open the live view in your browser instead")
-    where.add_argument("--no-open", action="store_true", help="only print the browser live view's URL")
     p.set_defaults(fn=cmd_viewer)
-    p = sub.add_parser("screenshot", help="save a screenshot of the locked computer screen")
-    p.add_argument("file", nargs="?")
-    p.set_defaults(fn=cmd_screenshot)
-    p = sub.add_parser("watch", help="print a line per screen change; saves the latest frame in .run/watch")
-    p.add_argument("--min-change", type=float, default=0.5, help="percent of the screen (default 0.5)")
-    p.add_argument("--settle", type=int, default=700, help="ms the screen must be still (default 700)")
-    p.add_argument("--keep", action="store_true",
-                   help="also save every changed frame (each is still deleted after saved_image_minutes)")
-    p.add_argument("--count", type=int, default=0, help="exit after N changes (0 = run forever)")
-    p.set_defaults(fn=cmd_watch)
-    p = sub.add_parser("diag", help="check the NanoKVM hardware and take a test screenshot")
+    p = sub.add_parser("diag", help="check the NanoKVM hardware, the video and the service (saves nothing)")
     p.add_argument("--wait", type=float, default=10.0, help="seconds to wait for video (default 10)")
     p.add_argument("--mouse-test", action="store_true", help="also move the locked computer pointer in a small square")
     p.set_defaults(fn=cmd_diag)
@@ -631,7 +559,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="describe the screen instead of transcribing code")
     p.add_argument("--errors", dest="kind", action="store_const", const="errors",
                    help="list compiler errors and warnings shown on the screen")
-    p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
+    p.add_argument("--region", help="x,y,w,h in the screen's coordinate space (nanokvm status shows its size as Screen; "
+                             "default: the whole screen)")
     p.add_argument("--minutes", type=int, default=5, help="length of the screen share (default 5)")
     p.add_argument("--check", metavar="FILE",
                    help="compare the code read with FILE, a dummy file that fits on the screen (for example "
@@ -640,7 +569,8 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_read)
     p = sub.add_parser("ask", help="ask about the screen: read it locally, send only redacted text to Muse Spark")
     p.add_argument("question")
-    p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
+    p.add_argument("--region", help="x,y,w,h in the screen's coordinate space (nanokvm status shows its size as Screen; "
+                             "default: the whole screen)")
     p.add_argument("--minutes", type=int, default=5, help="length of the screen share (default 5)")
     p.add_argument("--stand-in", action="store_true",
                    help="the screen shows only test or dummy content: answers in advance what the share prompt asks "
@@ -659,7 +589,8 @@ def main(argv: list[str] | None = None) -> int:
                                            "Muse Spark (or with --local-only, Glimmer) finds the error and fixes it, "
                                            "then saves the file once the fix is checked on the screen and you allow it")
             p.set_defaults(request=None)
-        p.add_argument("--region", help="x,y,w,h in the pixels of a nanokvm screenshot (default: the whole screen)")
+        p.add_argument("--region", help="x,y,w,h in the screen's coordinate space (nanokvm status shows its size as Screen; "
+                                 "default: the whole screen)")
         p.add_argument("--minutes", type=int, default=10, help="length of the screen share (default 10)")
         p.add_argument("--stand-in", action="store_true",
                        help="the screen shows only test or dummy content: answers in advance what the share prompt asks "
@@ -677,10 +608,6 @@ def main(argv: list[str] | None = None) -> int:
         p.set_defaults(fn=cmd_edit)
     args = ap.parse_args(argv)
     cl = ServiceClient(Config.load())
-    try:   # delete expired screenshots even when the service (which normally does it) isn't running
-        saved_images.sweep(cl.cfg.run_dir, cl.cfg.saved_image_minutes)
-    except OSError as e:
-        print(f"warning: could not clean up saved screenshots: {e}", file=sys.stderr)
     try:
         return int(args.fn(cl, args) or 0)
     except ServiceError as e:

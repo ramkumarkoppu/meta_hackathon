@@ -74,6 +74,12 @@ class FrameStore:
         with self._cond:
             self._cond.notify_all()
 
+    def clear(self) -> None:
+        """Forget the newest frame (the video stopped), so an old picture is neither kept nor handed out."""
+        with self._cond:
+            self._latest = None
+            self._fps = 0.0
+
     @property
     def fps(self) -> float:
         return self._fps
@@ -225,6 +231,7 @@ class HdmiCapture:
                 if not cap.grab():                  # False only after the device was lost
                     cap.release()
                     cap = None
+                    self.store.clear()
                     self._set("error", "capture device lost (unplugged?); reconnecting")
                     continue
                 ok, img = cap.retrieve()            # waits up to 1 s for a new frame
@@ -232,6 +239,7 @@ class HdmiCapture:
                 if not ok or img is None:
                     no_frame_since = no_frame_since or now
                     if now - no_frame_since > self.no_frame_timeout_s:
+                        self.store.clear()
                         self._set("no_frames", f"no video for {now - no_frame_since:.0f}s "
                                   "(locked computer asleep, HDMI unplugged, or HDMI in the wrong port?)")
                     if now - no_frame_since > self.reopen_after_s:

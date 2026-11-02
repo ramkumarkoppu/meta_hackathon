@@ -1,18 +1,17 @@
 """The shared NanoKVM service: the ONLY process that opens the NanoKVM-USB.
 
-It captures HDMI continuously, drives keyboard/mouse over serial, and serves a small HTTP API +
-live viewer on 127.0.0.1 so every nanokvm command and the user's live view (the ``nanokvm viewer``
-window, a browser or VS Code Simple Browser) can share the device.
+It captures HDMI continuously, drives keyboard/mouse over serial, and serves a small HTTP API and
+the live picture on 127.0.0.1, so every nanokvm command and the ``nanokvm viewer`` window can share
+the device.
 
 Security: bound to 127.0.0.1 only, exclusive port bind, Host header must be localhost (blocks
 DNS rebinding), and every request needs the random token stored in .run/token (header
-``X-NanoKVM-Token`` or ``?t=``), so web pages cannot drive the keyboard.
+``X-NanoKVM-Token``, never in a URL), so web pages cannot drive the keyboard.
 
-Run: ``python -m nanokvm_mcp.service [--foreground]`` (normally started automatically).
+Run: ``python -m nanokvm_mcp.service`` (started automatically; ``nanokvm serve`` runs it in the foreground).
 """
 from __future__ import annotations
 
-import argparse
 import base64
 import hashlib
 import json
@@ -33,13 +32,12 @@ from urllib.parse import parse_qs, urlparse
 import cv2
 import numpy as np
 
-from . import __version__, saved_images
+from . import __version__
 from . import geometry as G
 from .capture import CaptureSource, Frame, HdmiCapture
 from .config import Config
 from .hid import Hid, HidAborted, HidBusy, HidError, Link, SerialLink
-from .keys import KeyError_, parse_combo, parse_sequence
-from .protocol import ABS_RANGE
+from .keys import KeyError_, parse_sequence
 
 log = logging.getLogger("nanokvm.service")
 SERVICE_NAME = "nanokvm"
@@ -88,12 +86,9 @@ class Service:
         self.viewers = 0
         self._activity = time.monotonic()
         self.started = time.time()
-        self._last_space: tuple[int, int, G.Region] | None = None   # space of the last screenshot served
-        self.sim_desktop = None   # set in simulator mode (tests read its state through /api/status)
-        # Screen sharing: client id -> (expiry monotonic, end wall-clock, local). Requests from nanokvm
-        # read/ask/edit/fix and the viewer's prompt box (local=True), and from any other program that sends
-        # one, carry X-NanoKVM-Client; captures for that client need an active share.
-        self._shares: dict[str, tuple[float, float, bool]] = {}
+        # Screen sharing: client id -> expiry (monotonic). Requests from nanokvm read/ask/edit/fix and the
+        # viewer's prompt box carry X-NanoKVM-Client; captures for that client need an active share.
+        self._shares: dict[str, float] = {}
         self._shares_lock = threading.Lock()
 
     # ------------------------------------------------------------ bookkeeping
@@ -148,7 +143,7 @@ class Service:
         f = self.capture.latest()
         if f is not None and time.monotonic() - f.t < 1.0:
             return f
-        if f is None:
+        if f is None and self.capture.status().get("state") == "starting":
             # freshly started service: opening DirectShow and negotiating MJPEG can take several seconds
             timeout = max(timeout, 12.0)
         g = self.capture.wait_frame(f.seq if f else 0, timeout=timeout)
@@ -158,65 +153,12 @@ class Service:
             return f   # stale but better than nothing; meta reports its age
         raise ServiceError("No video from the locked computer yet - " + self._capture_problem(), 503)
 
-    def _shot(self, frame: Frame) -> dict:
-        region, sw, sh, source = self.coord_space(frame)
-        self._last_space = (sw, sh, region)
-        img = G.resize(G.crop(frame.image, region), sw, sh)
-        blank, mean, _std = G.blank_stats(img)
-        age_ms = int((time.monotonic() - frame.t) * 1000)
-        warnings = []
-        if blank:
-            warnings.append("the picture is uniform (%s) - no HDMI signal, display asleep, or a blank "
-                            "screen" % ("black" if mean < 20 else f"mean {mean:.0f}"))
-        if age_ms > 2000:
-            warnings.append(f"frame is {age_ms / 1000:.1f}s old - " + self._capture_problem())
-        return {
-            "seq": frame.seq,
-            "captured_at": _clock(frame.wall),
-            "age_ms": age_ms,
-            "width": sw, "height": sh,
-            "frame_size": [int(frame.image.shape[1]), int(frame.image.shape[0])],
-            "region": region.as_dict(), "region_source": source,
-            "warnings": warnings,
-            "jpeg_b64": base64.b64encode(G.encode_jpeg(img, self.cfg.jpeg_quality)).decode("ascii"),
-        }
-
-    def screenshot(self) -> dict:
-        return self._shot(self._require_frame())
-
-    def zoom(self, x: float, y: float, w: float, h: float, max_side: int = 1456) -> dict:
-        frame = self._require_frame()
-        region, sw, sh, _ = self.coord_space(frame)
-        if w <= 0 or h <= 0:
-            raise ServiceError("zoom width and height must be positive")
-        if x < 0 or y < 0 or x >= sw or y >= sh:
-            raise ServiceError(f"zoom origin ({x}, {y}) is outside the screen (0..{sw - 1}, 0..{sh - 1})")
-        cx, cy, cw, ch = G.screen_rect_to_capture((x, y, w, h), region, sw, sh)
-        crop = frame.image[cy:cy + ch, cx:cx + cw]
-        scale = min(max_side / max(cw, ch), 3.0)
-        # stay inside the screenshot size cap (geometry.VISION_MAX_SIDE / fit_vision_budget)
-        out_w, out_h = G.fit_vision_budget(max(1, round(cw * scale)), max(1, round(ch * scale)))
-        img = G.resize(crop, out_w, out_h)
-        # screen-coordinate rectangle actually covered (after clamping)
-        sx0 = (cx - region.x) * sw / region.w
-        sy0 = (cy - region.y) * sh / region.h
-        sx1 = (cx + cw - region.x) * sw / region.w
-        sy1 = (cy + ch - region.y) * sh / region.h
-        return {
-            "seq": frame.seq, "captured_at": _clock(frame.wall),
-            "width": out_w, "height": out_h,
-            "screen_rect": [round(sx0, 1), round(sy0, 1), round(sx1 - sx0, 1), round(sy1 - sy0, 1)],
-            "screen_size": [sw, sh],
-            "capture_rect": [cx, cy, cw, ch],
-            "jpeg_b64": base64.b64encode(G.encode_jpeg(img, max(self.cfg.jpeg_quality, 90))).decode("ascii"),
-        }
-
     def frame(self, rect: tuple[float, float, float, float] | None = None, fmt: str = "png",
               max_tokens: int = G.VISION_MAX_TOKENS) -> dict:
         """The screen at full capture resolution, for the LOCAL vision model (Muse Glimmer): the whole
-        calibrated region, or a screen-coordinate rectangle of it. Not reduced to the screenshot size
-        (shot_width); shrunk only if it would exceed max_tokens visual tokens. Nothing is written to disk,
-        and the cropped copy is zeroed once encoded."""
+        region, or a screen-coordinate rectangle of it. Not scaled to the coordinate space (shot_width);
+        shrunk only if it would exceed max_tokens visual tokens. Nothing is written to disk, and the
+        cropped copy is zeroed once encoded."""
         if fmt not in ("png", "jpeg"):
             raise ServiceError("format must be 'png' or 'jpeg'")
         max_tokens = max(64, min(int(max_tokens), G.VISION_MAX_TOKENS))
@@ -260,66 +202,21 @@ class Service:
             "image_b64": base64.b64encode(data).decode("ascii"),
         }
 
-    def _wait_change(self, base: Frame, timeout_s: float, min_change_pct: float,
-                     settle_ms: int) -> tuple[bool, Frame, float]:
-        """Wait until the screen differs from ``base`` by >= min_change_pct %, then until it has
-        been stable for settle_ms. Returns (changed, frame, change_percent)."""
-        base_thumb = G.thumbnail(base.image)
-        deadline = time.monotonic() + timeout_s
-        seq = base.seq
-        last = base
-        while time.monotonic() < deadline:
-            f = self.capture.wait_frame(seq, timeout=min(1.0, max(0.05, deadline - time.monotonic())))
-            if f is None:
-                continue
-            seq, last = f.seq, f
-            pct = 100.0 * G.change_fraction(base_thumb, G.thumbnail(f.image))
-            if pct < min_change_pct:
-                continue
-            # changed: now wait for the screen to settle (animations, page loads)
-            prev = G.thumbnail(f.image)
-            stable_since = time.monotonic()
-            hard_stop = time.monotonic() + max(3.0, 6 * settle_ms / 1000.0)
-            while (time.monotonic() - stable_since) * 1000 < settle_ms and time.monotonic() < hard_stop:
-                g = self.capture.wait_frame(seq, timeout=0.5)
-                if g is None:
-                    continue
-                seq, last = g.seq, g
-                t = G.thumbnail(g.image)
-                if G.change_fraction(prev, t) > 0.001:
-                    stable_since = time.monotonic()
-                prev = t
-            final_pct = 100.0 * G.change_fraction(base_thumb, G.thumbnail(last.image))
-            return True, last, final_pct
-        return False, last, 0.0
-
-    def wait_change(self, timeout_s: float = 30.0, min_change_pct: float = 0.5,
-                    settle_ms: int = 700, include_shot_on_timeout: bool = False) -> dict:
-        timeout_s = max(0.5, min(float(timeout_s), 600.0))
-        base = self._require_frame()
-        t0 = time.monotonic()
-        changed, frame, pct = self._wait_change(base, timeout_s, float(min_change_pct), int(settle_ms))
-        out = {"changed": changed, "waited_ms": int((time.monotonic() - t0) * 1000),
-               "change_percent": round(pct, 2)}
-        if changed or include_shot_on_timeout:
-            out["shot"] = self._shot(frame)
-        return out
-
     # ------------------------------------------------------------ screen sharing
     SHARE_REFUSED = ("Screen sharing is off (or has expired), so the locked computer's screen cannot be captured. "
                      "A screen share approved at this laptop is needed first.")
     MAX_SHARE_MINUTES = 480
 
     def share_active(self, client: str | None) -> bool:
-        """Captures requested with a client id need an active share. Requests without one (nanokvm
-        screenshot, watch and diag, the live view, any program with the token) are not gated."""
+        """Captures requested with a client id need an active share (the live view sends none, and
+        /api/frame refuses requests without one)."""
         if client is None:
             return True
         with self._shares_lock:
-            entry = self._shares.get(client)
-            if entry is None:
+            expiry = self._shares.get(client)
+            if expiry is None:
                 return False
-            if time.monotonic() >= entry[0]:
+            if time.monotonic() >= expiry:
                 del self._shares[client]
                 return False
             return True
@@ -328,17 +225,14 @@ class Service:
         if not self.share_active(client):
             raise ServiceError(self.SHARE_REFUSED, 403)
 
-    def share(self, client: str | None, minutes: int, local: bool = False) -> dict:
-        """local=True: the share is for a reader on this laptop (nanokvm read/ask/edit/fix, the viewer's prompt
-        box), not another program."""
+    def share(self, client: str | None, minutes: int) -> dict:
         if not client:
             raise ServiceError("screen sharing needs a client id (X-NanoKVM-Client header)")
         minutes = max(1, min(int(minutes), self.MAX_SHARE_MINUTES))
-        end_wall = time.time() + minutes * 60
         with self._shares_lock:
-            self._shares[client] = (time.monotonic() + minutes * 60, end_wall, bool(local))
-        log.info("screen sharing ON for %s %s for %d min", "local reader" if local else "client", client[:8], minutes)
-        return {"sharing": True, "minutes": minutes, "until": time.strftime("%H:%M", time.localtime(end_wall))}
+            self._shares[client] = time.monotonic() + minutes * 60
+        log.info("screen sharing ON for client %s for %d min", client[:8], minutes)
+        return {"sharing": True, "minutes": minutes}
 
     def unshare(self, client: str | None) -> dict:
         with self._shares_lock:
@@ -347,15 +241,14 @@ class Service:
             log.info("screen sharing OFF for client %s", client[:8])
         return {"sharing": False, "was_sharing": was}
 
-    def active_shares(self) -> tuple[int, int]:
-        """(other programs, local readers such as nanokvm read/ask) that may capture the screen
+    def active_shares(self) -> int:
+        """How many readers (nanokvm read/ask/edit/fix, the viewer's prompt box) may capture the screen
         right now. Expired shares are dropped."""
         now = time.monotonic()
         with self._shares_lock:
-            for c in [c for c, (exp, _end, _local) in self._shares.items() if now >= exp]:
+            for c in [c for c, exp in self._shares.items() if now >= exp]:
                 del self._shares[c]
-            local = sum(1 for _exp, _end, is_local in self._shares.values() if is_local)
-            return len(self._shares) - local, local
+            return len(self._shares)
 
     def share_info(self, client: str | None) -> dict | None:
         if client is None:
@@ -363,12 +256,10 @@ class Service:
         if not self.share_active(client):
             return {"active": False}
         with self._shares_lock:
-            entry = self._shares.get(client)
-        if entry is None:
+            exp = self._shares.get(client)
+        if exp is None:
             return {"active": False}
-        exp, end_wall, _local = entry
-        return {"active": True, "remaining_min": round((exp - time.monotonic()) / 60, 1),
-                "until": time.strftime("%H:%M", time.localtime(end_wall))}
+        return {"active": True, "remaining_min": round((exp - time.monotonic()) / 60, 1)}
 
     # ------------------------------------------------------------ status
     def status(self, client: str | None = None) -> dict:
@@ -397,7 +288,6 @@ class Service:
         blank = None
         if latest is not None:
             blank = G.blank_stats(latest.image)[0]
-        other_shares, local_shares = self.active_shares()
         return {
             "service": SERVICE_NAME, "version": __version__, "pid": os.getpid(),
             "uptime_s": int(time.time() - self.started),
@@ -408,10 +298,7 @@ class Service:
             "viewers": self.viewers,
             "idle_exit_min": self.cfg.idle_exit_min,
             "sharing": self.share_info(client),
-            "shares_active": other_shares,           # shares that aren't local: other programs
-            "local_shares_active": local_shares,     # nanokvm read/ask/edit/fix, the viewer's prompt box (Glimmer)
-            **({"sim": {"text": self.sim_desktop.text, "button_presses": self.sim_desktop.button_presses}}
-               if self.sim_desktop is not None else {}),
+            "shares_active": self.active_shares(),   # nanokvm read/ask/edit/fix, the viewer's prompt box (Glimmer)
         }
 
     # ------------------------------------------------------------ keyboard / mouse
@@ -426,15 +313,9 @@ class Service:
                                 self.cfg.click_hold_ms, wake_after_s=self.cfg.wake_after_s)
             return self._hid
 
-    def act(self, body: dict, client: str | None = None) -> dict:
+    def act(self, body: dict) -> dict:
         action = str(body.get("action", ""))
-        region, sw, sh, _ = self.coord_space()
-        last = self._last_space
-        if action in ("click", "move", "drag", "scroll") and last is not None and last != (sw, sh, region):
-            raise ServiceError(
-                f"the screen coordinate space changed from {last[0]}x{last[1]} to {sw}x{sh} since the last "
-                "screenshot (calibration or display change). Take a new screenshot and use its coordinates.",
-                409)
+        _region, sw, sh, _ = self.coord_space()
 
         def num(name: str) -> float:
             if name not in body:
@@ -451,41 +332,34 @@ class Service:
             x, y = num(xn), num(yn)
             if not (0 <= x < sw and 0 <= y < sh):
                 raise ServiceError(f"({x:g}, {y:g}) is outside the screen; valid x is 0..{sw - 1}, "
-                                   f"y is 0..{sh - 1} (coordinates of the latest screenshot)")
+                                   f"y is 0..{sh - 1} (the screen's coordinate space, which nanokvm status shows)")
             return G.screen_to_abs(x, y, sw, sh)
 
-        before = self.capture.latest()
         hid = self.hid()
         summary = ""
         try:
             if action == "click":
                 ax, ay = to_abs("x", "y")
-                mods = parse_combo(body["modifiers"]).modifiers if body.get("modifiers") else 0
                 count = int(body.get("count", 1))
                 if not 1 <= count <= 3:
                     raise ServiceError("count must be 1, 2 or 3")
                 button = str(body.get("button", "left"))
-                hid.click(ax, ay, button, count, mods)
+                hid.click(ax, ay, button, count)
                 summary = f"{button} {'double-' if count == 2 else 'triple-' if count == 3 else ''}click at ({num('x'):g}, {num('y'):g})"
             elif action == "move":
                 ax, ay = to_abs("x", "y")
                 hid.move(ax, ay)
                 summary = f"moved pointer to ({num('x'):g}, {num('y'):g})"
-            elif action == "drag":
-                a, b = to_abs("x1", "y1"), to_abs("x2", "y2")
-                button = str(body.get("button", "left"))
-                hid.drag(a, b, button)
-                summary = f"dragged ({num('x1'):g}, {num('y1'):g}) -> ({num('x2'):g}, {num('y2'):g})"
             elif action == "scroll":
                 ax, ay = to_abs("x", "y")
                 direction = str(body.get("direction", "down")).lower()
                 notches = int(body.get("notches", 3))
-                if direction not in ("up", "down", "left", "right"):
-                    raise ServiceError("direction must be up, down, left or right")
+                if direction not in ("up", "down"):
+                    raise ServiceError("direction must be up or down")
                 if not 1 <= notches <= 50:
                     raise ServiceError("notches must be 1..50")
-                sign = 1 if direction in ("up", "left") else -1
-                hid.scroll(ax, ay, sign * notches, horizontal=direction in ("left", "right"))
+                sign = 1 if direction == "up" else -1
+                hid.scroll(ax, ay, sign * notches)
                 summary = f"scrolled {direction} {notches} notch(es) at ({num('x'):g}, {num('y'):g})"
             elif action == "type":
                 text = str(body.get("text", ""))
@@ -496,8 +370,6 @@ class Service:
                                        f"{self.cfg.max_text_len}. Split it into several calls.")
                 layout = self.cfg.keyboard_layout
                 typed, skipped, aborted = hid.type_text(text, layout)
-                if body.get("press_enter") and not aborted:
-                    hid.press([parse_combo("enter")])
                 summary = f"typed {typed} character(s)"
                 if skipped:
                     uniq = "".join(sorted(set(skipped)))
@@ -528,87 +400,7 @@ class Service:
         note, hid.wake_note = hid.wake_note, None
         if note:                                     # the wake-up before this action couldn't confirm the keys
             summary += f" (note: {note})"
-        result: dict = {"action": action, "summary": summary}
-        if body.get("screenshot_after") and not self.share_active(client):
-            result["note"] = "screen sharing is off, so no screenshot was taken"
-        elif body.get("screenshot_after"):
-            base = before or self.capture.latest()
-            if base is not None:
-                changed, frame, pct = self._wait_change(base, self.cfg.post_action_ms / 1000.0, 0.05, 300)
-                result["screen_changed"] = changed
-                result["shot"] = self._shot(self.capture.latest() or frame)
-        return result
-
-    # ------------------------------------------------------------ calibration
-    def calibrate(self, reset: bool = False) -> dict:
-        if reset:
-            self._calib = None
-            try:
-                self._calib_path.unlink()
-            except OSError:
-                pass
-            return {"method": "reset", "message": "calibration cleared; using the full frame"}
-        frame = self._require_frame()
-        fh, fw = frame.image.shape[:2]
-        hid = self.hid()
-        result: dict = {"frame_size": [fw, fh]}
-        points = [(0.2, 0.2), (0.8, 0.2), (0.5, 0.5), (0.2, 0.8), (0.8, 0.8)]
-        found_abs_x, found_px_x, found_abs_y, found_px_y = [], [], [], []
-        details = []
-
-        def grab_after(delay: float) -> Frame:
-            time.sleep(delay)
-            f0 = self.capture.latest()
-            f = self.capture.wait_frame(f0.seq if f0 else 0, timeout=2.0)
-            if f is None:
-                raise ServiceError("capture stopped during calibration - " + self._capture_problem(), 503)
-            return f
-
-        try:
-            for nx, ny in points:
-                ax, ay = int(nx * ABS_RANGE), int(ny * ABS_RANGE)
-                # park the pointer far away (diagonally opposite; top-right for the centre point)
-                away_nx = 0.85 if nx == 0.5 else 1 - nx
-                away_ny = 0.15 if ny == 0.5 else 1 - ny
-                hid.move(int(away_nx * ABS_RANGE), int(away_ny * ABS_RANGE))
-                away = grab_after(0.4)
-                hid.move(ax, ay)
-                here = grab_after(0.4)
-                expect = (ax * fw / ABS_RANGE, ay * fh / ABS_RANGE)
-                pos = G.locate_cursor(here.image, away.image, expect, search_radius=0.2 * fw)
-                details.append({"abs": [ax, ay], "found_px": pos})
-                if pos is not None:
-                    found_abs_x.append(ax)
-                    found_px_x.append(pos[0])
-                    found_abs_y.append(ay)
-                    found_px_y.append(pos[1])
-            hid.move(ABS_RANGE // 2, ABS_RANGE // 2)
-        except HidError as e:
-            raise ServiceError(str(e), 503) from None
-        result["points"] = details
-        region = None
-        if len(found_abs_x) >= 3 and len(set(found_abs_x)) >= 2 and len(set(found_abs_y)) >= 2:
-            fx, fy = G.fit_axis(found_abs_x, found_px_x), G.fit_axis(found_abs_y, found_px_y)
-            cand = G.region_from_fit(fx, fy, fw, fh)
-            plausible = (max(fx.max_residual, fy.max_residual) <= 8.0
-                         and cand.w >= 0.5 * fw and cand.h >= 0.5 * fh)
-            result["fit"] = {"x": vars(fx), "y": vars(fy)}
-            if plausible:
-                region, result["method"] = cand, "cursor"
-        if region is None:
-            bars = G.detect_black_bars(self._require_frame().image)
-            if bars is not None:
-                region, result["method"] = bars, "black-bars"
-            else:
-                region, result["method"] = G.Region.full(fw, fh), "full-frame (cursor not found, no bars)"
-        result["region"] = region.as_dict()
-        self._calib = {"frame_size": [fw, fh], "region": region.as_dict(), "method": result["method"],
-                       "time": time.strftime("%Y-%m-%d %H:%M:%S")}
-        self._calib_path.parent.mkdir(parents=True, exist_ok=True)
-        self._calib_path.write_text(json.dumps(self._calib, indent=2), encoding="utf-8")
-        _r, sw, sh, _ = self.coord_space()
-        result["screen_size"] = [sw, sh]
-        return result
+        return {"action": action, "summary": summary}
 
     # ------------------------------------------------------------ viewer
     def viewer_jpeg(self, frame: Frame) -> bytes:
@@ -640,39 +432,6 @@ class Service:
 
 
 # ====================================================================== HTTP layer
-VIEWER_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Locked computer - live</title>
-<style>
-html,body{margin:0;height:100%;background:#111;color:#ccc;font:13px system-ui,sans-serif}
-body{display:flex;flex-direction:column}
-#bar{padding:4px 10px;background:#1c1c1c;border-bottom:1px solid #333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#wrap{flex:1;min-height:0}
-img{width:100%;height:100%;object-fit:contain;display:block}
-</style></head>
-<body><div id="bar">Locked computer &mdash; live view (read-only) &middot; <span id="st">connecting&hellip;</span></div>
-<div id="wrap"><img id="v" alt="locked computer screen"></div>
-<script>
-const t = new URLSearchParams(location.search).get('t') || '';
-const q = 't=' + encodeURIComponent(t);
-const v = document.getElementById('v'), st = document.getElementById('st');
-function start(){ v.src = '/stream.mjpg?' + q + '&r=' + Date.now(); }
-v.onerror = () => setTimeout(start, 2000);
-start();
-async function poll(){
-  try {
-    const s = await (await fetch('/api/status?' + q)).json();
-    const c = s.capture;
-    st.textContent = c.state + ' \\u00b7 ' + (c.frame_size ? c.frame_size.join('x') : '?') + ' @ ' + c.fps + ' fps'
-      + (c.error ? ' \\u00b7 ' + c.error : '') + (s.simulated ? ' \\u00b7 SIMULATOR' : '');
-  } catch (e) { st.textContent = 'service not reachable'; }
-  setTimeout(poll, 2000);
-}
-poll();
-</script></body></html>
-"""
-
-
 class KvmHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False   # on Windows SO_REUSEADDR would allow port hijacking
@@ -714,13 +473,13 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status: int, obj: dict) -> None:
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
 
-    def _authorised(self, query: dict) -> bool:
+    def _authorised(self) -> bool:
         host = (self.headers.get("Host") or "").lower()
         port = self.server.server_address[1]
         if host not in (f"127.0.0.1:{port}", f"localhost:{port}"):
             self._json(403, {"error": "bad Host header"})
             return False
-        tok = self.headers.get("X-NanoKVM-Token") or (query.get("t") or [""])[0]
+        tok = self.headers.get("X-NanoKVM-Token") or ""
         if not secrets.compare_digest(tok, self.server.token):
             self._json(401, {"error": "missing or wrong token (see .run/token)"})
             return False
@@ -761,17 +520,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         url = urlparse(self.path)
         query = parse_qs(url.query)
-        if not self._authorised(query):
+        if not self._authorised():
             return
         svc = self.server.service
-        if url.path == "/":
-            self._send(200, VIEWER_HTML.encode("utf-8"), "text/html; charset=utf-8")
-        elif url.path == "/stream.mjpg":
+        if url.path == "/stream.mjpg":
             self._stream(query)
         elif url.path == "/api/status":
             self._dispatch(lambda: svc.status(self._client()))
-        elif url.path == "/api/screenshot":
-            self._dispatch(lambda: (svc.require_share(self._client()), svc.screenshot())[1])
         else:
             self._json(404, {"error": "not found"})
 
@@ -787,7 +542,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         url = urlparse(self.path)
-        if not self._authorised(parse_qs(url.query)):
+        if not self._authorised():
             self._drain()
             return
         svc = self.server.service
@@ -798,14 +553,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         client = self._client()
 
-        def zoom() -> dict:
-            svc.require_share(client)
-            return svc.zoom(float(body.get("x", 0)), float(body.get("y", 0)),
-                            float(body.get("w", 0)), float(body.get("h", 0)))
-
         def frame() -> dict:
             # Full-resolution frames are only for a client that holds an active share (the local
-            # pipeline asks for one); unlike screenshot, a request without a client id is refused.
+            # pipeline asks for one); a request without a client id is refused.
             if client is None:
                 raise ServiceError("full-resolution frames need a client id (X-NanoKVM-Client) "
                                    "and an active screen share", 403)
@@ -817,24 +567,11 @@ class Handler(BaseHTTPRequestHandler):
             return svc.frame(rect, str(body.get("format", "png")),
                              int(body.get("max_tokens", G.VISION_MAX_TOKENS)))
 
-        def wait_change() -> dict:
-            svc.require_share(client)
-            r = svc.wait_change(float(body.get("timeout_s", 30)), float(body.get("min_change_percent", 0.5)),
-                                int(body.get("settle_ms", 700)), bool(body.get("include_shot_on_timeout", False)))
-            if "shot" in r and not svc.share_active(client):     # sharing expired while waiting
-                r.pop("shot")
-                r["note"] = "screen sharing expired while waiting"
-            return r
-
         routes: dict[str, Callable[[], dict]] = {
-            "/api/zoom": zoom,
             "/api/frame": frame,
-            "/api/wait_change": wait_change,
-            "/api/act": lambda: svc.act(body, client),
-            "/api/share": lambda: svc.share(client, int(body.get("minutes", svc.cfg.share_minutes)),
-                                            bool(body.get("local", False))),
+            "/api/act": lambda: svc.act(body),
+            "/api/share": lambda: svc.share(client, int(body.get("minutes", 1))),
             "/api/unshare": lambda: svc.unshare(client),
-            "/api/calibrate": lambda: svc.calibrate(bool(body.get("reset", False))),
             "/api/shutdown": self._shutdown,
         }
         fn = routes.get(url.path)
@@ -849,7 +586,7 @@ class Handler(BaseHTTPRequestHandler):
         return {"stopping": True}
 
     def _stream(self, query: dict) -> None:
-        """MJPEG live view for the user. ``?fps=N`` (1-60) overrides viewer_fps for this viewer. Each
+        """MJPEG live view for the viewer window. ``?fps=N`` (1-60, default 30). Each
         real frame's part carries X-Frame-Seq and X-Frame-Time (wall-clock capture time) so the viewer
         window can show its delay; the "no video" picture carries X-Frame-Placeholder: 1 instead.
         Like every capture, a request with a client id needs an active share."""
@@ -864,9 +601,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         try:
-            fps = int((query.get("fps") or [svc.cfg.viewer_fps])[0])
+            fps = int((query.get("fps") or [30])[0])
         except ValueError:
-            fps = svc.cfg.viewer_fps
+            fps = 30
         period = 1.0 / max(1, min(fps, 60))
         last_seq = 0
         with svc._viewer_lock:
@@ -890,6 +627,10 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             with svc._viewer_lock:
                 svc.viewers -= 1
+                last = svc.viewers == 0
+            if last:                                  # nobody is watching: don't keep the last picture
+                with svc._encode_lock:
+                    svc._viewer_cache = (0, b"")
             svc.touch()
 
 
@@ -898,9 +639,7 @@ def build_service(cfg: Config) -> Service:
     if cfg.simulate:
         from .simulator import SimCapture, SimDesktop, SimLink
         desk = SimDesktop(cfg.capture_width, cfg.capture_height)
-        svc = Service(cfg, SimCapture(desk), lambda: SimLink(desk))
-        svc.sim_desktop = desk
-        return svc
+        return Service(cfg, SimCapture(desk), lambda: SimLink(desk))
     capture = HdmiCapture(cfg.video_id_list, cfg.video_index, cfg.capture_width, cfg.capture_height,
                           cfg.capture_fps, cfg.capture_fourcc)
     factory = (lambda: SerialLink(cfg.serial_port, cfg.serial_id_list, cfg.baud, cfg.video_id_list)) \
@@ -942,19 +681,11 @@ def serve(cfg: Config, foreground: bool = False) -> int:
         log.error("cannot bind 127.0.0.1:%d: %s", cfg.port, e)
         service.close()
         return 3
-    (cfg.run_dir / "service.pid").write_text(str(os.getpid()), encoding="ascii")
     log.info("nanokvm service %s listening on %s (simulate=%s, control=%s)",
              __version__, cfg.base_url, cfg.simulate, cfg.control)
 
-    def sweep_saved(everything: bool = False) -> None:
-        try:
-            saved_images.sweep(cfg.run_dir, cfg.saved_image_minutes, everything=everything)
-        except OSError as e:
-            log.warning("could not clean up saved screenshots: %s", e)
-
     def watchdog() -> None:
         while not server.stopping.wait(15):
-            sweep_saved()
             if cfg.idle_exit_min > 0 and service.idle_seconds() > cfg.idle_exit_min * 60:
                 log.info("idle for %.0f min, exiting", cfg.idle_exit_min)
                 server.request_stop()
@@ -971,20 +702,12 @@ def serve(cfg: Config, foreground: bool = False) -> int:
         # "connection refused" as "stopped", so the devices must already be free by then.
         service.close()
         server.server_close()
-        try:
-            (cfg.run_dir / "service.pid").unlink()
-        except OSError:
-            pass
-        sweep_saved(everything=True)   # nothing would delete them later
         log.info("service stopped")
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m nanokvm_mcp.service")
-    ap.add_argument("--foreground", action="store_true", help="also log to the console")
-    args = ap.parse_args(argv)
-    return serve(Config.load(), foreground=args.foreground)
+def main() -> int:
+    return serve(Config.load())
 
 
 if __name__ == "__main__":

@@ -131,8 +131,8 @@ def test_stream_needs_a_share_for_a_client_with_an_id(sim):
         caller.open_stream(fps=30)            # refused on the client side at once
     assert refused.value.status == 403
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    req = urllib.request.Request(f"{sim.cfg.base_url}/stream.mjpg?t={sim.token}",
-                                 headers={"X-NanoKVM-Client": "program-A"})
+    req = urllib.request.Request(f"{sim.cfg.base_url}/stream.mjpg",
+                                 headers={"X-NanoKVM-Token": sim.token, "X-NanoKVM-Client": "program-A"})
     with pytest.raises(urllib.error.HTTPError) as refused:
         opener.open(req, timeout=5)           # and by the service
     assert refused.value.code == 403
@@ -178,19 +178,19 @@ def test_viewers_share_one_encode_per_frame(sim, monkeypatch):
 
 
 # ---------------------------------------------------------------- status and shares
-def test_status_counts_other_and_local_shares_apart(sim):
-    def counts():
-        st = sim.client.status()
-        return st["shares_active"], st["local_shares_active"]
-    assert counts() == (0, 0)
+def test_status_counts_active_shares(sim):
+    def count():
+        return sim.client.status()["shares_active"]
+    assert count() == 0
     other = ServiceClient(sim.cfg, client_id="program-A")
     other.share(5)
+    assert count() == 1
     with Pipeline(sim.cfg, approve_share=lambda m: True) as pipe:   # what nanokvm read/ask opens
         pipe.open(5)
-        assert counts() == (1, 1)
+        assert count() == 2
         other.unshare()
-        assert counts() == (0, 1)
-    assert counts() == (0, 0)
+        assert count() == 1
+    assert count() == 0
 
 
 class _ClosedLink:
@@ -232,7 +232,7 @@ def test_status_never_opens_the_keyboard_mouse_link(tmp_path):
 
 
 def _status(**over):
-    st = {"simulated": False, "shares_active": 0, "local_shares_active": 0,
+    st = {"simulated": False, "shares_active": 0,
           "capture": {"state": "streaming", "mode": "1920x1080 MJPG (requested 1920x1080@30)", "fps": 30.4,
                       "frame_size": [1920, 1080], "blank": False, "error": None},
           "control": {"enabled": True, "state": "not opened yet (opens on the first keyboard/mouse action)"}}
@@ -259,22 +259,15 @@ def test_status_lines_report_the_setup():
     text, colour = V.video_line(None, None, feed, stats)               # first status answer not in yet
     assert "waiting for the service status" in text and "None" not in text and colour == V.FG
     old = _status()
-    del old["shares_active"], old["local_shares_active"]               # a service started from older code
-    text, colour = V.video_line(old, None, feed, stats)
-    assert "older service" in text and colour == V.WARN_FG
+    del old["shares_active"]                                           # a service started from older code
     down = SimpleNamespace(state="reconnecting", error="cannot reach the NanoKVM service", unreachable=True)
     assert "press R" in V.video_line(None, None, down, stats)[0]
 
     text, colour = V.other_line(_status(), ("COM5", True))
     assert "COM5 found" in text and "Screen sharing: off" in text and colour == V.FG
     text, colour = V.other_line(_status(shares_active=1), (None, False))
-    assert "COM port not found" in text and "Screen sharing: 1 other program can read it" in text
-    assert "Glimmer" not in text and colour == V.WARN_FG
-    text, colour = V.other_line(_status(local_shares_active=1), ("COM5", True))
-    assert "Screen sharing: Muse Glimmer on this laptop can read it" in text and "other program" not in text
+    assert "COM port not found" in text and "Screen sharing: Muse Glimmer on this laptop can read it" in text
     assert colour == V.FG
-    text, colour = V.other_line(_status(local_shares_active=1, shares_active=2), ("COM5", True))
-    assert "or this prompt box); 2 other programs can read it" in text and colour == V.WARN_FG
     assert "COM9 (serial_port in nanokvm.toml) is not present" in V.other_line(_status(), ("COM9", False))[0]
     assert "Keyboard/mouse: simulated" in V.other_line(_status(simulated=True), (None, False))[0]
     opened = _status(control={"enabled": True, "link": "COM5 @ 57600 baud", "state": "ok",
@@ -637,25 +630,15 @@ def test_ctrl_c_closes_the_window_and_still_prints_the_summary(sim, monkeypatch,
 
 
 def test_viewer_command_modes(sim, monkeypatch, capsys):
-    opened, ran = [], []
-    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    ran = []
     monkeypatch.setattr(V, "run_viewer", lambda cl, fps, close_after: ran.append((fps, close_after)) or 0)
-
-    def args(**kw):
-        return argparse.Namespace(**{"browser": False, "no_open": False, "fps": 30, "close_after": None, **kw})
-
-    assert cli.cmd_viewer(sim.client, args(no_open=True)) == 0
-    assert sim.token in capsys.readouterr().out and opened == [] and ran == []
     assert cli.cmd_status(sim.client, argparse.Namespace(json=False)) == 0
     status = capsys.readouterr().out
-    assert "?t=<token>" in status and sim.token not in status     # status doesn't show the token
-    assert ("Sharing:   0 local reader(s) (nanokvm read, ask, edit or fix, or the viewer's prompt box), "
-            "0 other program(s)") in status
-    assert cli.cmd_viewer(sim.client, args(browser=True)) == 0
-    assert len(opened) == 1 and ran == []
-    assert cli.cmd_viewer(sim.client, args(fps=12, close_after=3.0)) == 0
+    assert sim.token not in status                                # status never shows the token
+    assert "Sharing:   0 active share(s) (nanokvm read, ask, edit or fix, or the viewer's prompt box)" in status
+    assert cli.cmd_viewer(sim.client, argparse.Namespace(fps=12, close_after=3.0)) == 0
     assert ran == [(12, 3.0)]
-    for bad in (["--fps", "0"], ["--close-after", "-1"], ["--browser", "--no-open"]):
+    for bad in (["--fps", "0"], ["--close-after", "-1"], ["--browser"]):
         with pytest.raises(SystemExit):
             cli.main(["viewer", *bad])
 
@@ -694,3 +677,14 @@ def test_stop_says_whether_the_service_stopped(capsys):
     assert cli.cmd_stop(Client(False, False), None) == 0 and "was not running" in capsys.readouterr().out
     assert cli.cmd_stop(Client(True, True), None) == 0 and "service stopped" in capsys.readouterr().out
     assert cli.cmd_stop(Client(True, False), None) == 1 and "did not stop within 20 s" in capsys.readouterr().out
+
+
+def test_the_live_view_forgets_its_last_picture_when_nobody_watches(sim):
+    resp = sim.client.open_stream(fps=30)
+    try:
+        next(V.read_parts(resp))
+        assert sim.service._viewer_cache[1]
+    finally:
+        resp.close()
+    _wait(lambda: sim.service.viewers == 0, what="the stream to end")
+    assert sim.service._viewer_cache == (0, b"")

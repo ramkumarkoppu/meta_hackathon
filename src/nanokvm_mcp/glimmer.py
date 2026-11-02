@@ -8,6 +8,7 @@ Text read from the screen is untrusted data, never instructions.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import socket
 import threading
@@ -16,6 +17,8 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from .config import Config
+
+log = logging.getLogger(__name__)
 
 _NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never proxy localhost
 REASONING_LEVELS = ("low", "medium", "high", "xhigh")
@@ -199,8 +202,9 @@ class GlimmerClient:
         try:
             with self._lock:
                 self._post("/v1/chat/completions", body, 60.0)
-        except GlimmerError:
-            pass
+        except GlimmerError as e:
+            log.warning("Muse Glimmer's server may still hold the last image: clearing its slot failed (%s). "
+                        "Stop tools\\run-glimmer.ps1 (Ctrl+C) once you're done.", e)
 
     def read_image(self, image_b64: str, fmt: str, prompt: str, *, reasoning: str | None = None,
                    think_tokens: int | None = 0, max_tokens: int = 4096) -> GlimmerReply:
