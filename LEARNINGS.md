@@ -63,7 +63,9 @@ Fix it plans with it by default. But on this laptop it's a 30B model at 4 bits, 
 that it shares with the screen images, with its thinking capped so each step stays usable (a planning
 step takes about 13.5 s). Spark is Meta's larger model, run in Meta's cloud, and by Meta's own figures
 it is the stronger one at this kind of work: 80.8 on OSWorld-Verified for Muse Spark 1.1, against 65.9
-for Glimmer 30B. So when a screen's redacted text may leave, Spark does the hard reasoning, such as
+for Glimmer 30B. I use muse-spark-1.3, the newest Spark the Model API offers me, but Meta reports only
+OSWorld 2.0 scores for it, which can't be compared with Glimmer's, so 1.1's is the like-for-like figure.
+So when a screen's redacted text may leave, Spark does the hard reasoning, such as
 finding an error nobody described and checking the fix on a fresh reading, while the laptop's GPU only
 reads the screen. I didn't run the two head to head on one task
 ([How Meta's models compared](#how-metas-models-compared)). The choice is made per screen: Local only
