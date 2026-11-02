@@ -7,7 +7,6 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=2.3,<3",
     "opencv-python-headless>=4.14,<5",
     "cv2-enumerate-cameras>=1.4,<2",
     "pyserial>=3.5,<4",
@@ -16,7 +15,6 @@ dependencies = [
 
 [project.scripts]
 nanokvm = "nanokvm_mcp.cli:main"
-nanokvm-mcp = "nanokvm_mcp.mcp_server:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

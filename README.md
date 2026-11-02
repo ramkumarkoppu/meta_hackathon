@@ -41,21 +41,21 @@ one step at a time, planned by Glimmer on the AI computer (or by Spark, if you t
 shown to you ([section 7](#fix-it)). `edit` and `fix` work on code in VS Code, and Fix it hands a
 change to code over to `fix`'s loop, which edits it by line number and checks every edit.
 
-**Sensitive screens.** The locked computer may show patient records or company-confidential data. In
-the Meta pipeline its screen images never leave the AI computer (the Claude Code bridge is separate:
-[section 2](#2-what-leaves-the-ai-computer)). Redaction catches values with a recognisable shape (keys,
-tokens, passwords in `key = value` form, email addresses, common hostnames, card numbers, network paths
-and user names in profile paths) and the terms you list, but it can't reliably catch names, patient
-details or confidential prose. So when such data is on the screen, send nothing: `nanokvm read` never
-sends, `ask --local-only` (or `outbound = "local_only"` in `nanokvm.toml`) has Glimmer answer on the
-AI computer instead of Spark, and `edit --local-only` and `fix --local-only` have Glimmer propose the
-edits too. In the viewer, a question sends nothing with *Local only* ticked, and Fix it sends nothing
-unless you tick Spark. The assistant helps with the software and its errors; it doesn't interpret
-patient data or give clinical advice.
+**Sensitive screens.** The locked computer may show patient records or company-confidential data. Its
+screen images never leave the AI computer ([section 2](#2-what-leaves-the-ai-computer)).
+Redaction catches values with a recognisable shape (keys, tokens, passwords in `key = value` form, email
+addresses, common hostnames, card numbers, network paths and user names in profile paths) and the terms
+you list, but it can't reliably catch names, patient details or confidential prose. So when such data is
+on the screen, send nothing: `nanokvm read` never sends, `ask --local-only` (or `outbound = "local_only"`
+in `nanokvm.toml`) has Glimmer answer on the AI computer instead of Spark, and `edit --local-only` and
+`fix --local-only` have Glimmer propose the edits too. In the viewer, a question sends nothing with
+*Local only* ticked, and Fix it sends nothing unless you tick Spark. The assistant helps with the
+software and its errors; it doesn't interpret patient data or give clinical advice.
 
-**Status (1 Nov).** Everything here is built and passes its tests on a simulated locked computer, with
-a fake Glimmer and a fake Meta API. On real hardware, every run used a spare PC standing in for the
-locked computer, with only dummy files on it. There, on 29 Oct, Glimmer read the capture (a short C++
+**Status (2 Nov).** `read`, `fix` and the viewer's Ask and Fix it ran end to end with the real models
+(Muse Glimmer on the AI computer's GPU, and Muse Spark through Meta's API wherever text was sent) on a
+spare Windows laptop standing in for the locked computer (the *stand-in PC* below), with only dummy
+files on it. On 29 Oct, Glimmer read the capture (a short C++
 file transcribed exactly, the screen described correctly), and `nanokvm fix --auto` found a deliberate
 syntax error by itself, typed its fix through the NanoKVM-USB's keyboard and checked it on the screen.
 On 30 Oct the loop closed, my first milestone: with no description from me, `fix --auto` found junk
@@ -64,6 +64,7 @@ deleted it, had Spark confirm the fix on a fresh reading (*FIXED*), and saved th
 tab's unsaved-changes dot (4 requests to Spark, $0.0085). On 1 Nov the viewer's **Fix it** did the same
 from a one-line task, *Whats wrong with this and fix it*: it handed hello.cpp to the same loop, which
 made the right fix and saved it. **The whole loop, step by step: [section 6a](#6a-the-whole-loop-step-by-step).**
+All 317 automated tests pass ([section 12](#12-files-and-testing-without-hardware)).
 
 **Results so far** (on the stand-in PC unless it says otherwise; dummy files only):
 
@@ -75,9 +76,9 @@ made the right fix and saved it. **The whole loop, step by step: [section 6a](#6
 | 30 Oct | `fix --auto` with no description: junk on a file's last line | Found and deleted it, *FIXED* on a fresh reading, saved and checked; 4 requests to Spark, $0.0085 |
 | 30 Oct | A question in the viewer about a deliberate `standard::cout` error | Found it; $0.0021 |
 | 30 Oct | Glimmer finding buttons, folders and fields on a synthetic screen (`tools\glimmer_point.py`) | 8 of 8, and *NONE* for one that wasn't there |
-| 1 Nov | Fix it on a simulated VS Code, with Glimmer planning and coding | The right fix, *FIXED*, saved, nothing sent (98 s and 96 s) |
+| 1 Nov | Fix it on a simulated VS Code screen, with the real Glimmer planning and coding | The right fix, *FIXED*, saved, nothing sent (98 s and 96 s) |
 | 1 Nov | Fix it: *Whats wrong with this and fix it*, on hello.cpp | The right fix, saved |
-| 1 Nov | The tests, on the simulator with a fake Glimmer and a fake Meta API | All 369 pass (one needs Git Bash and is skipped without it) |
+| 2 Nov | The automated tests (`pytest`; no hardware needed, [section 12](#12-files-and-testing-without-hardware)) | All 317 pass |
 
 **Known limits.**
 
@@ -100,8 +101,7 @@ Developer track, theme *Build for Your World*).
 - **Built before the event** (7–25 Oct, git tag `pre-event-baseline`): the NanoKVM service (capture,
   keyboard and mouse), the `nanokvm` command's `diag`, `status`, `screenshot` and `watch`, the browser
   live view, the simulated locked computer the tests use, the local Glimmer server setup (llama.cpp,
-  the weights, `tools\run-glimmer.ps1` and the smoke tests), a smoke test for the Meta Model API, and
-  a Claude Code bridge that isn't part of the entry.
+  the weights, `tools\run-glimmer.ps1` and the smoke tests), and a smoke test for the Meta Model API.
 - **Built during the event:** Glimmer reading and checking the screen (`glimmer.py`), redaction and
   the outbound gate, the Spark client, `nanokvm read`, `ask`, `edit`, `fix` and `keytest`, the viewer
   window, its prompt box for asking about the screen and having a task done there (Fix it), Glimmer as
@@ -136,8 +136,7 @@ simulated screen.
 13. [Licence](#13-licence)
 
 **Separate pages:** [What I built during the hackathon](HACKATHON.md) ·
-[What I learned building it](LEARNINGS.md) ·
-[Claude Code bridge (built before the event)](docs/claude-code.md)
+[What I learned building it](LEARNINGS.md)
 
 ---
 
@@ -168,14 +167,11 @@ locked computer ◄──USB keyboard── NanoKVM-USB ◄────┘
 | Muse Spark | Meta's cloud, through the Model API | Answers questions about the screen and proposes edits with one tool, `apply_edit`; in `fix` it finds the error itself and checks the fix on a fresh reading (*FIXED*), and with *Fix it: Spark plans and fixes code* ticked it plans Fix it's steps with `ui_step` and is the coder. It only ever sees redacted text. |
 | `nanokvm` command | AI computer | `read`, `ask`, `edit` and `fix` ([section 6](#6-using-it-read-ask-edit-and-fix)), the live `viewer` ([section 7](#7-watching-the-screen-yourself-and-asking-about-it)) and `diag` ([section 8](#8-first-run-with-the-hardware)). |
 
-Before the event, the same service was built as a bridge for Claude Code (an MCP server). It still
-works and has its own page, [docs/claude-code.md](docs/claude-code.md); it isn't part of the entry.
-
 ### 1a. Operating systems
 
 The two computers don't need the same operating system. To the locked computer, the NanoKVM is just
 a monitor and a USB keyboard and mouse. To the AI computer, it's a USB video capture device (with an
-audio device beside it for any HDMI sound, which the bridge never opens) and a USB serial port.
+audio device beside it for any HDMI sound, which the service never opens) and a USB serial port.
 
 | Computer | Windows | macOS | Linux |
 |----------|---------|-------|-------|
@@ -191,9 +187,10 @@ of Ctrl+L (Go to Line stays Ctrl+G). Also:
   elsewhere, so on a Mac add the U.S. input source and set `"us"`.
 - A Mac may open *Keyboard Setup Assistant* the first time it sees the NanoKVM's keyboard. If it
   asks for the keyboard type, choose ANSI, which matches `"us"`.
-- [Section 4](#4-locked-computer-settings) uses Windows names. On macOS 13 or later, open *System
-  Settings > Displays*, select Monitor A and set *Use as* to *Main display*; on macOS 12 or earlier,
-  drag the white menu bar onto Monitor A in *System Preferences > Displays > Arrangement*. On Linux
+- [Section 4](#4-locked-computer-settings) uses Windows names. On macOS, extend the displays rather
+  than mirroring them; for Fix it's clicks, make Monitor A the main display: on macOS 13 or later,
+  open *System Settings > Displays*, select Monitor A and set *Use as* to *Main display*; on macOS 12
+  or earlier, drag the white menu bar onto Monitor A in *System Preferences > Displays > Arrangement*. On Linux
   the NanoKVM's mouse may span every display that is on (it does on X11), so keep Monitor A the only
   display (GNOME: *Settings > Displays*). This is untested.
 - Section 4's VS Code shortcuts are the Windows and Linux ones. On a Mac they use Cmd (Cmd+Shift+P,
@@ -212,7 +209,6 @@ for the Windows CUDA build of llama.cpp. Running it elsewhere is future work.
 | Spark's answer and edits | Back to the AI computer, where placeholders are restored. Edits are typed only after you approve them: each one, or a whole run's once with `--auto` ([section 6](#6-using-it-read-ask-edit-and-fix)). |
 | Fix it, in the viewer | **Nothing**, by default: Glimmer plans each step and finds its target on the AI computer, and for a change to code it also proposes the edits. With *Spark plans and fixes code* ticked, Spark gets Glimmer's redacted description of the window in front, through the outbound gate, and names each step's target in words, and a change to code goes to Spark as `fix` sends it; the picture and the screen positions stay on the AI computer either way. Each step and each edit is done only after you allow it ([section 7](#fix-it)). |
 | A record of both | `.run\outbound.log` on the AI computer: exactly what was sent and received. It holds redacted screen text, so treat it as sensitive. |
-| Screenshots, with the Claude Code bridge | To Anthropic, but only once you approve sharing in a Claude Code conversation. The bridge was built before the event and isn't part of the entry ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)). Don't share a real locked computer with it unless its owner has approved Anthropic too. |
 
 **The outbound gate** (`src\nanokvm_mcp\outbound.py`) is the only path from screen text to Meta:
 
@@ -262,8 +258,7 @@ switch Billing to pay as you go and set `meta_billing = "paid"`.
 Cable 4 carries only keyboard and mouse input; the NanoKVM can send keystrokes but never read them.
 `nanokvm edit` and `fix` type only edits you approve at their prompt (each one, or once per run with
 `--auto`), and `fix` saves only with the same approval. The service itself accepts keystrokes from
-any program that can read `.run\token` ([section 10](#10-safety-details)), including the Claude Code
-bridge, which asks you in Claude Code before each action.
+any program that can read `.run\token` ([section 10](#10-safety-details)).
 **Physical switches:** unplug cable 4 and nothing can be typed; unplug cable 3 and the AI computer can
 neither see nor type (Monitor A goes dark too). Only Monitor A, the screen wired through the NanoKVM,
 is ever captured.
@@ -297,7 +292,7 @@ to the HOST end:
 |-----|------|-----------|-------|---------|
 | **TARGET** | HDMI | monitor → | **1** (HDMI) | Locked computer's HDMI port. This is the video **input**. |
 | **TARGET** | USB-C | keyboard + mouse | **4** (USB-C → USB-A) | Locked computer's USB-A port, so it sees a keyboard and mouse |
-| **HOST** | HDMI | monitor → | **2** (HDMI → DVI-D) | Dell Monitor A's white DVI port. This is the video **output** (loop-out). |
+| **HOST** | HDMI | monitor → | **2** (active HDMI → DisplayPort adapter) | Dell Monitor A's DisplayPort input. This is the video **output** (loop-out). |
 | **HOST** | USB-C | monitor + keyboard + mouse | **3** (USB-C → USB-C) | AI computer. It carries the video and keyboard/mouse data, and powers the NanoKVM. |
 | side | USB-A + T/H switch | – | none | Not used. Leave the switch at **H** (as shipped): a USB stick in this port would then only reach the AI computer, never the locked computer. |
 
@@ -311,34 +306,34 @@ to the HOST end:
 LOCKED COMPUTER DESK
 [1] locked computer HDMI port ── HDMI ────────────► NanoKVM TARGET HDMI
 [4] locked computer USB-A port ─ USB-A → USB-C ───► NanoKVM TARGET USB-C   (only when edits may be typed)
-[2] NanoKVM HOST HDMI ────────── HDMI → DVI-D ────► Dell Monitor A, white DVI port
+[2] NanoKVM HOST HDMI ────────── active HDMI → DisplayPort adapter ──► Dell Monitor A, DisplayPort input
 
 AI COMPUTER DESK
 [3] NanoKVM HOST USB-C ───────── USB-C → USB-C ───► AI computer USB-C
 [5] AI computer other USB-C ──── USB-C dock ── DisplayPort ──► Dell Monitor B, DisplayPort input
 
-Logitech keyboard + mouse: Bluetooth to both laptops; Easy-Switch between them.
-Each laptop on its own charger.
+Each laptop uses its own keyboard and touchpad, and its own charger.
 ```
 
 Setup steps:
 
-1. **Disconnect the locked computer from its docking station** and both monitors, and plug each
-   laptop into its own charger.
+1. **Disconnect the locked computer from its docking station**, if it's connected to one, and from both
+   monitors, and plug each laptop into its own charger.
 2. Connect cables **1, 2 and 3**, and connect Monitor B through the USB-C dock (**5**). Connect cable
    **4** only when edits may be typed.
-3. Use the monitors' buttons to set **Monitor A's input source to DVI** and **Monitor B's to
-   DisplayPort**.
-4. On the locked computer, make **Monitor A the main display** ([section 4](#4-locked-computer-settings)).
-5. On the AI computer, set Armoury Crate's **GPU Mode to Standard**. Then `nvidia-smi
-   --query-gpu=display_active --format=csv` says *Disabled*: no display uses the NVIDIA GPU, and
-   Muse Glimmer has all of its memory ([section 11](#11-troubleshooting), *VS Code or the desktop stalls*).
+3. Use the monitors' buttons to set **both monitors' input source to DisplayPort**.
+4. On the locked computer, use **Extend** mode and put the work you want help with on Monitor A
+   ([section 4](#4-locked-computer-settings)).
+5. On the AI computer, make sure no display runs on the NVIDIA GPU: on a laptop, use its hybrid
+   graphics mode rather than one where the NVIDIA GPU drives the screen. Then `nvidia-smi
+   --query-gpu=display_active --format=csv` says *Disabled*, and Muse Glimmer has all of the GPU's
+   memory ([section 11](#11-troubleshooting), *VS Code or the desktop stalls*).
 
 Notes:
 
-- **Why DVI for Monitor A.** The Dell monitors have DisplayPort, DVI-D and VGA inputs, but no HDMI.
-  HDMI and DVI-D carry the same digital picture, so a passive HDMI-to-DVI-D cable needs no power or
-  converter. Don't use VGA: it's analogue and blurry.
+- **Why an active adapter for Monitor A.** The Dell monitors have no HDMI input, so both run on
+  DisplayPort. Going from HDMI to DisplayPort needs an active converter (passive cables only work the
+  other way), so cable 2 is an active HDMI-to-DisplayPort adapter.
 - **Why Monitor B goes through a dock.** The dock (a StarTech.com 116N-USBC-DOCK, which uses
   DisplayLink) keeps Monitor B off the NVIDIA GPU. A display on that GPU takes some of the memory
   Glimmer needs, and the desktop then stalls while Glimmer runs.
@@ -347,9 +342,6 @@ Notes:
   alone, unplug cable 1 and plug cable 2's HDMI end straight into the locked computer's HDMI port.
 - **Why cable 4 is USB-A at the laptop end.** Some users found that USB-C to USB-C on the
   NanoKVM's TARGET side doesn't work.
-- **Keyboard and mouse.** Use the Logitech **Easy-Switch** buttons to change laptops. Logitech
-  *Flow* would need Logitech software and a network connection on the locked computer, so don't use
-  it.
 - **The NanoKVM's side USB-A port and T/H switch** are for a USB stick and aren't needed. Leave
   the switch at **H**, so nothing plugged in there can reach the locked computer. The switch doesn't
   affect video, capture or keyboard/mouse.
@@ -361,20 +353,23 @@ The NanoKVM-USB came with **no cables**. Ordered on Amazon UK on 2026-10-07:
 | # | Ordered | Connects |
 |---|---------|----------|
 | 1 | Ubluker HDMI cable (48 Gbps), 1 m | Locked computer HDMI → NanoKVM TARGET HDMI |
-| 2 | [C2G HDMI to DVI-D cable](https://www.amazon.co.uk/C2G-Digital-Suitable-Raspberry-Stations/dp/B00CQSYS48), 1 m | NanoKVM HOST HDMI → Dell Monitor A DVI |
+| 2 | An active HDMI-to-DisplayPort adapter (not part of the 7 Oct order) | NanoKVM HOST HDMI → Dell Monitor A DisplayPort |
 | 3 | [Cable Matters USB-IF certified USB-C to USB-C, 10 Gbps](https://www.amazon.co.uk/USB-IF-Certified-Cable-Matters-Delivery/dp/B01L0F6AJI), 1 m | NanoKVM HOST USB-C → AI computer. Must be a USB 3 data cable: it carries the video and powers the NanoKVM. |
 | 4 | [UGREEN USB-A to USB-C, USB 3.0](https://www.amazon.co.uk/dp/B08XJP9GMP), 1 m | Locked computer USB-A → NanoKVM TARGET USB-C (keyboard/mouse) |
-| 5 | StarTech.com 116N-USBC-DOCK and a DisplayPort cable (not part of the 7 Oct order) | AI computer USB-C → dock → Dell Monitor B DisplayPort. On 29 Oct it replaced the 2 m C2G HDMI-to-DVI-D cable ordered for Monitor B. |
+| 5 | StarTech.com 116N-USBC-DOCK and a DisplayPort cable (not part of the 7 Oct order) | AI computer USB-C → dock → Dell Monitor B DisplayPort |
 
 ## 4. Locked computer settings
 
 **Display** (*Settings > System > Display* on Windows 11; for macOS and Linux see
 [section 1a](#1a-operating-systems)):
 
-- Use **Extend** mode: the laptop's own screen + Monitor A.
-- **Monitor A must be the main display.** Select Monitor A and tick *Make this my main display*.
-  Work you want help with goes on Monitor A, the only screen that is captured, and the NanoKVM's
-  mouse always targets the main display.
+- Use **Extend** mode, so the laptop's own screen and Monitor A show different things. Only Monitor A
+  is captured and shared with the AI computer: put the work you want help with there, and keep
+  everything else on the laptop's own screen, which isn't shared.
+- Typed edits (`edit`, `fix`, and code that Fix it hands to the fix loop) use only the keyboard, so
+  they work whichever display is the main one. Fix it's clicks are different: the NanoKVM's mouse
+  lands on the main display, so for steps that click, make Monitor A the main display (select it and
+  tick *Make this my main display*).
 - Set Monitor A to its **native resolution at 60 Hz**. The NanoKVM accepts up to 4K at 30 Hz and
   delivers 1920x1080 to the AI computer, so a 1920x1080 monitor gives Glimmer the sharpest picture.
 - If Monitor A is **1920x1200** (16:10), the picture is squashed. Add `display_aspect = "16:10"` to
@@ -470,11 +465,10 @@ Delete those three values to undo it.
 |------|----------|
 | Python 3.12 (uv-managed) | `.uv\python\cpython-3.12.14-windows-x86_64-none\` |
 | uv download/build cache | `.uv\cache\` (set in `uv.toml`) |
-| Virtual environment and packages (`opencv-python-headless`, `pyserial`, `numpy`, `mcp`, …) | `.venv\` |
+| Virtual environment and packages (`opencv-python-headless`, `pyserial`, `numpy`, …) | `.venv\` |
 | This project's code / tests | `src\nanokvm_mcp\` / `tests\` |
 | Settings | `nanokvm.toml` |
 | Runtime files (token, keys, logs, calibration) | `.run\` |
-| Claude Code bridge registration and permissions (this folder only) | `.mcp.json`, `.claude\settings.local.json` |
 
 **The serial driver.** The NanoKVM's keyboard/mouse channel is a WCH CH343 USB-serial chip
 (`1A86:55D3`). When it was first plugged in (22 Oct), Windows used the WCH driver already on this
@@ -545,8 +539,8 @@ Get-NetTCPConnection -LocalPort 8001 -State Listen             # LocalAddress 12
 rendered at 1920x1080):** all 27 of 27 lines right (compared with runs of spaces collapsed, so
 indentation wasn't checked), and a full-screen read in 6.7–7.0 s (image prompt about 5 s, generation 131–141 tokens/s), using
 about 23 GB of the GPU's 24 GB with the drafter on. To check the files yourself, run `Get-FileHash` on them and compare the SHA-256
-values above. Glimmer is fast only in Turbo mode on the 240 W barrel charger; see *Glimmer is slow*
-in [section 11](#11-troubleshooting). It also needs the NVIDIA GPU to itself, with no display on it
+values above. Glimmer is fast only when the laptop runs at full power, on its full-power charger and
+in its highest performance mode; see *Glimmer is slow* in [section 11](#11-troubleshooting). It also needs the NVIDIA GPU to itself, with no display on it
 ([section 3](#3-wiring-for-this-desk), setup step 5).
 
 **On the real capture (29 Oct, during the event, without the drafter, 20.9 GB of GPU memory):** a
@@ -592,14 +586,14 @@ nanokvm fix                                    # no request: Spark finds the err
 Each command first checks that Glimmer answers (if it doesn't, nothing is shared), then asks you, at the
 keyboard, to share the screen with Muse Glimmer for a few minutes (`--minutes`: 5 by default, 10 for
 `edit` and `fix`; the share ends as soon as the command does). There is deliberately no `--yes`, and
-nothing is approved without a terminal, so a script, or an AI running commands without one (such as
-Claude Code's shell tool), can't approve. This guards against mistakes, not against programs on this
-computer: anything that can type into the terminal running `nanokvm` can answer its prompts, and a
-program that can read `.run\token` can use the service without the command
-([section 10](#10-safety-details)). So don't let an AI drive that terminal. The prompt box in
-`nanokvm viewer` asks the same questions in its window instead, answered by clicking its buttons
-([section 7](#asking-from-the-viewer)); the same caveat applies to anything that can click in that
-window. `--region x,y,w,h` reads only part of the screen (in the pixels of a `nanokvm screenshot`).
+nothing is approved without a terminal, so a script, or an AI running commands without one, can't
+approve. This guards against mistakes, not against programs on this computer: anything that can type
+into the terminal running `nanokvm` can answer its prompts, and a program that can read `.run\token`
+can use the service without the command ([section 10](#10-safety-details)). So don't let an AI drive
+that terminal. The prompt box in `nanokvm viewer` asks the same questions in its window instead,
+answered by clicking its buttons ([section 7](#asking-from-the-viewer)); the same caveat applies to
+anything that can click in that window. `--region x,y,w,h` reads only part of the screen (in the
+pixels of a `nanokvm screenshot`).
 
 - **`read`** keeps everything on the AI computer. It prints the text and how long Glimmer took, and a
   warning if the picture was uniform (no signal, a sleeping display); for code, it also says which line
@@ -733,9 +727,8 @@ result, Spark looks at the screen again until the problem is fixed, and the file
 
 **On the AI computer, once per session**
 
-1. **Power and GPU.** Plug in the 240 W barrel charger, choose Armoury Crate's **Turbo** mode (Fn+F5)
-   and **GPU Mode Standard**, and keep any external monitor off the NVIDIA GPU
-   ([section 3](#3-wiring-for-this-desk), setup step 5). Check:
+1. **Power and GPU.** Plug in the laptop's full-power charger, choose its highest performance mode,
+   and keep every display off the NVIDIA GPU ([section 3](#3-wiring-for-this-desk), setup step 5). Check:
    `nvidia-smi --query-gpu=display_active --format=csv` says *Disabled*.
 2. **Keep the readings private.** Close other apps that can capture this screen (other AI assistants,
    screen recorders), and run the commands below in PowerShell windows outside VS Code: the readings
@@ -798,8 +791,6 @@ result, Spark looks at the screen again until the problem is fixed, and the file
 
 ## 7. Watching the screen yourself, and asking about it
 
-### In a window on the AI computer
-
 Run `E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer`. A window on the AI computer shows the
 locked computer's screen live, at up to 30 fps (`--fps` changes it), with a prompt box beside it
 ([below](#asking-from-the-viewer)). Two status lines under the picture show:
@@ -811,8 +802,7 @@ locked computer's screen live, at up to 30 fps (`--fps` changes it), with a prom
 - the keyboard/mouse COM port and, once a keyboard/mouse action has opened the link, whether the
   NanoKVM reports cable 4 as connected;
 - whether a share lets Muse Glimmer read the screen (for `nanokvm read`, `ask`, `edit` or `fix`, or the
-  prompt box), and whether a Claude conversation is sharing it
-  ([docs/claude-code.md](docs/claude-code.md)).
+  prompt box), and a warning if any other program has a share.
 
 The live view itself is read-only: keys and clicks in it stay on the AI computer, it never makes the
 service open the keyboard/mouse link, and it saves nothing to disk. Only **Fix it** in the prompt box
@@ -909,15 +899,6 @@ than that. In a window smaller than the frame the picture is scaled down, which 
 use full screen, or press **1**. A snip of the viewer is only as sharp as what the window shows, and
 `nanokvm read` doesn't need one: it gives Glimmer the full-resolution frame directly.
 
-### Inside VS Code instead (built before the event)
-
-1. Run `E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer --no-open` in the terminal.
-2. Copy the printed URL (`http://127.0.0.1:8765/?t=…`).
-3. Press **Ctrl+Shift+P**, choose **Simple Browser: Show**, and paste the URL.
-
-The view is live (~15 fps) and read-only. Treat the URL like a password: its token also unlocks the
-service's keyboard and mouse controls.
-
 ## 8. First run with the hardware
 
 Wire everything as in [section 3](#3-wiring-for-this-desk), then run:
@@ -1005,15 +986,14 @@ the viewer never save a screenshot.
 | `idle_exit_min` | 60 | Stop the background service after this many idle minutes (0 = never) |
 | `port` | 8765 | Port of the service and the live view, always on `127.0.0.1`. Change it if another program uses 8765, but run `nanokvm stop` before you edit it. |
 | `capture_width` / `capture_height` / `capture_fps` | 1920 / 1080 / 30 | Video mode requested from the NanoKVM |
-| `region` | not set | Manual active area `"x,y,w,h"` in capture pixels. Normally leave it unset. |
+| `region` | not set | Manual active area `"x,y,w,h"` in capture pixels. Normally leave it unset. A `.run\calibration.json` left from an earlier calibration still sets the area; delete it to use the whole frame. |
+| `shot_width` | 1456 | Width of saved screenshots (`screenshot`, `watch`, `diag`) and of the pointer coordinate space (`--region`, Fix it's clicks). Glimmer reads full-resolution frames. |
 | `key_hold_ms` / `key_gap_ms` / `click_hold_ms` | 25 / 15 / 60 | Keyboard and click timing in milliseconds. Raise them if the locked computer misses keys; typing gets slower. |
 | `wake_after_s` | 60 | Before the first key or click after this many seconds without any (or after the keyboard link opens), the service taps Scroll Lock until the locked computer's Scroll Lock light follows, then taps it back: keys sent before then could be lost (seen live: the first Ctrl+G after a fresh start did nothing). Scroll Lock changes nothing in VS Code or in typing. 0 turns it off. |
 
-The Claude Code bridge has a few settings of its own (`confirm_actions`, `shot_width`, `jpeg_quality`,
-`share_minutes`, `post_action_ms`); see [docs/claude-code.md](docs/claude-code.md#6-settings-only-claude-uses).
-Any setting can also come from an environment variable `NANOKVM_<NAME>`, for example `NANOKVM_PORT`,
-which overrides `nanokvm.toml`. After editing, run `nanokvm stop`; the service restarts when it's next
-needed.
+`src\nanokvm_mcp\config.py` lists every setting, with its default. Any setting can also come from an
+environment variable `NANOKVM_<NAME>`, for example `NANOKVM_PORT`, which overrides `nanokvm.toml`.
+After editing, run `nanokvm stop`; the service restarts when it's next needed.
 
 ## 10. Safety details
 
@@ -1051,20 +1031,18 @@ needed.
   `127.0.0.1`, rejects foreign Host headers, and requires the random token in `.run\token`, so web
   pages can't read the screen or type. Glimmer's server also listens only on `127.0.0.1` and needs its
   own key. Neither is locked down against programs on this laptop yet: any program that can read the
-  token can use the service. In this folder, Claude Code is refused when its file tools or shell
-  commands try to open `.run\`, where the token and keys are; `screen_status` still gives it the
-  token, and [docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)
-  lists what else isn't caught.
-  To replace the token, run `nanokvm stop` and delete `.run\token`; the next start makes a new one.
+  token, kept in `.run\` with the keys, can use the service. The browser live view's URL carries the
+  token as well (`nanokvm viewer --no-open` prints it), so treat it like a password. To replace the
+  token, run `nanokvm stop` and delete `.run\token`; the next start makes a new one.
 
 ## 11. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | No signal / black picture (`nanokvm status` says *no_frames*, or `nanokvm status --json` shows `"blank": true`) | Check that the locked computer HDMI goes into the **TARGET** end. Wake the locked computer. Check Monitor A is enabled in the locked computer's display settings ([section 4](#4-locked-computer-settings)). |
-| Monitor A is black but capture works, or the other way round | Set Monitor A's input to **DVI**. Check Monitor A runs at its native resolution at 60 Hz ([section 4](#4-locked-computer-settings)). |
+| Monitor A is black but capture works, or the other way round | Set Monitor A's input to **DisplayPort**, and check the HDMI-to-DisplayPort adapter is plugged in at both ends (and into USB power, if it has a power lead). Check Monitor A runs at its native resolution at 60 Hz ([section 4](#4-locked-computer-settings)). |
 | `NanoKVM capture device not found` | Check cable 3, then run `nanokvm diag`. If the NanoKVM gets no power over USB-C to USB-C, use USB-A to USB-C into the AI computer. |
-| `video capture needs Windows on the AI computer` | The bridge runs only on a Windows AI computer, for now. This limit doesn't apply to the locked computer ([section 1a](#1a-operating-systems)). |
+| `video capture needs Windows on the AI computer` | Capture runs only on a Windows AI computer, for now. This limit doesn't apply to the locked computer ([section 1a](#1a-operating-systems)). |
 | `COM port not found` (video works) | Run `nanokvm diag`; it lists every COM port. This unit's chip is a CH343 (`1A86:55D3`, shown as *USB-Enhanced-SERIAL CH343*, COM5 so far) and needs no extra driver. Check that `serial_ids` in `nanokvm.toml` still includes `1A86:55D3` (the built-in default looks only for `1A86:7523`), then reseat cable 3 or try another USB-C port: video and the serial chip use different wires in the cable. Also look for a disabled or yellow-flagged entry under *Ports (COM & LPT)* in Device Manager. |
 | `COMx is in use` or `no video` | Close the official NanoKVM-USB app or the `usbkvm.sipeed.com` browser tab; only one program can hold the device. Use `nanokvm stop` before opening the official app. |
 | `Muse Glimmer isn't ready at http://127.0.0.1:8001` or `Glimmer isn't answering` | Start `tools\run-glimmer.ps1` and wait until its window shows `model loaded` and `listening on http://127.0.0.1:8001` (about 10–30 s with the model files cached, about 72 s from cold). |
@@ -1085,8 +1063,8 @@ needed.
 | Keyboard does nothing, or `nanokvm status` shows `'target_usb_connected': False` | Run `nanokvm keytest`: it presses Num Lock twice and checks that the locked computer's Num Lock follows, with no picture taken. If it says *Keyboard OK*, the keys arrive, and an edit that stops at *Go to Line* means VS Code didn't have the focus: click into the file first. Otherwise check cable 4 and try the locked computer's other USB-A port. Managed laptops can block new USB keyboards by policy. If so, typing isn't available on that laptop: don't work around the policy or install drivers on it; ask its IT owner. Reading still works. |
 | `keyboard/mouse busy` | Another program is typing. Wait for it to finish. |
 | `token` or `port` errors | Run `nanokvm stop`, or end stray `pythonw.exe` processes, then retry. If another program uses the port (8765), set `port` in `nanokvm.toml`. Logs are in `.run\service.log`. |
-| Glimmer is slow (a full-screen read takes much longer than about 7 s) | Use Armoury Crate's **Turbo** mode (**Fn+F5** switches modes; changing the Windows power plan doesn't), on the **240 W barrel charger**, and GPU Mode **Standard** or **Optimized**. Silent mode, battery and USB-C (PD) power hold the GPU to about 55 W; `run-glimmer.ps1` warns about each. Once, in Turbo on the charger, the GPU still stayed near 55 W for a reason not yet found. To see whether that is happening, run `nvidia-smi --query-gpu=power.draw,clocks.gr --format=csv -l 1` during a read. |
-| VS Code or the desktop stalls while Glimmer runs | Check whether the NVIDIA GPU also drives a display: `nvidia-smi --query-gpu=display_active --format=csv` says *Enabled*. Then the desktop shares the GPU's 24 GB with Glimmer (21.7 GB with the drafter). Keep the displays off it: Armoury Crate's GPU Mode **Standard**, not *Ultimate* (which wires the panel to the NVIDIA GPU), and any external monitor on a port the Intel GPU drives (on 29 Oct, with Standard mode and the monitor on a DisplayLink USB-C dock, it said *Disabled*). Then Glimmer has the whole GPU. Until then, `run-glimmer.ps1 -NoDFlash` (20.9 GB) leaves the desktop more room, at the cost of slower long answers (describe 13.5 s instead of 6.7 s). |
+| Glimmer is slow (a full-screen read takes much longer than about 7 s) | Use the laptop's highest performance mode (on many gaming laptops it's set in the maker's own app, not by the Windows power plan), on its **full-power charger**, with no display on the NVIDIA GPU. A quiet power mode, battery and USB-C (PD) power held this laptop's GPU to about 55 W; `run-glimmer.ps1` warns about each. Once, at full power on the charger, the GPU still stayed near 55 W for a reason not yet found. To see whether that is happening, run `nvidia-smi --query-gpu=power.draw,clocks.gr --format=csv -l 1` during a read. |
+| VS Code or the desktop stalls while Glimmer runs | Check whether the NVIDIA GPU also drives a display: `nvidia-smi --query-gpu=display_active --format=csv` says *Enabled*. Then the desktop shares the GPU's 24 GB with Glimmer (21.7 GB with the drafter). Keep the displays off it: use the laptop's hybrid graphics mode, not a mode that wires the built-in screen to the NVIDIA GPU, and put any external monitor on a port the integrated GPU drives (on 29 Oct, in hybrid mode with the monitor on a DisplayLink USB-C dock, it said *Disabled*). Then Glimmer has the whole GPU. Until then, `run-glimmer.ps1 -NoDFlash` (20.9 GB) leaves the desktop more room, at the cost of slower long answers (describe 13.5 s instead of 6.7 s). |
 
 ## 12. Files and testing without hardware
 
@@ -1101,10 +1079,8 @@ E:\meta_hackathon
 ├── LEARNINGS.md                  why it's built this way, and what I learned about the models (new)
 ├── LICENSE                       MIT licence (new)
 ├── docs\
-│   ├── wiring.svg                wiring diagram used in this README
-│   └── claude-code.md            the Claude Code bridge, built before the event (new page)
+│   └── wiring.svg                wiring diagram used in this README
 ├── nanokvm.toml                  settings
-├── .mcp.json, .claude\           the Claude Code bridge's registration and permissions (.claude\ not in the repo)
 ├── pyproject.toml, uv.lock, uv.toml
 ├── src\nanokvm_mcp\
 │   ├── glimmer.py                client for the local Muse Glimmer server (new)
@@ -1125,10 +1101,9 @@ E:\meta_hackathon
 │   ├── hid.py, protocol.py, keys.py   keyboard/mouse over the CH9329-compatible serial protocol
 │   ├── geometry.py               coordinates, change detection, calibration
 │   ├── saved_images.py           deletes saved screenshots after saved_image_minutes
-│   ├── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
-│   └── mcp_server.py             the Claude Code bridge's MCP tools (built before the event)
-├── tests\                        369 tests (simulator, fake Glimmer and fake Meta API: no hardware, GPU or key);
-│                                 12 of its 20 files are new
+│   └── simulator.py              simulated locked computer (Notepad, or a small VS Code) for tests
+├── tests\                        317 automated tests (simulator, mock Glimmer and Meta API: no hardware, GPU or key);
+│                                 11 of its 18 files are new
 ├── tools\
 │   ├── run-glimmer.ps1           starts llama-server with Glimmer on 127.0.0.1:8001
 │   ├── glimmer_smoke.py          Glimmer smoke test on a rendered dummy C++ screen
@@ -1136,7 +1111,6 @@ E:\meta_hackathon
 │   ├── capture_frame.py          saves full-resolution NanoKVM frames for the A/B (dummy content only)
 │   ├── glimmer_ab.py             scores Glimmer's reading of those frames against ab_screens\
 │   ├── glimmer_point.py          Fix it: does Glimmer point at the right thing? (a synthetic screen, dummy names) (new)
-│   ├── guard_run_dir.py          Claude Code hook: refuses shell commands that would reach .run\ (new)
 │   ├── ab_screens\               dummy C++ files and build errors to show for the A/B, and
 │   │                             live_check.cpp (new) for `nanokvm read --check`
 │   ├── downloads\                the two llama.cpp zips that llama.cpp\ was unpacked from (not in the repo)
@@ -1163,8 +1137,9 @@ E:\meta_hackathon
   ([section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)).
 
 - **Run the tests:** `.venv\Scripts\python.exe -m pytest -q`. They cover the pipeline's logic against
-  a simulated locked computer, a fake Glimmer server and a fake Meta API. The fake Glimmer answers
-  from the simulator's own text, so how well the real Glimmer reads the screen isn't tested there.
+  a simulated locked computer, a mock Glimmer server and a mock Meta API. The mock Glimmer answers
+  from the simulator's own text, so these tests don't measure how well the real Glimmer reads a
+  screen; the runs on the stand-in PC did that (below).
   They check that no image or `data:` URL reaches "Meta", that `edit` selects, deletes and types
   nothing until the status bar and the lines on the screen check out (only Go to Line is pressed
   before that), that it stops after a failed check, and that Ctrl+C releases every key while the
@@ -1181,19 +1156,19 @@ E:\meta_hackathon
 The keyboard/mouse protocol is WCH's CH9329 serial protocol, as Sipeed's official NanoKVM-USB app
 (v1.1.4) uses it: CH9329 frames `57 AB 00 CMD LEN DATA SUM` at 57600 baud, with the absolute mouse
 on a 0–4095 grid, and key codes from the USB HID Usage Tables. **Status as of
-2026-11-01:** `read`, `ask`, `edit` and `fix` are built and pass their tests on the simulator; `read` and
-`ask` also ran end to end with the real Glimmer and the real Spark on simulated screens. On the real
-hardware (22 and 29 Oct), capture works at 1920x1080 and about 30 fps, the `nanokvm viewer` window shows
-the stand-in PC's screen live (median delay from capture to window 37 ms), and the keyboard/mouse chip
-answers at 57600 baud. On 29 Oct Glimmer read a real capture: a 9-line C++ file transcribed exactly in
-6.1 s, and the screen described correctly in 6.7 s, with the drafter (7.1 s and 13.5 s without it;
-[section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)). The same day `nanokvm fix --auto`
-found a deliberate syntax error, typed its fix over cable 4 and checked it on the screen, and on 30 Oct,
-the first milestone, it fixed a file on the stand-in PC and saved it
+2026-11-02:** every hardware run so far used the stand-in PC with only dummy files and the real models
+(Glimmer, and Spark wherever text was sent). Capture works at 1920x1080 and about 30 fps, the `nanokvm
+viewer` window shows the stand-in PC's screen live (median delay from capture to window 37 ms), and the
+keyboard/mouse chip answers at 57600 baud (22 and 29 Oct). On 29 Oct Glimmer read a real capture: a
+9-line C++ file transcribed exactly in 6.1 s, and the screen described correctly in 6.7 s, with the
+drafter (7.1 s and 13.5 s without it; [section 5a](#5a-muse-glimmer-on-the-ai-computers-gpu-open-weights)). The same day
+`nanokvm fix --auto` found a deliberate syntax error, typed its fix over cable 4 and checked it on the
+screen, and on 30 Oct, the first milestone, it fixed a file on the stand-in PC and saved it
 ([section 6a](#6a-the-whole-loop-step-by-step)). On 30 Oct a question in the viewer, through the same
 outbound gate as `nanokvm ask`, was answered from a real capture, and on 1 Nov Fix it, asked *Whats wrong
 with this and fix it* about `hello.cpp` on the stand-in PC, made the right fix and saved the file.
-`nanokvm edit` with a request of its own has run only against the simulator so far.
+Before the hardware runs, `read` and `ask` ran end to end with the real Glimmer and Spark on simulated
+screens. `nanokvm edit` with a request of its own has run only against the simulator so far.
 
 ## 13. Licence
 

@@ -43,7 +43,7 @@ spaces collapsed, so indentation wasn't checked). The weights tied and only the 
 faster, so Unsloth's weights, chosen following Unsloth's guide, stayed the default. The drafter is
 lossless, since llama.cpp keeps a drafted token only when it equals Glimmer's own pick. llama-server
 drafts only 3 tokens a step by default, but the drafter's block size is 16, so the launcher drafts up to
-15: that day, in a Turbo run whose GPU stayed near 55 W, generation went from 14 tokens/s without the
+15: that day, in a run whose GPU stayed near 55 W, generation went from 14 tokens/s without the
 drafter to 23 at a draft length of 3 and 46 at 15.
 
 ### Muse Spark in Meta's cloud
@@ -145,9 +145,9 @@ Two limits shaped the rest:
 
 - **Defaults and power.** Before the event (24 Oct), llama-server's defaults (4 slots of 131K context)
   ran Glimmer at about 5 tokens/s, CPU speed, until one slot with a 32K context kept it on the GPU.
-  After that, speed depended mostly on the laptop's power state: a full-screen read took 6.7–7.0 s in
-  Turbo on the 240 W charger, but 23–26 s in a Turbo run whose GPU stayed near 55 W, so the launcher
-  warns about battery, USB-C (PD) power and Silent mode.
+  After that, speed depended mostly on the laptop's power state: a full-screen read took 6.7–7.0 s at
+  full power on the 240 W charger, but 23–26 s in a run whose GPU stayed near 55 W, so the launcher
+  warns about battery, USB-C (PD) power and a quiet power mode.
 - **The Model API worked** on event day 1 (26 Oct), from the UK on free credits: muse-spark-1.3
   answered in 1.6 s, strict JSON and streaming worked, and the smoke test (written before the event)
   cost $0.0035. So streamed Chat Completions with `store: false` and one function tool per request
@@ -204,12 +204,12 @@ fix and then the one wrong change, a second '}', which passed every check.
 ## How I worked
 
 - **Simulator first.** Each feature was tested first against the simulated locked computer (built
-  before the event), with a fake Glimmer and a fake Meta API, and tests check that no image reaches the
-  fake API. The suite grew from 111 tests before the event to 369 on 1 Nov, all passing (one needs Git
-  Bash and is skipped without it). The simulator was optimistic where it mattered: its fake Glimmer
-  reads perfectly, the same way every time, and doesn't think, and its Go to Line box opens with ':' as
-  in VS Code 1.144's source. So the empty box, the disagreeing re-reads and the thinking that used up
-  the answer budget were first seen live, and each came back as a test.
+  before the event), with a mock Glimmer and a mock Meta API, and tests check that no image reaches the
+  mock API. The suite grew from 111 tests before the event to 317 on 2 Nov, all passing. The simulator
+  was optimistic where it mattered: its mock Glimmer reads perfectly, the same way every time, and
+  doesn't think, and its Go to Line box opens with ':' as in VS Code 1.144's source. So the empty box,
+  the disagreeing re-reads and the thinking that used up the answer budget were first seen live, and
+  each came back as a test.
 - **Reviews by AI agents.** After most big steps, a review by AI agents (several reviewers, each checked
   by a skeptic agent) went over the change, and the commits record 115 findings from four of them. They
   caught what the tests hadn't: the Go to Line rule loosened after the empty box also accepted the Go To
@@ -266,13 +266,12 @@ the free-credit confirmation. [Typing blind](#typing-blind) has the details.
 
 ### How Meta's models compared
 
-I didn't measure any comparison with another model family: the entry uses only Meta's models (a Claude
-Code bridge built before the event isn't part of it), and Glimmer and Spark weren't run head to head on
-one task. By Meta's own scores, checked before the event, Glimmer 30B is weaker at computer use than
-Muse Spark 1.1 (OSWorld-Verified 65.9 against 80.8; for muse-spark-1.3 Meta publishes only OSWorld 2.0
-scores, which aren't comparable), yet it plans Fix it by default because it sends nothing. Within the
-family, Unsloth's and Meta's 4-bit weights tied on the pre-event test, and Meta's drafter made Glimmer
-faster.
+I didn't measure any comparison with another model family: the entry uses only Meta's models, and
+Glimmer and Spark weren't run head to head on one task. By Meta's own scores, checked before the event,
+Glimmer 30B is weaker at computer use than Muse Spark 1.1 (OSWorld-Verified 65.9 against 80.8; for
+muse-spark-1.3 Meta publishes only OSWorld 2.0 scores, which aren't comparable), yet it plans Fix it by
+default because it sends nothing. Within the family, Unsloth's and Meta's 4-bit weights tied on the
+pre-event test, and Meta's drafter made Glimmer faster.
 
 ### What mattered most when choosing a model
 

@@ -22,7 +22,7 @@
   <text x="140" y="254" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Locked computer</text>
   <text x="140" y="276" text-anchor="middle" fill="#374151">nothing installed</text>
   <text x="140" y="296" text-anchor="middle" fill="#374151">own charger · no dock</text>
-  <text x="140" y="316" text-anchor="middle" fill="#374151">Monitor A = main display</text>
+  <text x="140" y="316" text-anchor="middle" fill="#374151">Extend mode: Monitor A shared</text>
   <rect x="226" y="282" width="20" height="16" rx="2" fill="#111827"/>
   <text x="222" y="350" text-anchor="end" font-size="11" fill="#6b7280">HDMI · USB-A</text>
   <rect x="230" y="326" width="16" height="10" rx="1" fill="#111827"/>
@@ -49,8 +49,8 @@
   <!-- Dell Monitor A (locked computer's screen) -->
   <rect x="760" y="64" width="220" height="132" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
   <text x="870" y="92" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Dell Monitor A</text>
-  <text x="870" y="114" text-anchor="middle" fill="#374151">input source: DVI</text>
-  <text x="870" y="134" text-anchor="middle" fill="#374151">Locked computer's main display</text>
+  <text x="870" y="114" text-anchor="middle" fill="#374151">input source: DisplayPort</text>
+  <text x="870" y="134" text-anchor="middle" fill="#374151">Locked computer's 2nd screen</text>
   <text x="870" y="154" text-anchor="middle" fill="#1d4ed8" font-weight="600">the captured screen</text>
   <text x="870" y="180" text-anchor="middle" font-size="11" fill="#6b7280">fed through the NanoKVM</text>
   <rect x="754" y="132" width="12" height="18" rx="2" fill="#f9fafb" stroke="#111827"/>
@@ -70,17 +70,7 @@
   <text x="870" y="560" text-anchor="middle" fill="#374151">input source: DisplayPort</text>
   <text x="870" y="582" text-anchor="middle" fill="#b91c1c" font-weight="600">AI computer only</text>
 
-  <!-- Logitech keyboard + mouse -->
-  <rect x="380" y="500" width="300" height="70" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="4 3"/>
-  <text x="530" y="526" text-anchor="middle" font-weight="700" fill="#111827">Logitech keyboard + mouse</text>
-  <text x="530" y="548" text-anchor="middle" font-size="12" fill="#374151">Bluetooth to both laptops · Easy-Switch</text>
-
   <!-- ===================== cables ===================== -->
-  <!-- Bluetooth (no cable) -->
-  <polyline points="380,535 140,535 140,366" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="2 5"/>
-  <polyline points="680,535 730,535 730,430 760,430" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="2 5"/>
-  <text x="150" y="526" font-size="11" fill="#6d28d9">Bluetooth</text>
-
   <!-- cable 1: Locked computer HDMI -> TARGET HDMI -->
   <line x1="246" y1="290" x2="370" y2="290" stroke="#2563eb" stroke-width="5"/>
   <circle cx="308" cy="290" r="12" fill="#2563eb"/>
@@ -94,11 +84,12 @@
   <text x="252" y="398" font-size="11" fill="#c2410c">keyboard/mouse, only</text>
   <text x="252" y="412" font-size="11" fill="#c2410c">when edits may be typed</text>
 
-  <!-- cable 2: HOST HDMI -> Monitor A DVI -->
+  <!-- cable 2: HOST HDMI -> active HDMI-to-DisplayPort adapter -> Monitor A -->
   <polyline points="690,290 722,290 722,141 754,141" fill="none" stroke="#2563eb" stroke-width="5"/>
   <circle cx="722" cy="214" r="12" fill="#2563eb"/>
   <text x="722" y="219" text-anchor="middle" font-weight="700" fill="#ffffff">2</text>
-  <text x="706" y="196" text-anchor="end" font-size="11" fill="#1d4ed8">HDMI → DVI-D</text>
+  <text x="706" y="182" text-anchor="end" font-size="11" fill="#1d4ed8">HDMI → DisplayPort</text>
+  <text x="706" y="196" text-anchor="end" font-size="11" fill="#1d4ed8">(active adapter)</text>
 
   <!-- cable 3: HOST USB-C -> AI computer -->
   <line x1="688" y1="370" x2="754" y2="370" stroke="#16a34a" stroke-width="5"/>
@@ -114,12 +105,12 @@
 
   <!-- ===================== legend ===================== -->
   <line x1="40" y1="630" x2="960" y2="630" stroke="#e5e7eb" stroke-width="1"/>
-  <text x="40" y="654" font-weight="700" fill="#111827">Cables (1-4 ordered on Amazon UK) · no dock at the locked computer</text>
+  <text x="40" y="654" font-weight="700" fill="#111827">Cables · no dock at the locked computer</text>
 
   <circle cx="52" cy="680" r="10" fill="#2563eb"/><text x="52" y="684" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">1</text>
   <text x="70" y="684" font-size="12" fill="#111827">Ubluker HDMI 1 m: Locked computer HDMI → NanoKVM TARGET HDMI</text>
   <circle cx="52" cy="706" r="10" fill="#2563eb"/><text x="52" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">2</text>
-  <text x="70" y="710" font-size="12" fill="#111827">C2G HDMI → DVI-D 1 m: NanoKVM HOST HDMI → Monitor A</text>
+  <text x="70" y="710" font-size="12" fill="#111827">Active HDMI → DisplayPort adapter: NanoKVM HOST HDMI → Monitor A</text>
   <circle cx="52" cy="732" r="10" fill="#0891b2"/><text x="52" y="736" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">5</text>
   <text x="70" y="736" font-size="12" fill="#111827">StarTech USB-C dock + DisplayPort cable: AI computer → Monitor B</text>
 
@@ -128,5 +119,5 @@
   <circle cx="522" cy="706" r="10" fill="#ea580c"/><text x="522" y="710" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
   <text x="540" y="710" font-size="12" fill="#111827">UGREEN USB-A ↔ USB-C 1 m: Locked computer USB-A → NanoKVM TARGET</text>
 
-  <text x="40" y="764" font-size="11" fill="#6b7280">Dashed orange = plug in only when edits may be typed. Dotted purple = Bluetooth. The NanoKVM (and so Monitor A) is powered by cable 3.</text>
+  <text x="40" y="764" font-size="11" fill="#6b7280">Dashed orange = plug in only when edits may be typed. Each laptop keeps its own keyboard and touchpad. The NanoKVM (and so Monitor A) is powered by cable 3.</text>
 </svg>

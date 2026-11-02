@@ -1,9 +1,8 @@
 """The shared NanoKVM service: the ONLY process that opens the NanoKVM-USB.
 
 It captures HDMI continuously, drives keyboard/mouse over serial, and serves a small HTTP API +
-live viewer on 127.0.0.1 so every Claude Code session (each runs its own MCP server) and
-the user's live view (the ``nanokvm viewer`` window, a browser or VS Code Simple Browser) can
-share the device.
+live viewer on 127.0.0.1 so every nanokvm command and the user's live view (the ``nanokvm viewer``
+window, a browser or VS Code Simple Browser) can share the device.
 
 Security: bound to 127.0.0.1 only, exclusive port bind, Host header must be localhost (blocks
 DNS rebinding), and every request needs the random token stored in .run/token (header
@@ -91,9 +90,9 @@ class Service:
         self.started = time.time()
         self._last_space: tuple[int, int, G.Region] | None = None   # space of the last screenshot served
         self.sim_desktop = None   # set in simulator mode (tests read its state through /api/status)
-        # Screen sharing: client id -> (expiry monotonic, end wall-clock, local). Requests from the MCP
-        # server (one id per Claude conversation) and from nanokvm read/ask/edit/fix and the viewer's prompt
-        # box (local=True) carry X-NanoKVM-Client; captures for that client need an active share.
+        # Screen sharing: client id -> (expiry monotonic, end wall-clock, local). Requests from nanokvm
+        # read/ask/edit/fix and the viewer's prompt box (local=True), and from any other program that sends
+        # one, carry X-NanoKVM-Client; captures for that client need an active share.
         self._shares: dict[str, tuple[float, float, bool]] = {}
         self._shares_lock = threading.Lock()
 
@@ -195,7 +194,7 @@ class Service:
         cx, cy, cw, ch = G.screen_rect_to_capture((x, y, w, h), region, sw, sh)
         crop = frame.image[cy:cy + ch, cx:cx + cw]
         scale = min(max_side / max(cw, ch), 3.0)
-        # stay inside the vision budget so the model sees these exact pixels (no silent downscale)
+        # stay inside the screenshot size cap (geometry.VISION_MAX_SIDE / fit_vision_budget)
         out_w, out_h = G.fit_vision_budget(max(1, round(cw * scale)), max(1, round(ch * scale)))
         img = G.resize(crop, out_w, out_h)
         # screen-coordinate rectangle actually covered (after clamping)
@@ -215,9 +214,9 @@ class Service:
     def frame(self, rect: tuple[float, float, float, float] | None = None, fmt: str = "png",
               max_tokens: int = G.VISION_MAX_TOKENS) -> dict:
         """The screen at full capture resolution, for the LOCAL vision model (Muse Glimmer): the whole
-        calibrated region, or a screen-coordinate rectangle of it. Not reduced to Claude's screenshot
-        size; shrunk only if it would exceed max_tokens visual tokens. Nothing is written to disk, and
-        the cropped copy is zeroed once encoded."""
+        calibrated region, or a screen-coordinate rectangle of it. Not reduced to the screenshot size
+        (shot_width); shrunk only if it would exceed max_tokens visual tokens. Nothing is written to disk,
+        and the cropped copy is zeroed once encoded."""
         if fmt not in ("png", "jpeg"):
             raise ServiceError("format must be 'png' or 'jpeg'")
         max_tokens = max(64, min(int(max_tokens), G.VISION_MAX_TOKENS))
@@ -308,12 +307,12 @@ class Service:
 
     # ------------------------------------------------------------ screen sharing
     SHARE_REFUSED = ("Screen sharing is off (or has expired), so the locked computer's screen cannot be captured. "
-                     "Ask the user whether to share it, then call start_screen_sharing - the user approves once.")
+                     "A screen share approved at this laptop is needed first.")
     MAX_SHARE_MINUTES = 480
 
     def share_active(self, client: str | None) -> bool:
-        """Captures requested by a Claude conversation (client id set) need an active share. Requests
-        without a client id (the nanokvm CLI, the live view, any program with the token) are not gated."""
+        """Captures requested with a client id need an active share. Requests without one (nanokvm
+        screenshot, watch and diag, the live view, any program with the token) are not gated."""
         if client is None:
             return True
         with self._shares_lock:
@@ -331,7 +330,7 @@ class Service:
 
     def share(self, client: str | None, minutes: int, local: bool = False) -> dict:
         """local=True: the share is for a reader on this laptop (nanokvm read/ask/edit/fix, the viewer's prompt
-        box), not a Claude conversation."""
+        box), not another program."""
         if not client:
             raise ServiceError("screen sharing needs a client id (X-NanoKVM-Client header)")
         minutes = max(1, min(int(minutes), self.MAX_SHARE_MINUTES))
@@ -349,7 +348,7 @@ class Service:
         return {"sharing": False, "was_sharing": was}
 
     def active_shares(self) -> tuple[int, int]:
-        """(Claude conversations, local readers such as nanokvm read/ask) that may capture the screen
+        """(other programs, local readers such as nanokvm read/ask) that may capture the screen
         right now. Expired shares are dropped."""
         now = time.monotonic()
         with self._shares_lock:
@@ -398,7 +397,7 @@ class Service:
         blank = None
         if latest is not None:
             blank = G.blank_stats(latest.image)[0]
-        claude_shares, local_shares = self.active_shares()
+        other_shares, local_shares = self.active_shares()
         return {
             "service": SERVICE_NAME, "version": __version__, "pid": os.getpid(),
             "uptime_s": int(time.time() - self.started),
@@ -409,7 +408,7 @@ class Service:
             "viewers": self.viewers,
             "idle_exit_min": self.cfg.idle_exit_min,
             "sharing": self.share_info(client),
-            "shares_active": claude_shares,          # Claude conversations
+            "shares_active": other_shares,           # shares that aren't local: other programs
             "local_shares_active": local_shares,     # nanokvm read/ask/edit/fix, the viewer's prompt box (Glimmer)
             **({"sim": {"text": self.sim_desktop.text, "button_presses": self.sim_desktop.button_presses}}
                if self.sim_desktop is not None else {}),
@@ -853,7 +852,7 @@ class Handler(BaseHTTPRequestHandler):
         """MJPEG live view for the user. ``?fps=N`` (1-60) overrides viewer_fps for this viewer. Each
         real frame's part carries X-Frame-Seq and X-Frame-Time (wall-clock capture time) so the viewer
         window can show its delay; the "no video" picture carries X-Frame-Placeholder: 1 instead.
-        Like every capture, a request with a client id (a Claude conversation) needs an active share."""
+        Like every capture, a request with a client id needs an active share."""
         svc = self.server.service
         client = self._client()
         if client is not None and not svc.share_active(client):

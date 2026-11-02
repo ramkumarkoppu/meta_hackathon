@@ -23,8 +23,10 @@ entry. On 29 Oct, before the first push, I reworded the commit messages, includi
 
 It has:
 
-- the NanoKVM-USB bridge: HDMI capture, keyboard and mouse through the CH9329 chip, the local
-  background service, the MCP server for Claude Code and the `nanokvm` command;
+- the NanoKVM-USB software: HDMI capture, keyboard and mouse through the CH9329 chip, the local
+  background service and the `nanokvm` command;
+- an MCP server that let an AI coding assistant use the service, which I took out of the current
+  files on 2 Nov because the entry never used it;
 - automatic deletion of saved screenshots;
 - a simulated locked computer (a Notepad window) for the tests; its small VS Code and its Num and
   Scroll Lock lights came during the event;
@@ -43,11 +45,8 @@ git diff pre-event-baseline
 
 or, on GitHub: <https://github.com/ramkumarkoppu/meta_hackathon/compare/pre-event-baseline...master>.
 
-The first event commit also renamed the two computers (now the locked computer and the AI computer),
-the project folder (now `E:\meta_hackathon`) and the Claude Code MCP server (now `locked-computer`).
-So the diff shows those renames in pre-event files too. The Claude Code bridge itself changed only
-for the renames, the `locked_os` setting, a pointer to the viewer window in `screen_status`'s reply
-and, on 29 Oct, the rules that keep it out of `.run\`.
+The first event commit also renamed the two computers (now the locked computer and the AI computer) and
+the project folder (now `E:\meta_hackathon`), so the diff shows those renames in pre-event files too.
 
 Every run on the real hardware below used a spare PC standing in for the locked computer, with only
 dummy files on it, so *the locked computer* in those results, and in the commit and tag messages, means
@@ -69,15 +68,10 @@ So far:
   function calling (`apply_edit`). Each one is shown as a diff with the exact keys, typed into VS Code
   on the locked computer only after I say yes, keyboard only through the NanoKVM, and checked by Muse
   Glimmer on the screen before and after (`editing.py`). It was first tested on the simulator, with a
-  fake Glimmer and a fake Meta API; the same typing ran with the real models on the stand-in PC later
+  mock Glimmer and a mock Meta API; the same typing ran with the real models on the stand-in PC later
   that day, through `nanokvm fix` (below).
-- **Claude Code kept out of `.run\` (29 Oct).** Deny rules and a hook (`tools/guard_run_dir.py`) stop
-  Claude Code in this folder from opening `.run\` by mistake, where the Meta API key, the service
-  token and the audit log of what was sent to Spark live. They guard against mistakes, not a
-  determined program, and the bridge's `screen_status` still returns the token
-  ([docs/claude-code.md, section 3](docs/claude-code.md#3-approvals-and-what-goes-to-anthropic)).
-- **The README rewritten around the Meta-model pipeline (29 Oct).** The Claude Code bridge, built before
-  the event, moved to its own page, [docs/claude-code.md](docs/claude-code.md).
+- **The README rewritten around the Meta-model pipeline (29 Oct).** It now opens with what the entry
+  does, its results and limits, and what was built before the event.
 - **MIT licence (29 Oct).** The repo is now under the MIT licence ([LICENSE](LICENSE)), and it covers
   the pre-event groundwork too.
 - **Ready to read the real screen (29 Oct).** Before Glimmer's first read of the stand-in PC,
@@ -89,7 +83,8 @@ So far:
   transcribed a 9-line C++ file in VS Code on the stand-in PC exactly, in 6.1 s, and
   `read --describe` named the app, the file and the status bar's contents correctly, in 6.7 s,
   with the DFlash drafter on (7.1 s and 13.5 s without it). For that, the NVIDIA GPU drives no
-  display: Armoury Crate's GPU Mode is Standard, and my external monitor goes through a USB-C dock.
+  display: the laptop runs in its hybrid graphics mode, and my external monitor goes through a USB-C
+  dock.
   A question from the viewer, through the same outbound gate as `nanokvm ask`, was answered from the
   real screen on 30 Oct (below). README section 6a has the whole loop, step by step.
 - **Spark finds the error itself (29 Oct).** `nanokvm fix`: with no request from me, Glimmer notes
@@ -171,8 +166,11 @@ So far:
   moved that line above `main` in one edit (96 s); each time it answered *FIXED* on a fresh reading and
   the file was saved and checked, with nothing sent. On the stand-in PC, asked the same question about
   hello.cpp, Fix it made the right fix and saved the file.
-- **Tidying up for submission (1 Nov).** A last review by AI agents (4 reviewers, each checked by a
+- **Tidying up for submission (1–2 Nov).** A last review by AI agents (4 reviewers, each checked by a
   skeptic) went over the code, the docs and everything that goes public. I applied its corrections
   and took the out-of-date pre-event plan out of the current files (the baseline keeps it). Then I
   wrote [LEARNINGS.md](LEARNINGS.md): why it's built this way, what I found Meta's models could and
-  couldn't do, and answers to the submission form's questions.
+  couldn't do, and answers to the submission form's questions. On 2 Nov I took out of the current
+  files the pre-event MCP server, the page I had moved its instructions to, and the hook I added on
+  29 Oct to keep that coding assistant out of `.run\`, with their tests, since the entry runs only on
+  Muse Glimmer and Muse Spark (git history keeps them).

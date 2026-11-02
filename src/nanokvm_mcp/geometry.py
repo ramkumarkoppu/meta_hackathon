@@ -4,8 +4,8 @@ Spaces:
   * capture px   - pixels of the HDMI frame delivered by the NanoKVM (e.g. 1920x1080)
   * region       - the part of the capture frame that shows the locked computer desktop (normally the
                    whole frame; smaller if the GPU adds black bars)
-  * screen coords- pixels of the screenshot Claude sees (region resized to ``shot_width``);
-                   this is the ONLY space pointer tools accept
+  * screen coords- pixels of the screenshot (region resized to ``shot_width``);
+                   this is the ONLY space pointer actions accept
   * abs          - the NanoKVM absolute-mouse grid, 0..4095 on each axis, spanning the target's
                    primary display (= the region)
 """
@@ -42,10 +42,9 @@ class Region:
         return asdict(self)
 
 
-# Claude's standard vision tier: images up to 1568 px on the long edge and about 1568 visual tokens
-# (ceil(w/28) * ceil(h/28)) are seen as-is; bigger ones are downscaled, which would silently break
-# the pixel coordinates Claude reads off the image. Newer models (Opus 4.7+, Sonnet 5+) accept
-# up to 2576 px, so for them this cap is simply conservative.
+# Size cap for screenshots (and so the pointer coordinate space) and zooms: up to 1568 px on the long
+# edge and about 1568 visual tokens (ceil(w/28) * ceil(h/28)), small enough that a program can show one
+# to a vision model without it being downscaled. Glimmer reads /api/frame instead (fit_token_budget below).
 VISION_MAX_SIDE = 1568
 VISION_MAX_TOKENS = 1568
 
@@ -56,7 +55,7 @@ def vision_tokens(w: int, h: int) -> int:
 
 def fit_vision_budget(w: int, h: int, max_side: int = VISION_MAX_SIDE,
                       max_tokens: int = VISION_MAX_TOKENS) -> tuple[int, int]:
-    """Shrink (w, h), keeping the aspect ratio, until no downscaling by the model is needed."""
+    """Shrink (w, h), keeping the aspect ratio, until it is within the size cap above."""
     scale = min(1.0, max_side / max(w, h))
     w2, h2 = max(1, int(w * scale)), max(1, int(h * scale))
     while vision_tokens(w2, h2) > max_tokens and w2 > 28 and h2 > 28:

@@ -15,9 +15,6 @@ models/
 tools/llama.cpp/
 tools/downloads/
 
-# Personal Claude Code settings
-.claude/
-
 # Screen captures and A/B results saved inside the repo by mistake (tools\capture_frame.py,
 # tools\glimmer_ab.py, nanokvm screenshot FILE); images meant for the docs go in docs\
 *.png

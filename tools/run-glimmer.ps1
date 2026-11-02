@@ -1,4 +1,4 @@
-# Start llama.cpp's llama-server with Muse Glimmer for the locked-computer bridge.
+# Start llama.cpp's llama-server with Muse Glimmer for Locked Computer Assist.
 # Local only: listens on 127.0.0.1, needs the key in .run\llama_api_key, no web UI.
 # Everything stays inside E:\meta_hackathon (models\, tools\llama.cpp\, .run\, .cache\).
 #
@@ -13,7 +13,7 @@
 param(
     [ValidateSet("unsloth", "meta")] [string]$Model = "unsloth",
     [ValidateSet("", "bf16", "q4km")] [string]$Projector = "",   # default: bf16 with unsloth, q4km with meta
-    # DFlash is on by default: measured 24 Oct in Turbo, a full-screen read took 23-26 s with it (generation
+    # DFlash is on by default: measured 24 Oct with the GPU held near 55 W, a full-screen read took 23-26 s with it (generation
     # 46 tok/s at draft length 15) against 32-34 s without, with the same 27/27 lines. -DFlash is kept
     # for older scripts and changes nothing.
     [switch]$NoDFlash,
@@ -87,16 +87,17 @@ foreach ($v in @(Get-ChildItem Env: | Where-Object { $_.Name -like "LLAMA_*" -or
     Remove-Item "Env:$($v.Name)"
 }
 
-# Battery, USB-C (PD) power and Armoury Crate's Silent mode all hold this GPU to about 55 W under load
-# (measured 24 Oct: 1.3 GHz instead of up to 3 GHz). Turbo (120 W) needs the 240 W barrel charger.
+# Battery, USB-C (PD) power and a quiet power mode all held this laptop's GPU to about 55 W under load
+# (measured 24 Oct: 1.3 GHz instead of up to 3 GHz). Full power (120 W) needs its 240 W barrel charger.
+# The checks below match this laptop's power plan names; on other laptops they may simply not fire.
 $scheme = powercfg /getactivescheme
 $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($battery -and $battery.BatteryStatus -eq 1) {
-    Write-Warning "On battery: the GPU is capped at about 55 W and Glimmer runs much slower. Connect the 240 W charger."
+    Write-Warning "On battery: the GPU is capped at about 55 W and Glimmer runs much slower. Connect the laptop's full-power charger."
 } elseif ($scheme -match "\(PD ") {
-    Write-Warning "A USB-C (PD) power plan is active: the GPU is power-limited in every mode. Connect the 240 W barrel charger."
+    Write-Warning "A USB-C (PD) power plan is active: the GPU is power-limited in every mode. Connect the laptop's full-power charger."
 } elseif ($scheme -match "\(Silent\)") {
-    Write-Warning "Silent power mode: the GPU is capped at 55 W and Glimmer runs much slower. Press Fn+F5 for Performance or Turbo."
+    Write-Warning "Quiet power mode: the GPU is capped at about 55 W and Glimmer runs much slower. Switch the laptop to a performance mode."
 }
 
 $argv = @(

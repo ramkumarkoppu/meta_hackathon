@@ -125,18 +125,18 @@ def test_stream_marks_the_no_video_picture(sim):
         resp.close()
 
 
-def test_stream_needs_a_share_for_a_claude_client(sim):
-    claude = ServiceClient(sim.cfg, client_id="conversation-A")
+def test_stream_needs_a_share_for_a_client_with_an_id(sim):
+    caller = ServiceClient(sim.cfg, client_id="program-A")
     with pytest.raises(ServiceError) as refused:
-        claude.open_stream(fps=30)            # refused on the client side at once
+        caller.open_stream(fps=30)            # refused on the client side at once
     assert refused.value.status == 403
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     req = urllib.request.Request(f"{sim.cfg.base_url}/stream.mjpg?t={sim.token}",
-                                 headers={"X-NanoKVM-Client": "conversation-A"})
+                                 headers={"X-NanoKVM-Client": "program-A"})
     with pytest.raises(urllib.error.HTTPError) as refused:
         opener.open(req, timeout=5)           # and by the service
     assert refused.value.code == 403
-    claude.share(5)
+    caller.share(5)
     with opener.open(req, timeout=5) as r:    # with an approved share it streams
         assert r.headers["Content-Type"].startswith("multipart/x-mixed-replace")
 
@@ -178,17 +178,17 @@ def test_viewers_share_one_encode_per_frame(sim, monkeypatch):
 
 
 # ---------------------------------------------------------------- status and shares
-def test_status_counts_claude_and_local_shares_apart(sim):
+def test_status_counts_other_and_local_shares_apart(sim):
     def counts():
         st = sim.client.status()
         return st["shares_active"], st["local_shares_active"]
     assert counts() == (0, 0)
-    claude = ServiceClient(sim.cfg, client_id="conversation-A")
-    claude.share(5)
+    other = ServiceClient(sim.cfg, client_id="program-A")
+    other.share(5)
     with Pipeline(sim.cfg, approve_share=lambda m: True) as pipe:   # what nanokvm read/ask opens
         pipe.open(5)
         assert counts() == (1, 1)
-        claude.unshare()
+        other.unshare()
         assert counts() == (0, 1)
     assert counts() == (0, 0)
 
@@ -266,17 +266,22 @@ def test_status_lines_report_the_setup():
     assert "press R" in V.video_line(None, None, down, stats)[0]
 
     text, colour = V.other_line(_status(), ("COM5", True))
-    assert "COM5 found" in text and "Claude screen sharing: off" in text and colour == V.FG
+    assert "COM5 found" in text and "Screen sharing: off" in text and colour == V.FG
     text, colour = V.other_line(_status(shares_active=1), (None, False))
-    assert "COM port not found" in text and "ON (1 conversation)" in text and colour == V.WARN_FG
+    assert "COM port not found" in text and "Screen sharing: 1 other program can read it" in text
+    assert "Glimmer" not in text and colour == V.WARN_FG
     text, colour = V.other_line(_status(local_shares_active=1), ("COM5", True))
-    assert "Claude screen sharing: off" in text and "Muse Glimmer" in text and colour == V.FG
+    assert "Screen sharing: Muse Glimmer on this laptop can read it" in text and "other program" not in text
+    assert colour == V.FG
+    text, colour = V.other_line(_status(local_shares_active=1, shares_active=2), ("COM5", True))
+    assert "or this prompt box); 2 other programs can read it" in text and colour == V.WARN_FG
     assert "COM9 (serial_port in nanokvm.toml) is not present" in V.other_line(_status(), ("COM9", False))[0]
     assert "Keyboard/mouse: simulated" in V.other_line(_status(simulated=True), (None, False))[0]
     opened = _status(control={"enabled": True, "link": "COM5 @ 57600 baud", "state": "ok",
                               "device_info": {"chip_version": "V1.8", "target_usb_connected": False}})
     assert "COM5 @ 57600 baud, chip V1.8, locked computer USB NOT connected" in V.other_line(opened, ("COM5", True))[0]
-    assert "Claude screen sharing: ?" in V.other_line(old, ("COM5", True))[0]
+    assert "Screen sharing: ?" in V.other_line(old, ("COM5", True))[0]
+    assert "Screen sharing: ?" in V.other_line(None, (None, False))[0]
 
 
 def test_stats_count_frames_from_an_older_service_and_no_video_pictures():
@@ -367,7 +372,7 @@ def test_window_shows_the_screen_and_stays_read_only(sim, tmp_path, monkeypatch)
     assert win.stats.delays_ms and max(win.stats.delays_ms) < 2000
     assert "frames shown" in win.summary()
     assert {path for path, _ in requests} == {"/stream.mjpg", "/api/status"}
-    assert {client for _, client in requests} == {None}  # never a client id, so never one of Claude's captures
+    assert {client for _, client in requests} == {None}  # never a client id: the user's own view, never gated
     assert sim.service._hid is None                      # the keyboard/mouse link was never opened
     assert sim.desk.text == "" and sim.desk.button_presses == 0
     assert [p for p in tmp_path.rglob("*") if p.suffix.lower() in PICTURE_SUFFIXES] == []   # nothing on disk
@@ -644,7 +649,8 @@ def test_viewer_command_modes(sim, monkeypatch, capsys):
     assert cli.cmd_status(sim.client, argparse.Namespace(json=False)) == 0
     status = capsys.readouterr().out
     assert "?t=<token>" in status and sim.token not in status     # status doesn't show the token
-    assert "Sharing:   0 Claude conversation(s), 0 local reader(s)" in status
+    assert ("Sharing:   0 local reader(s) (nanokvm read, ask, edit or fix, or the viewer's prompt box), "
+            "0 other program(s)") in status
     assert cli.cmd_viewer(sim.client, args(browser=True)) == 0
     assert len(opened) == 1 and ran == []
     assert cli.cmd_viewer(sim.client, args(fps=12, close_after=3.0)) == 0

@@ -21,7 +21,7 @@ _NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # neve
 
 
 class ServiceError(RuntimeError):
-    """Problem reaching or using the service; the message is shown to Claude."""
+    """Problem reaching or using the service; the message is shown to the user."""
 
     def __init__(self, message: str, status: int | None = None) -> None:
         super().__init__(message)
@@ -44,7 +44,7 @@ def _is_timeout(exc: BaseException) -> bool:
 class ServiceClient:
     def __init__(self, cfg: Config, client_id: str | None = None) -> None:
         self.cfg = cfg
-        self.client_id = client_id   # set by the MCP server: captures then need an approved screen share
+        self.client_id = client_id   # set by the pipeline: captures then need an approved screen share
 
     # ---- token / urls
     def _token(self) -> str:
@@ -95,12 +95,12 @@ class ServiceClient:
     def open_stream(self, fps: int, timeout: float = 5.0) -> http.client.HTTPResponse:
         """The live view's MJPEG stream (/stream.mjpg) at up to ``fps`` frames a second, for the viewer
         window. Like the browser live view it is the user's own view and sends no client id, so a client
-        made for a Claude conversation (client_id set) is refused: its captures need screen sharing.
+        made with a client_id is refused: its captures need screen sharing.
         The caller reads the parts (viewer.read_parts) and closes the response; a read that waits
         longer than ``timeout`` s fails."""
         if self.client_id:
-            raise ServiceError("the live stream is the user's own view; Claude's captures need screen sharing",
-                               status=403)
+            raise ServiceError("the live stream is the user's own view; captures with a client id need "
+                               "screen sharing", status=403)
         conn = http.client.HTTPConnection("127.0.0.1", self.cfg.port, timeout=timeout)
         try:
             conn.request("GET", f"/stream.mjpg?fps={int(fps)}", headers={"X-NanoKVM-Token": self._token()})
@@ -183,7 +183,7 @@ class ServiceClient:
         try:
             if os.name == "nt":
                 base = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                try:  # survive the MCP server's job object if the host allows breakaway
+                try:  # outlive the starting program's job object if the job allows breakaway
                     subprocess.Popen(cmd, creationflags=base | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
                 except OSError:
                     subprocess.Popen(cmd, creationflags=base, **kwargs)
@@ -251,7 +251,7 @@ class ServiceClient:
 
     def share(self, minutes: int, local: bool = False) -> dict:
         """local=True marks the share as a reader on this laptop (nanokvm read/ask/edit/fix, the viewer's prompt
-        box), not a Claude conversation, so the live view reports the two apart."""
+        box), not another program, so the live view reports the two apart."""
         return self.call("POST", "/api/share", {"minutes": minutes, **({"local": True} if local else {})})
 
     def unshare(self) -> dict:

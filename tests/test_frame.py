@@ -29,7 +29,7 @@ def test_frame_needs_an_active_share(sim):
     assert e.value.status == 403
     pipe.share(5)
     r = pipe.frame()
-    assert (r["width"], r["height"]) == (1920, 1080)          # native capture size, not Claude's 1280
+    assert (r["width"], r["height"]) == (1920, 1080)          # native capture size, not the 1280 screenshot
     assert r["visual_tokens"] == 69 * 39
     assert r["format"] == "png"
     assert _decode(r).shape == (1080, 1920, 3)

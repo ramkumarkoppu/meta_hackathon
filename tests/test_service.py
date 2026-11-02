@@ -174,7 +174,7 @@ def test_view_only_mode(sim_factory):
 
 def test_click_rejected_after_coordinate_space_changes(sim_factory):
     env = sim_factory(bars=(96, 0))
-    env.client.screenshot()                                  # Claude saw 1280x720
+    env.client.screenshot()                                  # the caller saw 1280x720
     env.client.calibrate()                                   # space becomes 1280x800
     with pytest.raises(ServiceError, match="coordinate space changed"):
         env.client.act({"action": "click", "x": 10, "y": 10})
@@ -223,41 +223,41 @@ def test_viewer_page_and_stream(sim):
         assert b"--frame" in chunk and b"\xff\xd8" in chunk
 
 
-def test_screen_sharing_gates_claude_captures(sim):
+def test_screen_sharing_gates_captures_with_a_client_id(sim):
     from nanokvm_mcp.client import ServiceClient
-    claude = ServiceClient(sim.cfg, client_id="conversation-A")
-    other = ServiceClient(sim.cfg, client_id="conversation-B")
-    for fn in (claude.screenshot, lambda: claude.zoom(0, 0, 10, 10), lambda: claude.wait_change(0.5, 0.5, 100)):
+    caller = ServiceClient(sim.cfg, client_id="program-A")
+    other = ServiceClient(sim.cfg, client_id="program-B")
+    for fn in (caller.screenshot, lambda: caller.zoom(0, 0, 10, 10), lambda: caller.wait_change(0.5, 0.5, 100)):
         with pytest.raises(ServiceError, match="sharing is off"):
             fn()
-    r = claude.share(5)
+    r = caller.share(5)
     assert r["sharing"] and r["minutes"] == 5
-    assert claude.screenshot()["width"] == 1280
-    assert claude.status()["sharing"]["active"] is True
-    with pytest.raises(ServiceError, match="sharing is off"):      # sharing is per conversation
+    assert caller.screenshot()["width"] == 1280
+    assert caller.status()["sharing"]["active"] is True
+    with pytest.raises(ServiceError, match="sharing is off"):      # sharing is per client id
         other.screenshot()
-    assert claude.unshare()["was_sharing"] is True
+    assert caller.unshare()["was_sharing"] is True
     with pytest.raises(ServiceError, match="sharing is off"):
-        claude.screenshot()
+        caller.screenshot()
     assert sim.client.screenshot()["width"] == 1280                 # user's own CLI (no client id) is not gated
 
 
 def test_actions_without_sharing_return_no_screenshot(sim):
     from nanokvm_mcp.client import ServiceClient
-    claude = ServiceClient(sim.cfg, client_id="conversation-A")
-    r = claude.act({"action": "keys", "keys": "a", "screenshot_after": True})
+    caller = ServiceClient(sim.cfg, client_id="program-A")
+    r = caller.act({"action": "keys", "keys": "a", "screenshot_after": True})
     assert "shot" not in r and "sharing is off" in r["note"]
-    claude.share(1)
-    r = claude.act({"action": "keys", "keys": "b", "screenshot_after": True})
+    caller.share(1)
+    r = caller.act({"action": "keys", "keys": "b", "screenshot_after": True})
     assert "shot" in r
 
 
 def test_share_expires(sim):
     from nanokvm_mcp.client import ServiceClient
-    claude = ServiceClient(sim.cfg, client_id="conversation-A")
-    claude.share(1)
-    exp, wall, local = sim.service._shares["conversation-A"]
-    sim.service._shares["conversation-A"] = (exp - 61, wall, local)  # pretend a minute passed
+    caller = ServiceClient(sim.cfg, client_id="program-A")
+    caller.share(1)
+    exp, wall, local = sim.service._shares["program-A"]
+    sim.service._shares["program-A"] = (exp - 61, wall, local)  # pretend a minute passed
     with pytest.raises(ServiceError, match="sharing is off"):
-        claude.screenshot()
+        caller.screenshot()
     assert sim.client.status()["shares_active"] == 0                 # and it no longer counts

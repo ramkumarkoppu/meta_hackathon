@@ -7,7 +7,7 @@ import pytest
 
 from nanokvm_mcp import capture, cli, hid
 from nanokvm_mcp.client import ServiceError
-from nanokvm_mcp.config import LOCKED_OSES, Config
+from nanokvm_mcp.config import Config
 
 
 def test_locked_os_defaults_to_windows(tmp_path):
@@ -30,11 +30,6 @@ def test_unknown_locked_os_is_refused(tmp_path):
 def test_layout_warning_only_for_a_mac_with_the_pc_uk_layout(tmp_path, os_, layout, warns):
     cfg = Config.load(home=tmp_path, env={"NANOKVM_LOCKED_OS": os_, "NANOKVM_KEYBOARD_LAYOUT": layout})
     assert bool(cfg.layout_warning) is warns
-
-
-def test_every_locked_os_has_instructions_text():
-    from nanokvm_mcp import mcp_server
-    assert set(mcp_server.LOCKED_OS_TEXT) == set(LOCKED_OSES)
 
 
 def test_capture_explains_it_needs_a_windows_ai_computer(monkeypatch):

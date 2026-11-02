@@ -13,8 +13,8 @@ from pathlib import Path
 # src/nanokvm_mcp/config.py -> project root is two levels above the package directory.
 _DEFAULT_HOME = Path(__file__).resolve().parents[2]
 
-# accepted locked_os values (they pick Claude's shortcut hints); the locked side itself needs no
-# software, only HDMI out and USB HID
+# accepted locked_os values (they pick the shortcuts edit, fix and Fix it use); the locked side itself
+# needs no software, only HDMI out and USB HID
 LOCKED_OSES = ("windows", "macos", "linux")
 
 
@@ -41,7 +41,7 @@ def _parse_bool(text: str) -> bool:
 
 @dataclass
 class Config:
-    # --- local service (shared by every Claude Code conversation) ---
+    # --- local service (shared by every nanokvm command and live view) ---
     port: int = 8765                     # always bound to 127.0.0.1
     idle_exit_min: float = 60.0          # service exits after this long without clients (0 = never)
 
@@ -54,15 +54,14 @@ class Config:
     capture_fourcc: str = "MJPG"
 
     # --- keyboard/mouse (WCH USB-serial bridge, CH340 or CH343 -> CH9329-compatible HID chip) ---
-    control: bool = True                 # False = view-only (no keyboard/mouse tools)
-    confirm_actions: bool = False        # True = Claude Code asks before EVERY keyboard/mouse action
+    control: bool = True                 # False = view-only (no keyboard/mouse actions)
     serial_port: str | None = None       # e.g. "COM5"; default = autodetect by VID:PID
     serial_ids: str = "1A86:7523"
     keyboard_layout: str = "us"         # layout set on the locked computer: "us" or "uk" (PC layouts)
     locked_os: str = "windows"           # the locked computer's OS: "windows", "macos" or "linux"
     baud: int = 57600                    # official NanoKVM-USB apps use 57600
 
-    # --- what Claude sees ---
+    # --- screenshots and the pointer coordinate space ---
     shot_width: int = 1280               # screenshot width = width of the pointer coordinate space
     jpeg_quality: int = 80
     display_aspect: str | None = None    # e.g. "16:10" if the HDMI picture is stretched to 16:9
@@ -83,8 +82,8 @@ class Config:
     post_action_ms: int = 1500           # max wait for the screen to react after an action
     max_text_len: int = 1500
 
-    # --- screen sharing with Claude (one approval per sharing session) ---
-    share_minutes: int = 60              # default share length; Claude may ask for 1..480 minutes
+    # --- screen sharing (one approval per share) ---
+    share_minutes: int = 60              # default share length; a request may ask for 1..480 minutes
 
     # --- screenshots saved by the nanokvm command (screenshot, watch, diag) ---
     saved_image_minutes: float = 5.0     # deleted automatically after this long (minimum 1)

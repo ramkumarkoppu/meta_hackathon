@@ -33,7 +33,7 @@ WAKE_WAIT_S = 1.5              # per tap: how long the light may take to follow
 
 
 class HidError(RuntimeError):
-    """Keyboard/mouse problem; the message is shown to Claude."""
+    """Keyboard/mouse problem; the message goes back to the caller."""
 
 
 class HidBusy(HidError):
@@ -221,8 +221,8 @@ class Hid:
     def _acquire(self, gen: int) -> Iterator[None]:
         if not self._lock.acquire(timeout=self.busy_timeout):
             raise HidBusy("keyboard/mouse busy: another action (for example typing requested by another "
-                          "Claude conversation) is still running. Retry in a moment, or call release_all to "
-                          "stop it.")
+                          "program) is still running. Retry in a moment, or stop it where it runs (Stop in the "
+                          "viewer, Ctrl+C in the terminal).")
         try:
             if self._gen != gen:
                 raise HidAborted("cancelled by release_all before it started")

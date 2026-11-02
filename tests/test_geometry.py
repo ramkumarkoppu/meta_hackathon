@@ -19,7 +19,7 @@ def test_vision_budget():
         w2, h2 = G.fit_vision_budget(w, h)
         assert G.vision_tokens(w2, h2) <= G.VISION_MAX_TOKENS and max(w2, h2) <= G.VISION_MAX_SIDE
         assert abs(w2 / h2 - w / h) < 0.02
-    # a too-large configured screenshot width is reduced, so the coordinate space is what Claude sees
+    # a too-large configured screenshot width is reduced, so the coordinate space stays within the cap too
     assert G.vision_tokens(*G.shot_size(G.Region.full(1920, 1200), 1456)) <= G.VISION_MAX_TOKENS
 
 
@@ -37,7 +37,7 @@ def test_abs_screen_roundtrip():
         assert abs(bx - x) < 0.5 and abs(by - y) < 0.5
 
 
-def test_target_pixel_lands_where_claude_clicked():
+def test_target_pixel_lands_where_the_screenshot_was_clicked():
     # the target maps abs a -> desktop pixel floor(a * W / 4096); a click at screenshot pixel x on a
     # 1280-wide image of a 1920-wide desktop must land within 1 desktop pixel of x * 1.5
     for x in range(0, 1280, 37):

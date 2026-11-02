@@ -46,7 +46,7 @@ def _kept_for(cfg: Config) -> str:
 
 def cmd_status(cl: ServiceClient, args) -> int:
     if not cl.is_running():
-        _out("NanoKVM service: not running (it starts automatically when a nanokvm command or Claude needs it, or "
+        _out("NanoKVM service: not running (it starts automatically when a nanokvm command needs it, or "
              "run 'nanokvm start').")
         return 1
     st = cl.status()
@@ -63,9 +63,8 @@ def cmd_status(cl: ServiceClient, args) -> int:
          + (f"\n           {ctl['device_info']}" if ctl.get("device_info") else ""))
     _out(f"Screen:    {scr['width']}x{scr['height']} coordinate space, region {scr['region']} ({scr['region_source']})")
     _out(f"Viewers:   {st['viewers']}")
-    _out(f"Sharing:   {st.get('shares_active', '?')} Claude conversation(s), "
-         f"{st.get('local_shares_active', '?')} local reader(s) (nanokvm read, ask, edit or fix, or the viewer's "
-         "prompt box)")
+    _out(f"Sharing:   {st.get('local_shares_active', '?')} local reader(s) (nanokvm read, ask, edit or fix, or "
+         f"the viewer's prompt box), {st.get('shares_active', '?')} other program(s)")
     _out(f"Live view: {cl.cfg.base_url}/?t=<token>  (the token is hidden here: 'nanokvm viewer' opens the "
          "window, and 'nanokvm viewer --no-open' prints the full URL)")
     return 0
@@ -190,7 +189,7 @@ def cmd_diag(cl: ServiceClient, args) -> int:
     _out("== Locked computer ==")
     try:
         _out(f"  locked_os = {cfg.locked_os_name}, keyboard_layout = {cfg.keyboard_layout}")
-    except ValueError as e:     # the MCP server still starts, but tells Claude the OS is unknown
+    except ValueError as e:     # reported as a problem; the rest of diag still runs
         ok = False
         _out(f"  !! {e}")
     if cfg.layout_warning:
@@ -592,7 +591,8 @@ def cmd_serve(cl: ServiceClient, args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="nanokvm", description="NanoKVM-USB bridge for the locked computer")
+    ap = argparse.ArgumentParser(prog="nanokvm", description="Locked Computer Assist: AI help for the locked "
+                                                             "computer through a NanoKVM-USB")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("status", help="show service, video and keyboard/mouse status")
     p.add_argument("--json", action="store_true")

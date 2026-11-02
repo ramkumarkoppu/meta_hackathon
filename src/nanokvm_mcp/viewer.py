@@ -7,9 +7,9 @@ The live view itself is read-only:
   * it never makes the service open the keyboard/mouse link and sends nothing to the locked
     computer: keys and clicks in the window stay on this laptop;
   * frames live only in memory; nothing is written to disk.
-Like the browser live view it uses the service token without a client id, so Claude's screen-sharing
-gate doesn't apply: it is for the person at this laptop. Nothing in it is sent to Claude, but it is an
-ordinary window, so anything that captures this laptop's screen captures the locked computer's too.
+Like the browser live view it uses the service token without a client id, so the screen-sharing gate
+doesn't apply: it is for the person at this laptop. It is an ordinary window, though, so anything that
+captures this laptop's screen captures the locked computer's too.
 
 The prompt box does nothing until it is used. A question shares the screen with Muse Glimmer (asked in the
 window first) and sends Spark only redacted text, as ``nanokvm ask`` does. Fix it does a task on the locked computer
@@ -372,9 +372,9 @@ def keyboard_text(control: dict, serial: tuple[str | None, bool]) -> str:
 
 def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[str, str]:
     """The second status line (keyboard/mouse, screen sharing, keys) and its colour."""
-    claude = 0
+    others = 0
     if status is None:
-        kb, share = "Keyboard/mouse: ?", "Claude screen sharing: ?"
+        kb, share = "Keyboard/mouse: ?", "Screen sharing: ?"
     else:
         control = status.get("control") or {}
         if status.get("simulated") and not control.get("link"):
@@ -382,16 +382,18 @@ def other_line(status: dict | None, serial: tuple[str | None, bool]) -> tuple[st
         else:
             kb = keyboard_text(control, serial)
         n = status.get("shares_active")
-        claude = n or 0
-        share = ("Claude screen sharing: ?" if n is None else "Claude screen sharing: off" if n == 0
-                 else f"Claude screen sharing: ON ({n} conversation{'' if n == 1 else 's'})")
+        others = n or 0
+        readers = []
         if status.get("local_shares_active"):
-            share += (" · Muse Glimmer on this laptop can read it (a share for nanokvm read/ask/edit/fix or this "
-                      "prompt box)")
+            readers.append("Muse Glimmer on this laptop can read it (a share for nanokvm read/ask/edit/fix or "
+                           "this prompt box)")
+        if others:
+            readers.append(f"{others} other program{'' if others == 1 else 's'} can read it")
+        share = "Screen sharing: " + ("?" if n is None else "; ".join(readers) or "off")
     keys = ("the picture is view-only; only Fix it clicks or types, after your yes (with Auto, one yes for the task; "
             "typing and changes still ask, and a fix asks once before its edits) · F11 full screen, F2 prompt box, "
             "1 actual pixels, Q quit (click the picture first)")
-    return f"{kb} · {share} · {keys}", (WARN_FG if claude else FG)
+    return f"{kb} · {share} · {keys}", (WARN_FG if others else FG)
 
 
 # ---------------------------------------------------------------- the window

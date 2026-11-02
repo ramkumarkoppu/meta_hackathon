@@ -121,7 +121,7 @@ def layout_table(layout: str) -> dict[str, tuple[int, int]]:
 
 
 class KeyError_(ValueError):
-    """Unknown key name or malformed combo (message is shown to Claude)."""
+    """Unknown key name or malformed combo (the message goes back to the caller)."""
 
 
 @dataclass(frozen=True)
