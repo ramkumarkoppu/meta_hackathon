@@ -53,7 +53,8 @@ and the project folder, now `E:\meta_hackathon`, so the diff shows those renames
 
 Every run on the real hardware below used a spare Windows laptop standing in for the locked computer,
 with only dummy files on it, so *the locked computer* in those results, and in the commit and tag
-messages, means that laptop. Below I call it the stand-in laptop.
+messages, means that laptop. Below I call it the stand-in laptop. Two commit messages, on 26 and 29 Oct,
+call earlier steps milestones 1 and 2. The `milestone-1` tag and these pages mean the 30 Oct run below.
 
 So far:
 
@@ -73,8 +74,8 @@ So far:
   Glimmer checks it on the screen before and after (`editing.py`). I tested it first on the simulator,
   with a mock Glimmer and a mock Meta API. Later that day the same typing ran with the real models on
   the stand-in laptop, through `nanokvm fix` (below).
-- **The README rewritten around the Meta-model pipeline (29 Oct).** It now opens with what the entry
-  does, its results and limits, and what was built before the event.
+- **The README rewritten around the Meta-model pipeline (29 Oct and 1 Nov).** It now opens with what
+  the entry does, its results and limits, and what was built before the event.
 - **MIT licence (29 Oct).** The repo is now under the MIT licence ([LICENSE](LICENSE)), and it covers
   the pre-event groundwork too.
 - **Ready to read the real screen (29 Oct).** For Glimmer's first read of the stand-in laptop,
@@ -88,7 +89,8 @@ So far:
   without it they took 7.1 s and 13.5 s. For that, the NVIDIA GPU drives no display. The AI computer
   runs in its hybrid graphics mode, and its external monitor goes through a USB-C dock.
   A question from the viewer, through the same outbound gate as `nanokvm ask`, was answered from the
-  real screen on 30 Oct (below). README section 6a has the whole loop, step by step.
+  real screen on 30 Oct (below). [README section 6a](README.md#6a-the-whole-loop-step-by-step) has
+  the whole loop, step by step.
 - **Spark finds the error itself (29 Oct).** `nanokvm fix` takes no request from me. Glimmer notes
   what is wrong on the screen (error messages, squiggles, the status bar's counts). Spark gets those
   notes and the code, redacted, finds the error and fixes it through `apply_edit`. After each edit,
@@ -96,7 +98,8 @@ So far:
   checks the fix there, editing again if needed: understand, think, act, understand again. With
   `--auto`, one yes at the start lets it type every edit without asking, and each edit is still shown
   and checked on the screen before and after typing. On 29 Oct it found and typed the fix for a
-  deliberate syntax error on the stand-in laptop.
+  deliberate syntax error on the stand-in laptop, but also added a second '}' that passed every check
+  (now caught).
 - **The loop closes: first milestone (30 Oct).** Once Spark answers *FIXED* on a fresh reading of the
   screen, `fix` saves the file with Ctrl+S. Glimmer checks first that VS Code has the keys and the
   right tab is selected, and afterwards that the tab's unsaved-changes dot has gone. An earlier live
@@ -141,13 +144,14 @@ So far:
   line read wrong is put right in what Spark sees, and Spark plans again. A typed line indented other
   than as typed fails the check. `fix` asks Spark to leave what it changes indented like the code
   around it, and its final check looks for misindented lines too.
-- **Keys lost right after a start (30 Oct).** Every time the first keys went out right after the
-  service started, or after an idle spell, the first Ctrl+G did nothing. That happened on 29 Oct's
-  first typing run and twice on 30 Oct, and I had put it down to VS Code's focus. Now, before the first
-  key or click after the link opens or a quiet minute, the service taps Scroll Lock until the locked
-  computer's Scroll Lock light follows, then taps it back. The light's state is reported back to the
-  KVM's chip. `nanokvm keytest`, which I built during the event on 29 Oct, checks that the locked
-  computer takes the KVM's keys. It presses Num Lock twice and takes no picture.
+- **Waking the keyboard before the first keys (30 Oct).** Three times, the Go to Line box wasn't seen
+  when the first keys went out right after the service started or sat idle: on 29 Oct's first typing
+  run and twice on 30 Oct. I had put it down to VS Code's focus, though the first may instead have been
+  the early check refusing the empty box. Now, before the first key or click after the link opens or a
+  quiet minute, the service taps Scroll Lock until the locked computer's Scroll Lock light follows,
+  then taps it back. The light's state is reported back to the KVM's chip. `nanokvm keytest`, which I
+  built during the event on 29 Oct, checks that the locked computer takes the KVM's keys. It presses
+  Num Lock twice and takes no picture.
 - **Code by line number, not by a click, and Glimmer as the coder (1 Nov, `localcoder.py`).** Asked
   *Whats wrong with this and fix it* about hello.cpp, Do it typed `using namespace std;` below `main`
   instead of above it. It had clicked into the code and typed, and nothing checked where the cursor

@@ -2,6 +2,9 @@
 
 **AI help for a locked computer: Muse Glimmer and Muse Spark through a USB KVM.**
 
+Built during the Meta Global AI Developer Hackathon, on groundwork from before it: [what was built
+when](#hackathon-entry), with the detail in [HACKATHON.md](HACKATHON.md).
+
 Some computers may not run AI software: a locked-down work laptop, a lab PC, a machine on a separate
 network. With the approval of whoever owns such a computer and its data, this project gives it AI help
 without installing anything on it and without getting around any of its controls. A small USB KVM sits
@@ -64,7 +67,7 @@ pass ([section 12](#12-files-and-testing-without-hardware)).
 |------|------|--------|
 | 29 Oct | The viewer window | The locked computer's screen live at about 30 fps, a median 37 ms from capture to window |
 | 29 Oct | Glimmer reads a 9-line C++ file through the KVM, then describes the screen | Exact (checked by eye) in 6.1 s; the description right in 6.7 s (7.1 s and 13.5 s without the drafter) |
-| 29 Oct | `fix --auto` on a deliberate syntax error | Found it, typed the fix and checked it on the screen |
+| 29 Oct | `fix --auto` on a deliberate syntax error | Found it, typed the fix and checked it on the screen, but also added a second '}' that passed every check (now caught) |
 | 30 Oct | `fix --auto` with no description: junk on a file's last line | Found and deleted it, *FIXED* on a fresh reading, saved and checked; 4 requests to Spark, $0.0085 |
 | 30 Oct | A question in the viewer about a deliberate `standard::cout` error | Found it; $0.0021 |
 | 30 Oct | Glimmer finding buttons, folders and fields on a synthetic screen (`tools\glimmer_point.py`) | 8 of 8, and *NONE* for one that wasn't there |
@@ -89,14 +92,15 @@ pass ([section 12](#12-files-and-testing-without-hardware)).
 - For now the AI computer must run Windows with an NVIDIA GPU of about 24 GB, and the locked computer
   has only been tried with Windows 11.
 
-**Hackathon entry.** This repo is my solo entry in the Meta Global AI Developer Hackathon (Indie
-Developer track, theme *Build for Your World*).
+<a id="hackathon-entry"></a>**Hackathon entry.** This repo is my solo entry in the Meta Global AI
+Developer Hackathon (Indie Developer track, theme *Build for Your World*).
 
 - **Built before the event** (7–25 Oct, git tag `pre-event-baseline`): the nanokvm service (capture,
   keyboard and mouse), the `nanokvm` command's `diag` and `status`, the simulated locked computer the
   tests use, the local Glimmer server setup (llama.cpp, the weights, `tools\run-glimmer.ps1` and the
   smoke tests), and a smoke test for the Meta Model API. Pre-event features the entry didn't need were
-  taken out on 2 Nov.
+  taken out on 2 Nov. A repo check may flag the baseline commit as early, and
+  [HACKATHON.md](HACKATHON.md#before-the-event-groundwork-not-part-of-the-entry) explains why.
 - **Built during the event:** Glimmer reading and checking the screen (`glimmer.py`), redaction and
   the outbound gate, the Spark client, `nanokvm read`, `ask`, `edit`, `fix` and `keytest`, the viewer
   window, its prompt box for asking about the screen and having a task done there (Fix it), Glimmer as
