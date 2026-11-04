@@ -52,9 +52,10 @@ The first event commit also renamed the two computers, now the locked computer a
 and the project folder, now `E:\meta_hackathon`, so the diff shows those renames in pre-event files too.
 
 Every run on the real hardware below used a spare Windows laptop standing in for the locked computer,
-with only dummy files on it, so *the locked computer* in those results, and in the commit and tag
-messages, means that laptop. Below I call it the stand-in laptop. Two commit messages, on 26 and 29 Oct,
-call earlier steps milestones 1 and 2. The `milestone-1` tag and these pages mean the 30 Oct run below.
+so *the locked computer* in those results, and in the commit and tag messages, means that laptop. Below
+I call it the stand-in laptop. The code on it is test code: C++ source with deliberate errors of the
+kinds real code has. Two commit messages, on 26 and 29 Oct, call earlier steps milestones 1 and 2. The
+`milestone-1` tag and these pages mean the 30 Oct run below.
 
 So far:
 

@@ -2,8 +2,8 @@
 
 Here is why Locked Computer Assist is built the way it is, and what I found Meta's models could and
 couldn't do, up to 2 Nov 2026. Every hardware run used a spare Windows laptop standing in for the
-locked computer, with only dummy files on it. I call it the stand-in laptop. [HACKATHON.md](HACKATHON.md)
-lists what was built when.
+locked computer. I call it the stand-in laptop. The code on it is test code: C++ source with deliberate
+errors of the kinds real code has. [HACKATHON.md](HACKATHON.md) lists what was built when.
 
 ## Why a USB KVM
 
@@ -149,10 +149,10 @@ fixed.
 
 - I never ran the two head to head on one task, and no Spark fix run has a recorded time. Meta's
   OSWorld-Verified scores are for computer use, and here Spark never sees the screen, only redacted text.
-- Every recorded fix was of one small error in a short dummy C++ file, so neither Spark's headroom nor
-  Glimmer's limits as a coder were tested. *No description* means no request from me. Glimmer's notes
-  pass on VS Code's squiggles and error messages, which may already have pointed at the error, and I
-  didn't measure how much of each find was the model's own.
+- Every recorded fix was of one small deliberate error in a short test C++ file, so neither Spark's
+  headroom nor Glimmer's limits as a coder were tested. *No description* means no request from me.
+  Glimmer's notes pass on VS Code's squiggles and error messages, which may already have pointed at the
+  error, and I didn't measure how much of each find was the model's own.
 - Redaction can't reliably catch names, patient details or confidential prose. The assistant helps with
   software and its errors. It doesn't interpret patient data or give clinical advice.
 - Meta's Glimmer paper (read before the event, on 19 Oct) shows screen reading flat across reasoning
@@ -389,7 +389,8 @@ model named on the stream), that Meta may keep content for safety and abuse revi
 `store: false`, and that zero data retention is by request only. The design assumes the computer's owner
 approves redacted text going to Meta, and screens that redaction can't protect should use Local only.
 Then there are the limits in [What I'd do next](#what-id-do-next), above all that nothing compiles or
-runs the code. And every hardware run so far used the stand-in laptop with dummy files.
+runs the code. And every hardware run so far used the stand-in laptop, and every fix there was to a
+short test file.
 
 ### Partner technologies
 

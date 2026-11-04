@@ -56,12 +56,13 @@ or give clinical advice.
 **Status (2 Nov).** `read`, `fix` and the viewer's Ask and Fix it have run end to end with the real
 models: Muse Glimmer on the AI computer's GPU, and Muse Spark through Meta's API wherever text was sent.
 Every hardware run used a spare Windows laptop standing in for the locked computer (the *stand-in
-laptop* below), with only dummy files on it. My first milestone was the 30 Oct `fix --auto` run in the
-table: with no description from me, it found junk typed on a file's last line, fixed it and saved the
-file. [Section 6a](#6a-the-whole-loop-step-by-step) walks through that loop. All 298 automated tests
-pass ([section 12](#12-files-and-testing-without-hardware)).
+laptop* below). The code on it is test code: C++ source with deliberate errors of the kinds real code
+has, such as a missing ';' or `std::`. My first milestone was the 30 Oct `fix --auto` run in the table:
+with no description from me, it found junk typed on a file's last line, fixed it and saved the file.
+[Section 6a](#6a-the-whole-loop-step-by-step) walks through that loop. All 298 automated tests pass
+([section 12](#12-files-and-testing-without-hardware)).
 
-**Results so far** (on the stand-in laptop unless it says otherwise; dummy files only):
+**Results so far** (on the stand-in laptop with test code, unless the row says otherwise):
 
 | Date | What | Result |
 |------|------|--------|
@@ -107,7 +108,7 @@ Developer Hackathon (Indie Developer track, theme *Build for Your World*).
   a coder on the AI computer, and the simulated VS Code the tests type into.
 
 [HACKATHON.md](HACKATHON.md) has the details, change by change, and [LEARNINGS.md](LEARNINGS.md) why
-it's built this way and what I learned about Meta's models. Demos use the stand-in laptop showing dummy
+it's built this way and what I learned about Meta's models. Demos use the stand-in laptop showing test
 code, never a real work computer. No KVM or GPU? [Section 12](#12-files-and-testing-without-hardware)
 runs the tests and a simulated screen.
 
