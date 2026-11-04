@@ -546,6 +546,7 @@ nanokvm read --errors                          # list the compiler errors and wa
 nanokvm ask "why does sum_first overrun?"      # Spark answers from the redacted screen text
 nanokvm edit "fix the off-by-one in sum_first" # Spark proposes edits; each one you approve is typed in
 nanokvm fix                                    # no request: Spark finds the error on the screen and fixes it
+nanokvm viewer                                 # the live picture with the prompt box (section 7)
 ```
 
 Each command first checks that Glimmer answers, and shares nothing if it doesn't. Then it asks you at
@@ -755,15 +756,28 @@ was saved.
 
 ## 7. Watching the screen yourself, and asking about it
 
-Run `E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer`. A window on the AI computer shows the
-locked computer's screen live, at up to 30 fps (`--fps` changes it), with a prompt box beside it
-([below](#asking-from-the-viewer)). Two status lines under the picture show the capture mode, the
-capture and window frame rates and the delay from capture to the window, the keyboard/mouse COM port
-and, once an action has opened the link, whether the KVM reports cable 4 as connected. They say
-*Screen sharing: off*, or that Muse Glimmer on this laptop can read it during a share for
-`nanokvm read`, `ask`, `edit`, `fix` or the prompt box. They warn if the picture is uniform (no HDMI
-signal, a sleeping display or a blank screen), and say *shown at 75%* (for example) when it's scaled
-down to fit: press **1** for actual pixels, so small text is as sharp as the capture.
+To use the prompt box (Ask and Fix it), as in the demo, start Muse Glimmer, then the viewer, each in its
+own PowerShell window outside VS Code:
+
+```powershell
+# Window 1: Muse Glimmer on the GPU, ready at "model loaded" and "listening on http://127.0.0.1:8001"
+powershell -NoProfile -ExecutionPolicy Bypass -File E:\meta_hackathon\tools\run-glimmer.ps1
+
+# Window 2: the service, a check that the locked computer takes the KVM's keys, then the viewer
+E:\meta_hackathon\.venv\Scripts\nanokvm.exe start
+E:\meta_hackathon\.venv\Scripts\nanokvm.exe keytest    # should say "Keyboard OK" (cable 4 plugged in)
+E:\meta_hackathon\.venv\Scripts\nanokvm.exe viewer
+```
+
+The viewer is a window on the AI computer that shows the locked computer's screen live, at up to 30 fps
+(`--fps` changes it), with the prompt box beside it ([below](#asking-from-the-viewer)). Two status lines
+under the picture show the capture mode, the capture and window frame rates and the delay from capture
+to the window, the keyboard/mouse COM port and, once an action has opened the link, whether the KVM
+reports cable 4 as connected. They say *Screen sharing: off*, or that Muse Glimmer on this laptop can
+read it during a share for `nanokvm read`, `ask`, `edit`, `fix` or the prompt box. They warn if the
+picture is uniform (no HDMI signal, a sleeping display or a blank screen), and say *shown at 75%* (for
+example) when it's scaled down to fit: press **1** for actual pixels, so small text is as sharp as the
+capture.
 
 The live view itself is read-only. Keys and clicks in it stay on the AI computer, it never makes the
 service open the keyboard/mouse link, and it saves nothing to disk. Only **Fix it** in the prompt box
