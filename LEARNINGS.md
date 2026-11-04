@@ -48,7 +48,7 @@ to 23 at a draft length of 3 and 46 at 15.
 
 ### Muse Spark in Meta's cloud
 
-Spark is there for its stronger reasoning, and it gets only redacted text. It answers questions and
+Spark gets only redacted text, and [Why both](#why-both) says what it adds. It answers questions and
 proposes edits as text-only function calls with one tool, `apply_edit`, which replaces whole numbered
 lines (7101624). Following Meta's documentation, checked before the event (24 Oct), the client sends
 only to Standard model IDs, whose content Meta's terms exclude from training. It uses Chat Completions
@@ -57,19 +57,6 @@ to a Contributor model, so a reply is discarded and sending halts if any streame
 model. On 26 Oct Meta's Billing page said content sent on free credits "may be used for product
 improvement", so on free credits nothing is sent until you confirm the screen shows only test or dummy
 content.
-
-Why not Glimmer for everything? It can do it all: with Local only it answers and writes the edits, and
-Fix it plans with it by default. But on this laptop it's a 30B model at 4 bits, in one 32K-token slot
-that it shares with the screen images, with its thinking capped so each step stays usable (a planning
-step takes about 13.5 s). Spark is Meta's larger model, run in Meta's cloud, and by Meta's own figures
-it is the stronger one at this kind of work: 80.8 on OSWorld-Verified for Muse Spark 1.1, against 65.9
-for Glimmer 30B. I use muse-spark-1.3, the newest Spark the Model API offers me, but Meta reports only
-OSWorld 2.0 scores for it, which can't be compared with Glimmer's, so 1.1's is the like-for-like figure.
-So when a screen's redacted text may leave, Spark does the hard reasoning, such as
-finding an error nobody described and checking the fix on a fresh reading, while the laptop's GPU only
-reads the screen. I didn't run the two head to head on one task
-([How Meta's models compared](#how-metas-models-compared)). The choice is made per screen: Local only
-for anything redaction can't protect, Spark when redacted text may go.
 
 ### What I didn't use, and why
 
@@ -85,29 +72,108 @@ Checked before the event (14–15 Oct), and not used:
 - **SAM 3.1:** unproven on GUI screenshots.
 - **Muse Image:** no role in reading a screen.
 
-## Why local and cloud together
+## Local and cloud together
 
-Glimmer reads the screen on the AI computer, so only text leaves it, and Spark brings its stronger
-reasoning to that text. On its way to Spark the text is redacted: secrets with a recognisable shape,
-email addresses, card numbers and terms you list become placeholders such as `[[EMAIL_1]]`. Glimmer
-then trims it to the lines a question needs, and it is redacted again, checked and logged before it's
-sent. Among other things, the checks look for any redacted value left and any image, and apply the
-free-credit rule and a $25 budget. Placeholders are restored only on the AI computer.
+### Why both
 
-Two limits shaped the rest:
+Glimmer keeps pictures of the screen on the AI computer, and since 1 Nov it can do the whole job there:
+with *Local only* it answers questions and writes the edits, and the viewer's Fix it plans and codes
+with it by default (4108952). Spark, in Meta's cloud, is there for headroom.
 
-- Redaction catches values with a recognisable shape and the terms you list, not names, patient
-  details or confidential prose, so for screens like that the advice is to send nothing. With Local
-  only, Glimmer answers on the AI computer and, since 1 Nov, writes the edits too (4108952). The
-  assistant helps with software and its errors. It doesn't interpret patient data or give clinical
-  advice.
+By Meta's own figures Spark is the stronger model at computer use: 80.8 on OSWorld-Verified for Muse
+Spark 1.1, against 65.9 for Glimmer 30B. I use muse-spark-1.3, the newest Spark the Model API offers me,
+but Meta reports only OSWorld 2.0 scores for it, which can't be compared with Glimmer's, so 1.1's is the
+like-for-like figure. On this laptop Glimmer is a 30B model at 4 bits in one 32K-token slot, using about
+21.7 GB of the GPU's 24 GB with the drafter. As the coder it may think 2,048 tokens and answer in 2,048,
+and one planning step took 13.5 s on a synthetic screen. A Spark request may use up to 8,000 completion
+tokens, reasoning included, and the ones I recorded cost a fraction of a cent each.
+
+Meta's data terms and what redaction misses count against Spark ([Limitations](#limitations)). Nothing
+detects a sensitive screen, so whoever is at the AI computer chooses per screen: *Local only* for
+anything redaction can't protect, Spark where the owner allows redacted text out. Fix it uses Glimmer
+unless *Fix it: Spark plans and fixes code* is ticked and *Local only* isn't. A question in the viewer
+goes to Spark unless *Local only* is ticked, and so do `nanokvm ask`, `edit` and `fix` unless you pass
+`--local-only`. `outbound = "local_only"` in `nanokvm.toml` keeps everything on the AI computer. On free
+credits, real content has to stay there ([Muse Spark in Meta's cloud](#muse-spark-in-metas-cloud)).
+
+When text does go, the outbound gate ([README section 2](README.md#2-what-leaves-the-ai-computer)) turns
+secrets with a recognisable shape, email addresses, card numbers and the terms you list into
+placeholders such as `[[EMAIL_1]]`. Glimmer trims the text to the lines a question needs, and it's
+redacted again, checked and logged. Among other things, the checks look for any redacted value left and
+any image, and apply the free-credit rule and a $25 budget. Placeholders are restored only on the AI
+computer.
+
+### What each did
+
+Every run below was on the stand-in laptop unless its row says otherwise. Glimmer read the screen in each
+one, and the Model column says which model planned, answered or wrote the edits.
+
+| Date | Model | Run | Outcome | Cost or time |
+|------|-------|-----|---------|--------------|
+| 29 Oct | Spark, coding | `fix`, run 4 | With no description, found the missing ';' on line 7 and had it typed and checked, then added a second '}' that passed every check, its own on a fresh reading too | not recorded |
+| 29–30 Oct | Spark, coding | `fix`, runs 1–3, 5–7, 9 and 10 | Run 5 stopped at the free-credit rule with nothing sent, the others at a screen check with the file unchanged | not recorded |
+| 30 Oct | Spark, coding | `fix`, run 8 | Fixed its error end to end, before `fix` could save | not recorded |
+| 30 Oct | Spark, coding | `fix --auto`, run 11, the first milestone | With no description, found junk on hello.cpp's last line, planned again when a reading changed, had it deleted, *FIXED* on a fresh reading, saved | 4 requests, $0.0085 |
+| 30 Oct | Spark, answering | A question in the viewer | Found a deliberate `standard::cout` error | $0.0021 |
+| 30 Oct | Spark, coding | The viewer's first fix-loop run | Stopped safely at the Go to Line check | not recorded |
+| 30 Oct | Glimmer, planning | The task button's first live run (then called Do it) | Every plan cut off ([Muse Glimmer](#muse-glimmer)) | nothing sent |
+| 1 Nov | Glimmer, planning | Do it: *Whats wrong with this and fix it*, on hello.cpp | Typed `using namespace std;` below `main` ([Typing blind](#typing-blind)) | nothing sent |
+| 1 Nov | Glimmer, planning and coding | The same task on a simulated VS Code, from the original file and from the state Do it left | The right fix, *FIXED* and saved each time ([Surprises](#surprises)) | 79 s and 122 s, then 98 s and 96 s after the review fixes; nothing sent |
+| 1 Nov | not recorded | Fix it, the same task, on hello.cpp | Handed to the fix loop: the right fix, saved | not recorded |
+
+Spark was the coder in all twelve recorded fix-loop runs before 1 Nov, the eleven `fix` runs and the
+viewer's first fix-loop run, and it proposed an edit in every one that reached it. Two left the file
+fixed.
+
+### What I learned
+
+- Spark let me build the fix loop before I found Glimmer could be its coder. Until 1 Nov the loop
+  refused to run with `outbound = "local_only"`, so Spark was its only coder through the 11 runs and 14
+  commits in [The biggest obstacle](#the-biggest-obstacle). On 1 Nov Glimmer became a second coder
+  ([Surprises](#surprises)), and `Pipeline.edit` picks between the two in one place.
+- Two problems in those runs came from Spark's own decisions, each a response to the loop holding back
+  the last line it read: run 4's second '}' and run 9's line-continuation trick
+  ([Muse Spark](#muse-spark)). The fixes apply to either coder, so Glimmer inherits them, but only by
+  construction. Whether it would make either mistake is untested, and nothing in the code detects either
+  one.
+- The outbound gate carried every request to Spark during the runs on the stand-in laptop, and no screen
+  image left. That rests on the design: the gate only gets Glimmer's text, and Spark's client refuses
+  anything but text.
+- Spark worked from Glimmer's reading, mistakes included. It copied Glimmer's indentation, sometimes a
+  few spaces off, into its new lines, so indentation is now measured in VS Code
+  ([Muse Glimmer](#muse-glimmer)).
+- Glimmer was enough for the small fixes recorded with it as the coder, all on a simulated VS Code
+  ([Surprises](#surprises)).
+
+### Limitations
+
+- I never ran the two head to head on one task, and no Spark fix run has a recorded time. Meta's
+  OSWorld-Verified scores are for computer use, and here Spark never sees the screen, only redacted text.
+- Every recorded fix was of one small error in a short dummy C++ file, so neither Spark's headroom nor
+  Glimmer's limits as a coder were tested. *No description* means no request from me. Glimmer's notes
+  pass on VS Code's squiggles and error messages, which may already have pointed at the error, and I
+  didn't measure how much of each find was the model's own.
+- Redaction can't reliably catch names, patient details or confidential prose. The assistant helps with
+  software and its errors. It doesn't interpret patient data or give clinical advice.
 - Meta's Glimmer paper (read before the event, on 19 Oct) shows screen reading flat across reasoning
   strengths, while privacy leakage on PrivacyLens is lowest at high reasoning, at 49.2%. So reads run at
   low reasoning and trimming at high. Even then Glimmer leaked in about half the benchmark's cases, so
   the trimmer isn't trusted on its own: its picks are matched back to the redacted lines, and the
-  result is redacted again. `fix` has no question, so it skips trimming. That's why its notes prompt
-  tells Glimmer to cover only the VS Code window and the file's bare name, which is an instruction to
-  the model, not a crop. The notes are shown before they're sent (b21731e).
+  result is redacted again. I haven't measured how much it leaks here.
+- `fix` has no question, so it skips trimming. That's why its notes prompt tells Glimmer to cover only
+  the VS Code window and the file's bare name, an instruction to the model rather than a crop (b21731e).
+  When Spark plans Fix it, it gets Glimmer's whole description of the window, redacted but not trimmed.
+  Only `outbound = "approve"`, or *Show me the exact text before it is sent* in the viewer, shows what
+  goes to Spark and asks first. Otherwise only `fix`'s first notes are shown, cut at 800 characters, just
+  before they're sent.
+- On the Spark path Meta's data terms set the limit
+  ([What would stop production use](#what-would-stop-production-use)), and the client knows which model
+  answered only from the name the stream gives.
+- *FIXED* is still only the coder's judgement ([What I'd do next](#what-id-do-next)). With Glimmer
+  coding, one model reads the screen, writes the fix and judges it, and nothing logs what it was told.
+- Not yet recorded live: Spark planning Fix it or coding its hand-over, `fix --local-only` or
+  `edit --local-only`, a *Local only* answer, or `edit` with a request of its own. What drew the
+  simulated VS Code for Glimmer's timed runs isn't in the repo, so they can't be repeated from it.
 
 ## What the models could and couldn't do
 

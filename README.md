@@ -21,7 +21,7 @@ keyboards, typing isn't available.
    terms you list become placeholders. Glimmer trims the text to what the question needs, and it's
    redacted again.
 4. **Ask the cloud.** Only that redacted text goes to **Muse Spark**, Meta's stronger cloud model
-   ([why both](LEARNINGS.md#muse-spark-in-metas-cloud)), through Meta's Model API (`store: false`).
+   ([why both](LEARNINGS.md#local-and-cloud-together)), through Meta's Model API (`store: false`).
    Spark answers, or proposes code edits as function calls. With *Local only*
    (`--local-only`), Glimmer does both on the AI computer instead, and nothing is sent.
 5. **Act, with your approval.** You approve each edit at the keyboard, or once per run with `--auto`.
@@ -157,6 +157,12 @@ locked computer ◄──USB keyboard── USB KVM ◄────┘
 | Muse Glimmer | the AI computer's GPU, through llama.cpp's `llama-server` on `127.0.0.1:8001` | Reads the screen (code with line numbers, a description, or errors), notes what is wrong for `fix`, trims text before it leaves, and checks typed edits and the save on the screen. It also plans Fix it's steps (by default) and finds each target on its own 0-1000 scale. With Local only (or `--local-only`) it answers and writes the edits itself, through llama-server's tool calls, so nothing is sent, and by default it's Fix it's coder too. |
 | Muse Spark | Meta's cloud, through the Model API | Answers questions about the screen and proposes edits with one tool, `apply_edit`. In `fix` it finds the error itself and checks the fix on a fresh reading (*FIXED*). With *Fix it: Spark plans and fixes code* ticked, it plans Fix it's steps with `ui_step` and is the coder. It only ever sees redacted text. |
 | `nanokvm` command | AI computer | `read`, `ask`, `edit` and `fix` ([section 6](#6-using-it-read-ask-edit-and-fix)), the live `viewer` ([section 7](#7-watching-the-screen-yourself-and-asking-about-it)), and `diag`, `status` and `keytest` ([section 8](#8-first-run-with-the-hardware)). |
+
+**Why two models.** Glimmer can do the whole job on its own. Spark is there for headroom where redacted
+text may leave: by Meta's own scores it's the stronger model at computer use, though I haven't run the
+two head to head. It was also the coder in every fix run on the stand-in laptop on 29–30 Oct, before
+Glimmer could be one. The reasons, results and limits are in
+[LEARNINGS.md](LEARNINGS.md#local-and-cloud-together).
 
 ### 1a. Operating systems
 
