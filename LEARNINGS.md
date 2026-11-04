@@ -184,8 +184,9 @@ fixed.
   run up to the first milestone stopped on a status-bar reading, while re-read code lines disagreed in
   three, so the checks around typing lean on VS Code's status bar and compare re-read code by its text
   only.
-- **Three documented ways to cap its thinking were silently ignored** on llama.cpp b10976 (found before
-  the event, on 24 Oct), because the build's chat handler for Glimmer sets no thinking tags. A
+- **Three ways to cap its thinking were silently ignored** on llama.cpp b10976 (found before the event,
+  on 24 Oct): the documented `thinking_budget_tokens` and `--reasoning-budget`, and
+  `reasoning_budget_tokens` on its own. The build's chat handler for Glimmer sets no thinking tags. A
   per-request cap built from Glimmer's own tags worked. At 0, a transcription took 223 tokens on each of
   3 runs, against 279–610 uncapped. So readings don't think, and planning, trimming and coding get fixed
   budgets. Uncapped, Glimmer sometimes re-transcribed the whole screen in its reasoning, so only the
@@ -365,7 +366,7 @@ Roughly in this order, set before the event: keeping screen images on the AI com
 with vision that fit 24 GB), the terms for what is sent, capability (an exact read of a 1080p capture,
 pointing, tool calling), then cost and speed. Privacy and fit ruled options in or out. Cost didn't
 constrain anything (a viewer question cost $0.0021, the milestone fix $0.0085), and speed only tuned the
-setup: a fix run with Glimmer takes about 1.5 minutes.
+setup: a fix run with Glimmer took about 1.5 minutes on a simulated VS Code.
 
 ### What would make switching hard
 

@@ -554,12 +554,12 @@ that terminal or click in the viewer, whose prompt box asks the same questions i
   same way. Nothing is sent, so nothing is redacted or trimmed.
 - **`fix`** is `edit` with no request. Glimmer also notes what is wrong in the VS Code window (the
   file's name only, squiggles, its Problems and terminal panels, the status bar's counts) and shows you
-  the notes. It's told to leave out other apps and the system's notifications, an instruction rather
-  than a crop. Spark gets the notes with every code line on the screen, untrimmed, finds the error
-  itself, and after each typed edit sees the screen as Glimmer read it. When Spark says it's done,
-  Glimmer reads the screen afresh and Spark checks every line for anything the edits broke, at most
-  twice a run. Once Spark answers *FIXED*, `fix` asks *Save … in VS Code on the locked computer?*
-  ([how it saves](#saving-after-the-fix)).
+  its first notes (up to 800 characters). It's told to leave out other apps and the system's
+  notifications, an instruction rather than a crop. Spark gets the notes with every code line on the
+  screen, untrimmed, finds the error itself, and after each typed edit sees the screen as Glimmer read
+  it. When Spark says it's done, Glimmer reads the screen afresh and Spark checks every line for
+  anything the edits broke, at most twice a run. Once Spark answers *FIXED*, `fix` asks *Save … in VS
+  Code on the locked computer?* ([how it saves](#saving-after-the-fix)).
 - **`--auto`** (for `edit` and `fix`) types the edits without asking for each one. You allow it once
   per run: the share prompt then also asks to type without asking and, for `fix`, to save the file once
   Spark has checked the fix on the screen. Each edit is still shown, the screen is checked before and
@@ -637,8 +637,9 @@ it.
 
 ### 6a. The whole loop, step by step
 
-These are the steps behind the `fix --auto` runs on the stand-in laptop that found and fixed deliberate
-errors on 29 and 30 Oct and, on 30 Oct, saved the fixed file.
+These are the steps behind the `fix --auto` runs on the stand-in laptop on 29 and 30 Oct. Both found a
+deliberate error and typed the fix (the first also added a second '}'), and on 30 Oct the fixed file
+was saved.
 
 **On the AI computer, once per session**
 

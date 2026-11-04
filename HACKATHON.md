@@ -155,7 +155,7 @@ So far:
 - **Code by line number, not by a click, and Glimmer as the coder (1 Nov, `localcoder.py`).** Asked
   *Whats wrong with this and fix it* about hello.cpp, Do it typed `using namespace std;` below `main`
   instead of above it. It had clicked into the code and typed, and nothing checked where the cursor
-  landed. On a synthetic copy of the screen Glimmer's plan was right, so the click was at fault. The
+  landed. On a synthetic copy of the screen Glimmer's plan was right, which points at the click. The
   likeliest reason is that Monitor A was the stand-in laptop's extended display, not its main one, and
   the KVM's mouse targets the main display. VS Code's rows are only about 19 pixels apart anyway. Now
   the planner is told never to click into code. For a change to code shown with line numbers, it hands
