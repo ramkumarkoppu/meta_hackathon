@@ -19,6 +19,9 @@ tools/downloads/
 *.png
 *.jpg
 *.jpeg
+*.mp4
+*.mov
+*.mkv
 !docs/*.png
 !docs/*.jpg
 !docs/*.jpeg
