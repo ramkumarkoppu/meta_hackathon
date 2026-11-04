@@ -201,6 +201,21 @@ for the Windows CUDA build of llama.cpp.
 
 ## 2. What leaves the AI computer
 
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 400}}}%%
+flowchart LR
+    LC["Locked computer<br/>(nothing installed)"]
+    KVM["USB KVM"]
+    AI["AI computer<br/>Muse Glimmer reads the screen here.<br/>The outbound gate redacts<br/>the text it sends to Spark."]
+    META["Meta's cloud<br/>Muse Spark"]
+    LC -->|"HDMI picture"| KVM
+    KVM -->|"USB video"| AI
+    AI -->|"redacted text only<br/>(nothing with Local only,<br/>or in Fix it by default)"| META
+    META -->|"answers, edits, steps"| AI
+    AI -->|"keys and clicks<br/>you approved"| KVM
+    KVM -->|"USB keyboard<br/>and mouse"| LC
+```
+
 | What | Where it goes |
 |------|---------------|
 | The screen picture | **Nowhere**, with `read`, `ask`, `edit`, `fix` and the viewer's prompt box: Muse Glimmer reads it on the AI computer's GPU, and nothing in this project writes it to disk (below). |
@@ -608,6 +623,50 @@ An edit that ends on the last line shown is typed only if that's the file's last
 goes on below the screen, unread, is never deleted. After typing, the status bar and a fresh reading
 must show the new lines as typed, though runs of spaces inside a line aren't compared.
 
+Each edit, from the coder's proposal to the check after typing, then `fix`'s fresh check and save:
+
+```mermaid
+sequenceDiagram
+    participant Y as You
+    participant C as Coder: Spark, or Glimmer
+    participant N as nanokvm
+    participant G as Glimmer, reading the screen
+    participant V as VS Code on the locked computer
+    G->>N: the code on the screen with its line numbers (for fix, Glimmer's notes too)
+    N->>C: your request and that reading (for Spark redacted, and for edit trimmed too)
+    loop each edit: at most 4 typed a run, within 8 requests to the coder
+        C->>N: apply_edit: replace lines S to E
+        N->>N: check it: lines S to E read cleanly on the screen, placeholders restored,<br/>no tabs, every character typeable, at most 40 lines and 2,000 characters
+        N->>Y: the diff, the keys and checks in words, and the coder's note
+        Y->>N: Type this edit? y (or one yes per run with --auto)
+        N->>V: Escape, Ctrl+G
+        G->>N: VS Code's Go to Line box is open
+        N->>V: line number S, Enter
+        G->>N: status bar Ln S, Col 1, nothing selected, and the lines still read as the ones being replaced
+        N->>V: End, Home on each old line (up to 12)
+        G->>N: status bar Col: how far VS Code really indents each line
+        N->>V: Ctrl+L once per line
+        G->>N: the selection ends exactly after those lines
+        Note over N,V: Only navigation keys so far: a failed check stops here, the file unchanged.
+        N->>V: Backspace, then the new lines
+        G->>N: status bar Col 1 on the line after them: nothing indented it
+        N->>V: Up, End, Home on each new line (up to 12)
+        G->>N: each new line indented as typed, and a fresh reading shows the new lines
+        N->>C: what happened (for fix, the screen as read now)
+    end
+    opt fix only, once the coder says it's done
+        G->>N: a fresh reading of the screen and fresh notes (at most twice a run)
+        N->>C: check every line for anything the edits broke (redacted for Spark)
+        C->>N: FIXED (or another edit, and round the loop again)
+        Y->>N: Save? y (or the one yes per run with --auto)
+        G->>N: the selected tab is the file noted (and should show the unsaved-changes dot)
+        N->>V: Escape, Ctrl+G
+        G->>N: VS Code's Go to Line box is open again
+        N->>V: Escape, Ctrl+S
+        G->>N: the dot has gone
+    end
+```
+
 `fix` also asks Spark to keep its changes indented like the code around them, and its final check looks
 for misindented lines. If an edit fails the first checks, or you decline it, nothing is typed: Spark is
 told why, in words and line numbers, and may propose another. A failed check while typing stops the
@@ -762,6 +821,23 @@ has the focus, keys such as Ctrl+C or Enter, or a scroll up or down.
 4. **Glimmer looks again**, and the next step starts from the screen as it is now. The log keeps each
    step. It ends when the planner says the task is done (check it on the screen) or it's stuck, after
    20 steps, or at Stop.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 440}}}%%
+flowchart TD
+    T(["Your task, typed in the viewer's prompt box"]) --> P
+    P["Glimmer looks at the screen and plans the next step<br/>(or Spark, when ticked, from Glimmer's<br/>redacted description)"]
+    P -->|"a change to code"| F(["fix's loop: edits by line number, each typed<br/>after your yes (under Auto, one yes covers them)<br/>and checked on the screen. The task ends there."])
+    P -->|"done or stuck, or<br/>20 steps planned<br/>(30 requests when<br/>Spark plans)"| R(["The task ends: check the screen"])
+    P -->|"a click, a scroll,<br/>typing or keys"| K
+    K["For a click or a scroll, Glimmer finds the target<br/>as a box on its 0-1000 scale. Every step is checked:<br/>no keys that reach outside the program,<br/>no characters the keyboard layout can't type,<br/>no target box bigger than half the screen."]
+    K -.->|"not found or refused:<br/>the planner is told"| P
+    K --> A
+    A["Shown, with its target outlined, and you allow it.<br/>Under Auto (one yes at the start), a step goes ahead<br/>1.5 s after it's shown if it doesn't type, presses<br/>no key such as Enter or Ctrl+V, and the planner<br/>says it changes nothing."]
+    A -->|"Stop here, or<br/>Stop at any time"| S(["Stopped, every key released"])
+    A --> D["The KVM does it"]
+    D -->|"a 1.5 s pause,<br/>then the next look"| P
+```
 
 **A change to code goes to `fix`'s loop, not to clicks and typing.** On the stand-in laptop a click
 into code once missed the line it aimed at, most likely because Monitor A wasn't the main display
