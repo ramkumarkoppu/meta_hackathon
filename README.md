@@ -93,6 +93,9 @@ with no description from me, it found junk typed on a file's last line, fixed it
 - For now the AI computer must run Windows with an NVIDIA GPU of about 24 GB, and the locked computer
   has only been tried with Windows 11.
 
+What it would take to help as fully in other programs as with code in VS Code is in
+[section 13](#13-further-work).
+
 <a id="hackathon-entry"></a>**Hackathon entry.** This repo is my solo entry in the Meta Global AI
 Developer Hackathon (Indie Developer track, theme *Build for Your World*).
 
@@ -133,7 +136,8 @@ runs the tests and a simulated screen.
 10. [Safety details](#10-safety-details)
 11. [Troubleshooting](#11-troubleshooting)
 12. [Files and testing without hardware](#12-files-and-testing-without-hardware)
-13. [Licence](#13-licence)
+13. [Further work](#13-further-work)
+14. [Licence](#14-licence)
 
 ---
 
@@ -867,9 +871,10 @@ After editing, run `nanokvm stop`. The service restarts when it's next needed.
 
 - **Nothing is typed or clicked without your yes**, given for each edit or once per run with `--auto`,
   and for each Fix it step or once per task with Auto (a step that types or changes something still
-  asks). Spark and the planner only propose; neither types anything itself. Glimmer checks the screen
-  before each irreversible step and after the typing, and `fix` saves only after the coder has
-  answered *FIXED* on a fresh reading ([section 6](#6-using-it-read-ask-edit-and-fix), [section 7](#fix-it)).
+  asks). Spark and the planner only propose; neither types anything itself. In a typed edit, Glimmer
+  checks the screen before each key that could change the file and after the typing, and `fix` saves
+  only after the coder has answered *FIXED* on a fresh reading
+  ([section 6](#6-using-it-read-ask-edit-and-fix), [section 7](#fix-it)).
 - **No stuck keys, one action at a time.** Every action ends with all keys and buttons up, even when
   something fails, and releasing never moves the pointer. Ctrl+C during `nanokvm edit` stops the typing
   within about a quarter of a second. If two programs try to type at once, the second gets "busy",
@@ -995,7 +1000,108 @@ that no image or `data:` URL reaches "Meta", that `edit` selects, deletes and ty
 status bar and the lines on the screen check out (only Go to Line is pressed before that), that it
 stops after a failed check, and that Ctrl+C releases every key while the service is still typing.
 
-## 13. Licence
+## 13. Further work
+
+The aim is to help with whatever the locked computer shows, but so far only code in VS Code gets the
+whole loop: a reading, a fix, typing checked on the screen, and a checked save. Reading and asking
+aren't tied to one program. In `read --describe` and the viewer's questions, Glimmer is asked to name
+the program and quote its messages, though `nanokvm ask` reads only code. Fix it plans steps in any
+program. But every answer and fix recorded on the hardware so far was about code in VS Code. This is
+what it would take to help as fully in other programs. None of it is built yet.
+
+**Acting in any program.**
+
+- **A check after every step.** In a typed edit, each key that could change the file waits for a check
+  on the screen: the Go to Line box, the status bar's *Ln* and *Col*, the lines read back. A Fix it
+  step, in VS Code too, counts as done once the service has sent its click, scroll, keys or text to the
+  KVM in full. The planner sees what happened only at its next look, after a fixed 1.5 s pause. Each
+  step needs an expected result (a menu open, a field holding the typed text, a dialog gone), checked
+  on a fresh reading once the screen has stopped changing, and the task should stop at the first step
+  that fails it. The planner also needs a way to wait: if a program is still busy at the next look, it
+  can only guess a step or end the task.
+- **Clicks that land where they aim.** Fix it clicks the middle of the box Glimmer finds. On Windows the
+  KVM's mouse covers only the main display, so clicks need Monitor A to be the main display, which I
+  haven't tested ([section 4](#4-locked-computer-settings)). Nothing checks where the pointer is before
+  a click, either. It needs that test and a look at the pointer over its target before each click. It
+  also needs the mouse actions Fix it lacks: hovering, dragging, and Ctrl- or Shift-clicks. The service
+  can already move the pointer without clicking, but it can't drag or hold a key during a click yet.
+- **Knowing where typed text goes.** A typing step types into whatever has the focus. When the bottom
+  of the screen shows a cursor position as VS Code's status bar does (*Ln 8, Col 1*), the step's
+  approval gives it, but nothing checks that the text will go there. Otherwise it can only ask you to
+  check the picture. Other programs need the focused field found on the screen, by its outline or its
+  cursor, and read before and after the typing.
+- **Editing outside VS Code.** Typed edits depend on VS Code: its line numbers, Go to Line, Ctrl+L to
+  select a line, the status bar to check the cursor, its typing helpers switched off, and the tab's
+  unsaved-changes dot to check the save. `fix`'s notes cover only VS Code's window: its squiggles,
+  panels and status bar. Other editors and IDEs each need their own way to reach a line, select it,
+  and check the cursor and the save, or a general check that reads the text around the cursor before
+  and after each edit. The text fields of legacy tools show no line numbers, so their edits need some
+  other way to say what changes, such as the text being replaced.
+- **Terminal programs.** Some legacy tools run in a terminal. Under Auto, Enter always asks, but a
+  function key is done without asking when the planner says it changes nothing. In a mainframe
+  terminal a function key sends the screen to the host, as Enter does. When Spark plans, Glimmer is
+  asked for the window's title, controls, fields, lists and dialogs and nothing else, so a terminal's
+  output can be left out. Such programs need their own list of keys that always ask, and a reading for
+  Spark that keeps the text they show.
+- **Moving between programs.** Fix it refuses the keys Windows uses to switch programs and open the
+  Start menu (Alt+Tab, Alt+Esc, Ctrl+Esc and the Windows key), so reaching another program takes a
+  click on its window or the taskbar. When Spark plans, it sees only Glimmer's description of the window
+  in front, and Glimmer is asked to leave out other programs and the taskbar. A task across programs,
+  such as copying from one into another, needs a step that brings a named program to the front, if the
+  owner allows it, checked by the title of the window in front, and a planner told which programs are
+  open.
+- **Longer tasks, checked at the end.** Fix it stops after 20 steps, and Glimmer plans from the screen
+  as it is now and one line for each earlier step. A task ends when the planner says it's done, and you
+  check that on the screen. A form over several screens needs a plan of smaller goals kept from step
+  to step. Every task also needs a check on a fresh reading before it's reported done, as `fix` has the
+  coder check the code before it saves (*FIXED*). And a task that stops can't be picked up again: a
+  new one starts with no record of the steps so far.
+
+**Reading any program.**
+
+- **Questions about any program.** `nanokvm ask` reads only code, and every question Spark answers
+  comes with instructions saying it helps a developer and should cite line numbers. Other programs
+  need instructions of their own, and an `ask` that reads the window in front, as the viewer's
+  questions do.
+- **More than one screen.** Each reading is one frame, or a region of it. A log, document or table
+  longer than the screen has to be read as it scrolls and joined up without missing or repeating a
+  line. Code has line numbers to check that (`read` says which are missing), but most other text
+  doesn't.
+- **Knowing the program.** An answer draws only on your question, the screen and what the model
+  already knows, which may be little for a legacy tool that's in-house or old. With the owner's
+  approval, its manuals and lists of error messages could be kept on the AI computer for Glimmer to
+  look up, so an answer can point to the tool's own documentation.
+
+**Keeping data in, and trying it for real.**
+
+- **Screens with personal data.** Outside code, a screen more often holds names, records and prose, and
+  redaction catches only values with a recognisable shape and the terms you list
+  ([Sensitive screens](#sensitive-screens)). Until a check for personal and confidential data runs on
+  the AI computer and has been measured on such screens, nothing read from them should leave it: use
+  Local only.
+- **Guardrails for shared data.** In a requirements tool or a records system, one click can change data
+  other people rely on. Under Auto, a click, scroll or key press that the planner says changes nothing
+  is done without asking, 1.5 s after it's shown, so it rests on the planner's word. Only Enter, Delete,
+  Backspace and a few shortcuts always ask ([section 7](#fix-it)), not Space, which can press a button
+  or tick a box. Owners need a say in which programs and actions a task may use, and approvals enforced
+  by the service that drives the keyboard ([LEARNINGS.md](LEARNINGS.md#what-id-do-next)).
+- **Sign-in and security prompts.** Nothing looks for a sign-in, password or administrator prompt, and
+  the planner isn't told what to do at one. They're the locked computer's own controls, so Fix it
+  should pause at one and never type a password, then carry on once you've dealt with it at the locked
+  computer's own keyboard.
+- **More keyboards, displays and computers.** Typing knows only the UK and US PC layouts, and only ASCII
+  characters plus the UK's £, ¬ and €. Accented letters and other scripts are refused. Only Monitor A
+  is seen, at 1920x1080 at most, and locked computers on macOS or Linux haven't been tried
+  ([section 1a](#1a-operating-systems)).
+- **Trials on real work.** Every hardware run so far used the stand-in laptop, and every fix there was
+  to a short test file. Next is a set of everyday tasks in several programs, on test data, measured
+  for reading accuracy, success, steps and time, then trials on real locked computers with their
+  owners' approval.
+
+LEARNINGS.md's [What I'd do next](LEARNINGS.md#what-id-do-next) has the rest, such as a compile or test
+run alongside *FIXED* for code, and an AI computer on macOS or Linux.
+
+## 14. Licence
 
 MIT: see [LICENSE](LICENSE). It covers everything in this repo, including the groundwork from before
 the event. Muse Glimmer's weights (Apache-2.0), llama.cpp (MIT) and the Python packages aren't in the

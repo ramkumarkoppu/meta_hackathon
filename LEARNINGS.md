@@ -319,7 +319,8 @@ None of this is built yet:
 - a smaller image budget for descriptions, the one big speed lever left (about 5.2 s of a 6.7 s
   description is the image), after a letter-by-letter legibility check;
 - fine-tuning Glimmer on synthetic screens;
-- typed edits and whole tasks beyond VS Code (no whole task outside it is recorded finishing yet);
+- typed edits and whole tasks beyond VS Code (no whole task outside it is recorded finishing yet),
+  broken down in [README section 13](README.md#13-further-work);
 - an AI computer on macOS or Linux (for now it needs Windows and an NVIDIA GPU of about 24 GB).
 
 ## Questions the submission asks, answered from this work
