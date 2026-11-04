@@ -7,13 +7,13 @@ errors of the kinds real code has. [HACKATHON.md](HACKATHON.md) lists what was b
 
 ## Why a USB KVM
 
-Some computers may not run AI software: locked-down laptops, lab PCs, machines on separate networks. To
-such a computer, the USB KVM I chose before the event is just a monitor and a USB keyboard and mouse.
-Nothing is installed on it. Keystrokes can be sent but never read, unplugging the KVM's USB cable to the
-locked computer stops all typing, and if a policy blocks new USB keyboards, only reading works. That
-keeps within the ban in Meta's acceptable-use policy on "bypassing, disabling, or defeating any security
-control" (read before the event, on 14 Oct, and again on 29 Oct), and the design assumes the computer's
-owner approves.
+Some computers aren't allowed to run AI software: locked-down work laptops, lab PCs, machines on a
+separate network. To such a computer, the USB KVM I chose before the event looks like an ordinary
+monitor, USB keyboard and mouse, so nothing is installed on it. The KVM can send keystrokes but never
+read them. Unplugging its USB cable to the locked computer stops all typing, and if a policy blocks new
+USB keyboards, only reading works. All of this keeps within the ban in Meta's acceptable-use policy on
+"bypassing, disabling, or defeating any security control" (read before the event, on 14 Oct, and again
+on 29 Oct), and the design assumes the computer's owner approves.
 
 The price is a narrow channel: a compressed 1920x1080 video at about 30 fps in, key presses and mouse
 moves out. So the AI computer has to read small code from a picture and check on the screen that every
