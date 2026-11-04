@@ -5,6 +5,10 @@
 Built during the Meta Global AI Developer Hackathon, on groundwork from before it: [what was built
 when](#hackathon-entry), with the detail in [HACKATHON.md](HACKATHON.md).
 
+**Demo video** (2:34): [youtu.be/MbNkb62ZErY](https://youtu.be/MbNkb62ZErY). In its 4 Nov run,
+Glimmer found the bugs and the KVM typed the fix, then the check after typing stopped the run before
+the save, because VS Code auto-indented the next line.
+
 Some computers may not run AI software: a locked-down work laptop, a lab PC, a machine on a separate
 network. With the approval of whoever owns such a computer and its data, this project gives it AI help
 without installing anything on it and without getting around any of its controls. A small USB KVM sits
@@ -53,7 +57,7 @@ too. In the viewer, a question sends nothing with *Local only* ticked, and Fix i
 you tick Spark. The assistant helps with the software and its errors. It doesn't interpret patient data
 or give clinical advice.
 
-**Status (2 Nov).** `read`, `fix` and the viewer's Ask and Fix it have run end to end with the real
+**Status (4 Nov).** `read`, `fix` and the viewer's Ask and Fix it have run end to end with the real
 models: Muse Glimmer on the AI computer's GPU, and Muse Spark through Meta's API wherever text was sent.
 Every hardware run used a spare Windows laptop standing in for the locked computer (the *stand-in
 laptop* below). The code on it is test code: C++ source with deliberate errors of the kinds real code
@@ -75,6 +79,7 @@ with no description from me, it found junk typed on a file's last line, fixed it
 | 1 Nov | Fix it on a simulated VS Code screen, with the real Glimmer planning and coding | The right fix, *FIXED*, saved, nothing sent (98 s and 96 s) |
 | 1 Nov | Fix it: *Whats wrong with this and fix it*, on hello.cpp | Handed to the fix loop: the right fix, saved |
 | 2 Nov | The automated tests (`pytest`; no hardware needed) | All 298 pass |
+| 4 Nov | Fix it on main.cpp, filmed for the demo video: *whats wrong with this code?* | Glimmer found the bugs and the KVM typed line 13's fix; the check after typing caught VS Code auto-indenting line 14 and stopped the run: nothing saved, nothing sent |
 
 **Known limits.**
 

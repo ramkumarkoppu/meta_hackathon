@@ -188,3 +188,9 @@ So far:
   the A/B tools, the deletion of saved screenshots, the service features only the MCP server used and
   the settings that went with them, so nothing in the project now writes the locked computer's screen
   to disk (git history keeps these too).
+- **Docs and the demo video (4 Nov).** README section 13 says what other programs still need, three
+  diagrams show the boundaries, a typed edit and Fix it's loop, and the docs say what the stand-in
+  laptop's test code is. The demo video,
+  [youtu.be/MbNkb62ZErY](https://youtu.be/MbNkb62ZErY), shows a 4 Nov run on main.cpp: Glimmer found
+  the bugs and the KVM typed line 13's fix, then the check after typing caught VS Code auto-indenting
+  line 14 and stopped the run, with nothing saved or sent. No code changed after 2 Nov.
